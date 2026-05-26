@@ -107,3 +107,21 @@ class CourseResponse(BaseModel):
     grade_level: str
     term: str
     school_year: str
+
+
+class CourseCreate(BaseModel):
+    name: str
+    code: str
+    teacher_id: UUID
+    grade_level: str
+    term: str
+    school_year: str
+
+
+class CourseUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    teacher_id: UUID | None = None
+    grade_level: str | None = None
+    term: str | None = None
+    school_year: str | None = None

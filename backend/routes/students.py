@@ -16,19 +16,10 @@ from schemas import (
     StudentResponse,
     StudentUpdate,
 )
+from utils import to_student_response
 
 
 router = APIRouter(tags=["students"])
-
-
-def to_student_response(student: Student) -> StudentResponse:
-    return StudentResponse(
-        id=student.id,
-        first_name=student.first_name,
-        last_name=student.last_name,
-        grade_level=student.grade_level,
-        student_number=student.student_number,
-    )
 
 
 def to_linked_parent_response(link: StudentParent) -> LinkedParentResponse:

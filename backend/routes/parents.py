@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin
 from database import get_db
-from models import Parent, Student, StudentParent, User
+from models import Parent, StudentParent, User
 from schemas import ParentCreate, ParentResponse, ParentUpdate, StudentResponse
+from utils import to_student_response
 
 
 router = APIRouter(tags=["parents"])
@@ -20,16 +21,6 @@ def to_parent_response(parent: Parent) -> ParentResponse:
         name=parent.user.name,
         email=parent.user.email,
         phone=parent.phone,
-    )
-
-
-def to_student_response(student: Student) -> StudentResponse:
-    return StudentResponse(
-        id=student.id,
-        first_name=student.first_name,
-        last_name=student.last_name,
-        grade_level=student.grade_level,
-        student_number=student.student_number,
     )
 
 

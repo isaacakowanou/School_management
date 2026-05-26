@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Course, GradeItem, Teacher, User
+from models import Course, GradeItem, User
 from schemas import GradeItemCreate, GradeItemResponse, GradeItemUpdate, StatusResponse
+from utils import get_current_teacher
 
 
 router = APIRouter(tags=["grade-items"])
@@ -39,10 +40,6 @@ def get_grade_item_or_404(db: Session, grade_item_id: UUID) -> GradeItem:
     if grade_item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade item not found")
     return grade_item
-
-
-def get_current_teacher(db: Session, current_user: User) -> Teacher | None:
-    return db.scalar(select(Teacher).where(Teacher.user_id == current_user.id))
 
 
 def can_manage_course_grade_items(db: Session, current_user: User, course: Course) -> bool:

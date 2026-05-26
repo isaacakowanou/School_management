@@ -9,21 +9,10 @@ from auth import get_current_user, require_admin
 from database import get_db
 from models import Course, Teacher, User
 from schemas import CourseCreate, CourseResponse, CourseUpdate, StatusResponse
+from utils import get_current_teacher, to_course_response
 
 
 router = APIRouter(tags=["courses"])
-
-
-def to_course_response(course: Course) -> CourseResponse:
-    return CourseResponse(
-        id=course.id,
-        name=course.name,
-        code=course.code,
-        teacher_id=course.teacher_id,
-        grade_level=course.grade_level,
-        term=course.term,
-        school_year=course.school_year,
-    )
 
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
@@ -38,10 +27,6 @@ def get_teacher_or_404(db: Session, teacher_id: UUID) -> Teacher:
     if teacher is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
     return teacher
-
-
-def get_current_teacher(db: Session, current_user: User) -> Teacher | None:
-    return db.scalar(select(Teacher).where(Teacher.user_id == current_user.id))
 
 
 def teacher_can_read_course(db: Session, current_user: User, course: Course) -> bool:

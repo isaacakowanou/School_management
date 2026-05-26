@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin
 from database import get_db
-from models import Course, Enrollment, Student, Teacher, User
+from models import Course, Enrollment, Student, User
 from schemas import EnrollmentCreate, EnrollmentResponse, StatusResponse, StudentResponse
+from utils import get_current_teacher, to_student_response
 
 
 router = APIRouter(tags=["enrollments"])
@@ -18,16 +19,6 @@ def to_enrollment_response(enrollment: Enrollment) -> EnrollmentResponse:
         id=enrollment.id,
         student_id=enrollment.student_id,
         course_id=enrollment.course_id,
-    )
-
-
-def to_student_response(student: Student) -> StudentResponse:
-    return StudentResponse(
-        id=student.id,
-        first_name=student.first_name,
-        last_name=student.last_name,
-        grade_level=student.grade_level,
-        student_number=student.student_number,
     )
 
 
@@ -43,10 +34,6 @@ def get_student_or_404(db: Session, student_id: UUID) -> Student:
     if student is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
     return student
-
-
-def get_current_teacher(db: Session, current_user: User) -> Teacher | None:
-    return db.scalar(select(Teacher).where(Teacher.user_id == current_user.id))
 
 
 def can_read_course_students(db: Session, current_user: User, course: Course) -> bool:

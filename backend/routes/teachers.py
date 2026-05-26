@@ -8,6 +8,7 @@ from auth import get_current_user, require_admin
 from database import get_db
 from models import Course, Teacher, User
 from schemas import CourseResponse, TeacherCreate, TeacherResponse, TeacherUpdate
+from utils import to_course_response
 
 
 router = APIRouter(tags=["teachers"])
@@ -20,18 +21,6 @@ def to_teacher_response(teacher: Teacher) -> TeacherResponse:
         name=teacher.user.name,
         email=teacher.user.email,
         employee_number=teacher.employee_number,
-    )
-
-
-def to_course_response(course: Course) -> CourseResponse:
-    return CourseResponse(
-        id=course.id,
-        name=course.name,
-        code=course.code,
-        teacher_id=course.teacher_id,
-        grade_level=course.grade_level,
-        term=course.term,
-        school_year=course.school_year,
     )
 
 

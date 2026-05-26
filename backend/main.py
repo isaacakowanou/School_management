@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from routes.auth import router as auth_router
 from routes.courses import router as courses_router
+from routes.enrollments import router as enrollments_router
 from routes.parents import router as parents_router
 from routes.students import router as students_router
 from routes.teachers import router as teachers_router
@@ -15,6 +16,7 @@ app = FastAPI(
 
 app.include_router(auth_router, prefix="/api/v1/auth")
 app.include_router(courses_router, prefix="/api/v1/courses")
+app.include_router(enrollments_router, prefix="/api/v1")
 app.include_router(parents_router, prefix="/api/v1/parents")
 app.include_router(students_router, prefix="/api/v1/students")
 app.include_router(teachers_router, prefix="/api/v1/teachers")

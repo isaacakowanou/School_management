@@ -125,3 +125,14 @@ class CourseUpdate(BaseModel):
     grade_level: str | None = None
     term: str | None = None
     school_year: str | None = None
+
+
+class EnrollmentCreate(BaseModel):
+    student_id: UUID
+    course_id: UUID
+
+
+class EnrollmentResponse(BaseModel):
+    id: UUID
+    student_id: UUID
+    course_id: UUID

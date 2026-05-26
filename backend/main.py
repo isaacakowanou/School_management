@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from routes.auth import router as auth_router
+from routes.parents import router as parents_router
 from routes.students import router as students_router
 from routes.users import router as users_router
 
@@ -11,6 +12,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router, prefix="/api/v1/auth")
+app.include_router(parents_router, prefix="/api/v1/parents")
 app.include_router(students_router, prefix="/api/v1/students")
 app.include_router(users_router, prefix="/api/v1/users")
 

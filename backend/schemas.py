@@ -63,3 +63,20 @@ class LinkedParentResponse(BaseModel):
     email: str
     phone: str | None = None
     relationship: str | None = None
+
+
+class ParentCreate(BaseModel):
+    user_id: UUID
+    phone: str | None = None
+
+
+class ParentUpdate(BaseModel):
+    phone: str | None = None
+
+
+class ParentResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    name: str
+    email: str
+    phone: str | None = None

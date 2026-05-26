@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from auth import create_access_token, get_current_user, verify_password
 from database import get_db
 from models import User
+from schemas import UserResponse
 
 
 router = APIRouter(tags=["auth"])
@@ -23,13 +24,6 @@ class LoginResponse(BaseModel):
     token_type: str
     role: str
     user_id: UUID
-
-
-class UserResponse(BaseModel):
-    id: UUID
-    name: str
-    email: str
-    role: str
 
 
 @router.post("/login", response_model=LoginResponse)

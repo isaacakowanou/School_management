@@ -1,6 +1,7 @@
+from urllib.parse import parse_qs
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,11 +15,6 @@ from schemas import UserResponse
 router = APIRouter(tags=["auth"])
 
 
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str
@@ -26,10 +22,52 @@ class LoginResponse(BaseModel):
     user_id: UUID
 
 
+async def read_login_credentials(request: Request) -> tuple[str, str]:
+    content_type = request.headers.get("content-type", "").lower()
+
+    if "application/json" in content_type:
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON request body",
+            ) from exc
+
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="JSON login body must be an object",
+            )
+
+        email = payload.get("email")
+        password = payload.get("password")
+    elif "application/x-www-form-urlencoded" in content_type:
+        body = (await request.body()).decode("utf-8")
+        form_data = parse_qs(body, keep_blank_values=True)
+        email = form_data.get("username", [""])[0]
+        password = form_data.get("password", [""])[0]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Login requires JSON or form-encoded request body",
+        )
+
+    if not email or not password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Login requires email/username and password",
+        )
+
+    return str(email), str(password)
+
+
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
-    user = db.scalar(select(User).where(User.email == payload.email))
-    if user is None or not verify_password(payload.password, user.password_hash):
+async def login(request: Request, db: Session = Depends(get_db)) -> LoginResponse:
+    email, password = await read_login_credentials(request)
+
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None or not verify_password(password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",

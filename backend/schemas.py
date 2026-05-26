@@ -80,3 +80,30 @@ class ParentResponse(BaseModel):
     name: str
     email: str
     phone: str | None = None
+
+
+class TeacherCreate(BaseModel):
+    user_id: UUID
+    employee_number: str
+
+
+class TeacherUpdate(BaseModel):
+    employee_number: str
+
+
+class TeacherResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    name: str
+    email: str
+    employee_number: str
+
+
+class CourseResponse(BaseModel):
+    id: UUID
+    name: str
+    code: str
+    teacher_id: UUID
+    grade_level: str
+    term: str
+    school_year: str

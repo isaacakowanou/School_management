@@ -167,3 +167,22 @@ class GradeItemResponse(BaseModel):
     weight: float
     term: str
     due_date: date | None = None
+
+
+class GradeCreate(BaseModel):
+    student_id: UUID
+    grade_item_id: UUID
+    score: float
+
+
+class GradeUpdate(BaseModel):
+    score: float
+
+
+class GradeResponse(BaseModel):
+    id: UUID
+    student_id: UUID
+    grade_item_id: UUID
+    course_id: UUID
+    score: float
+    submitted_by_teacher_id: UUID

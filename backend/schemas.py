@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -136,3 +137,33 @@ class EnrollmentResponse(BaseModel):
     id: UUID
     student_id: UUID
     course_id: UUID
+
+
+class GradeItemCreate(BaseModel):
+    course_id: UUID
+    title: str
+    category: str
+    max_score: float
+    weight: float
+    term: str
+    due_date: date | None = None
+
+
+class GradeItemUpdate(BaseModel):
+    title: str | None = None
+    category: str | None = None
+    max_score: float | None = None
+    weight: float | None = None
+    term: str | None = None
+    due_date: date | None = None
+
+
+class GradeItemResponse(BaseModel):
+    id: UUID
+    course_id: UUID
+    title: str
+    category: str
+    max_score: float
+    weight: float
+    term: str
+    due_date: date | None = None

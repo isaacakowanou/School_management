@@ -27,3 +27,39 @@ class UserResponse(BaseModel):
 class StatusResponse(BaseModel):
     status: str
     message: str
+
+
+class StudentCreate(BaseModel):
+    first_name: str
+    last_name: str
+    grade_level: str
+    student_number: str
+
+
+class StudentUpdate(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    grade_level: str | None = None
+    student_number: str | None = None
+
+
+class StudentResponse(BaseModel):
+    id: UUID
+    first_name: str
+    last_name: str
+    grade_level: str
+    student_number: str
+
+
+class StudentParentLinkCreate(BaseModel):
+    parent_id: UUID
+    relationship: str | None = None
+
+
+class LinkedParentResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    name: str
+    email: str
+    phone: str | None = None
+    relationship: str | None = None

@@ -186,3 +186,26 @@ class GradeResponse(BaseModel):
     course_id: UUID
     score: float
     submitted_by_teacher_id: UUID
+
+
+class CourseResultResponse(BaseModel):
+    id: UUID
+    student_id: UUID
+    course_id: UUID
+    term: str
+    average: float
+    letter_grade: str
+
+
+class SkippedCourseResultStudent(BaseModel):
+    student_id: UUID
+    student_name: str
+    missing_grade_items: list[str]
+
+
+class CourseResultCalculationResponse(BaseModel):
+    course_id: UUID
+    term: str
+    calculated_count: int
+    skipped_students: list[SkippedCourseResultStudent]
+    results: list[CourseResultResponse]

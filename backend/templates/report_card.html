@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Student Report Card</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 0.75in;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            color: #1f2933;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px;
+            line-height: 1.45;
+            background: #ffffff;
+        }
+
+        .report {
+            width: 100%;
+        }
+
+        .header {
+            border-bottom: 2px solid #1f2933;
+            padding-bottom: 16px;
+            margin-bottom: 22px;
+        }
+
+        .school-name {
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0 0 4px;
+        }
+
+        .document-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin: 0;
+            color: #52606d;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 24px;
+            margin-bottom: 24px;
+        }
+
+        .meta-item {
+            border-bottom: 1px solid #d9e2ec;
+            padding-bottom: 6px;
+        }
+
+        .label {
+            display: block;
+            color: #627d98;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .value {
+            display: block;
+            margin-top: 2px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        h2 {
+            font-size: 14px;
+            margin: 0 0 10px;
+            text-transform: uppercase;
+            color: #323f4b;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 22px;
+        }
+
+        th {
+            background: #f0f4f8;
+            border: 1px solid #bcccdc;
+            color: #323f4b;
+            font-size: 11px;
+            padding: 8px;
+            text-align: left;
+            text-transform: uppercase;
+        }
+
+        td {
+            border: 1px solid #d9e2ec;
+            padding: 8px;
+        }
+
+        .number {
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 22px;
+        }
+
+        .summary-box {
+            border: 1px solid #bcccdc;
+            padding: 12px;
+        }
+
+        .summary-value {
+            display: block;
+            font-size: 22px;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+
+        .ai-summary {
+            border-top: 1px solid #d9e2ec;
+            padding-top: 16px;
+            margin-top: 8px;
+        }
+
+        .footer {
+            border-top: 1px solid #d9e2ec;
+            color: #627d98;
+            font-size: 11px;
+            margin-top: 28px;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <main class="report">
+        <header class="header">
+            <p class="school-name">School AI System</p>
+            <p class="document-title">Student Report Card</p>
+        </header>
+
+        <section class="meta-grid" aria-label="Student information">
+            <div class="meta-item">
+                <span class="label">Student Name</span>
+                <span class="value">{{ report_data.student.first_name }} {{ report_data.student.last_name }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="label">Student Number</span>
+                <span class="value">{{ report_data.student.student_number }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="label">Grade Level</span>
+                <span class="value">{{ report_data.student.grade_level }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="label">Term / School Year</span>
+                <span class="value">{{ report_data.term }} / {{ report_data.school_year }}</span>
+            </div>
+        </section>
+
+        <section aria-label="Academic results">
+            <h2>Academic Results</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Course Code</th>
+                        <th scope="col">Course Name</th>
+                        <th scope="col" class="number">Average</th>
+                        <th scope="col">Letter Grade</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for course in report_data.courses %}
+                    <tr>
+                        <td>{{ course.course_code }}</td>
+                        <td>{{ course.course_name }}</td>
+                        <td class="number">{{ "%.2f"|format(course.average) }}</td>
+                        <td>{{ course.letter_grade }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <section class="summary-grid" aria-label="Summary results">
+            <div class="summary-box">
+                <span class="label">Overall Average</span>
+                <span class="summary-value">{{ "%.2f"|format(report_data.overall_average) }}</span>
+            </div>
+            <div class="summary-box">
+                <span class="label">GPA</span>
+                <span class="summary-value">{{ "%.2f"|format(report_data.gpa) }}</span>
+            </div>
+        </section>
+
+        {% if report_data.ai_summary %}
+        <section class="ai-summary" aria-label="Academic summary">
+            <h2>Academic Summary</h2>
+            <p>{{ report_data.ai_summary }}</p>
+        </section>
+        {% endif %}
+
+        {% if report_data.status or report_data.generated_date %}
+        <footer class="footer">
+            {% if report_data.status %}Status: {{ report_data.status }}{% endif %}
+            {% if report_data.status and report_data.generated_date %} | {% endif %}
+            {% if report_data.generated_date %}Date: {{ report_data.generated_date }}{% endif %}
+        </footer>
+        {% endif %}
+    </main>
+</body>
+</html>

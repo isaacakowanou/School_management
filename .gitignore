@@ -8,3 +8,4 @@ backend/.pytest_cache/
 backend/.env
 .venv/
 venv/
+backend/storage/

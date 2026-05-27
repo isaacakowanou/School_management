@@ -221,3 +221,29 @@ class AuditLogResponse(BaseModel):
     old_value: dict[str, Any] | None = None
     new_value: dict[str, Any] | None = None
     created_at: datetime
+
+
+class ReportGenerateRequest(BaseModel):
+    term: str
+    school_year: str
+
+
+class ReportCardCourseResponse(BaseModel):
+    id: UUID
+    course_id: UUID
+    course_name: str
+    average: float
+    letter_grade: str
+
+
+class ReportCardResponse(BaseModel):
+    id: UUID
+    student_id: UUID
+    term: str
+    school_year: str
+    overall_average: float
+    gpa: float | None = None
+    status: str
+    ai_summary: str | None = None
+    pdf_url: str | None = None
+    courses: list[ReportCardCourseResponse]

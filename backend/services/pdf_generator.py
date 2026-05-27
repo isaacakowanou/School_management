@@ -111,6 +111,19 @@ def _build_pdf_story(report_data: dict) -> list:
             ]
         )
 
+    footer_parts = []
+    if report_data.get("status"):
+        footer_parts.append(f"Status: {report_data['status']}")
+    if report_data.get("generated_date"):
+        footer_parts.append(f"Date: {report_data['generated_date']}")
+    if footer_parts:
+        story.extend(
+            [
+                Spacer(1, 18),
+                Paragraph(" | ".join(footer_parts), styles["BodyText"]),
+            ]
+        )
+
     return story
 
 

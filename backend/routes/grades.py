@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin
+from audit import create_audit_log
 from database import get_db
 from models import Course, Enrollment, Grade, GradeItem, Student, Teacher, User
 from schemas import GradeCreate, GradeResponse, GradeUpdate, StatusResponse
@@ -141,6 +142,20 @@ def create_grade(
         submitted_by_teacher=teacher,
     )
     db.add(grade)
+    db.flush()
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="grade_submitted",
+        entity_type="grade",
+        entity_id=grade.id,
+        new_value={
+            "student_id": grade.student_id,
+            "grade_item_id": grade.grade_item_id,
+            "score": grade.score,
+            "submitted_by_teacher_id": grade.submitted_by_teacher_id,
+        },
+    )
     db.commit()
     db.refresh(grade)
     return to_grade_response(grade)
@@ -158,7 +173,17 @@ def update_grade(
     get_writable_teacher_for_course(db, current_user, grade_item.course)
 
     validate_score(payload.score, grade_item.max_score)
+    old_score = grade.score
     grade.score = payload.score
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="grade_updated",
+        entity_type="grade",
+        entity_id=grade.id,
+        old_value={"score": old_score},
+        new_value={"score": grade.score},
+    )
     db.commit()
     db.refresh(grade)
     return to_grade_response(grade)
@@ -168,9 +193,22 @@ def update_grade(
 def delete_grade(
     grade_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     grade = get_grade_or_404(db, grade_id)
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="grade_deleted",
+        entity_type="grade",
+        entity_id=grade.id,
+        old_value={
+            "student_id": grade.student_id,
+            "grade_item_id": grade.grade_item_id,
+            "score": grade.score,
+            "submitted_by_teacher_id": grade.submitted_by_teacher_id,
+        },
+    )
     db.delete(grade)
     db.commit()
     return StatusResponse(status="ok", message="Grade deleted")

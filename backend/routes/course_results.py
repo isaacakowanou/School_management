@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
+from audit import create_audit_log
 from database import get_db
 from models import Course, CourseResult, Enrollment, Grade, GradeItem, Student, User
 from schemas import CourseResultCalculationResponse, CourseResultResponse, SkippedCourseResultStudent
@@ -166,6 +167,18 @@ def calculate_course_results(
 
         results.append(course_result)
 
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="course_results_calculated",
+        entity_type="course",
+        entity_id=course.id,
+        new_value={
+            "course_id": course.id,
+            "calculated_count": len(results),
+            "skipped_students_count": len(skipped_students),
+        },
+    )
     db.commit()
     for result in results:
         db.refresh(result)

@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -209,3 +210,14 @@ class CourseResultCalculationResponse(BaseModel):
     calculated_count: int
     skipped_students: list[SkippedCourseResultStudent]
     results: list[CourseResultResponse]
+
+
+class AuditLogResponse(BaseModel):
+    id: UUID
+    actor_user_id: UUID
+    action: str
+    entity_type: str
+    entity_id: UUID
+    old_value: dict[str, Any] | None = None
+    new_value: dict[str, Any] | None = None
+    created_at: datetime

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from routes.audit_logs import router as audit_logs_router
 from routes.auth import router as auth_router
 from routes.course_results import router as course_results_router
 from routes.courses import router as courses_router
@@ -18,6 +19,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router, prefix="/api/v1/auth")
+app.include_router(audit_logs_router, prefix="/api/v1")
 app.include_router(course_results_router, prefix="/api/v1")
 app.include_router(courses_router, prefix="/api/v1/courses")
 app.include_router(enrollments_router, prefix="/api/v1")

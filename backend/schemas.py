@@ -247,3 +247,11 @@ class ReportCardResponse(BaseModel):
     ai_summary: str | None = None
     pdf_url: str | None = None
     courses: list[ReportCardCourseResponse]
+
+
+class AIWarningResponse(BaseModel):
+    warning_type: str
+    message: str
+    severity: str
+    entity_type: str | None = None
+    entity_id: UUID | None = None

@@ -93,6 +93,21 @@ def build_summary_report_data(report_card: ReportCard) -> dict:
     }
 
 
+def generate_and_store_report_summary(db: Session, report_card: ReportCard) -> AISummaryResponse:
+    report_data = build_summary_report_data(report_card)
+
+    try:
+        ai_summary = generate_report_summary(report_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    report_card.ai_summary = ai_summary
+    db.commit()
+    db.refresh(report_card)
+
+    return AISummaryResponse(report_card_id=report_card.id, ai_summary=report_card.ai_summary)
+
+
 @router.post("/check-report/{report_card_id}", response_model=list[AIWarningResponse])
 def check_report_card(
     report_card_id: UUID,
@@ -136,15 +151,15 @@ def generate_summary_for_report(
     _: User = Depends(require_admin),
 ) -> AISummaryResponse:
     report_card = get_report_card_or_404(db, report_card_id)
-    report_data = build_summary_report_data(report_card)
+    return generate_and_store_report_summary(db, report_card)
 
-    try:
-        ai_summary = generate_report_summary(report_data)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    report_card.ai_summary = ai_summary
-    db.commit()
-    db.refresh(report_card)
-
-    return AISummaryResponse(report_card_id=report_card.id, ai_summary=report_card.ai_summary)
+@router.post("/summary/{student_id}", response_model=AISummaryResponse)
+def generate_summary_for_student(
+    student_id: UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> AISummaryResponse:
+    student = get_student_or_404(db, student_id)
+    report_card = get_latest_draft_report_card_or_404(db, student.id)
+    return generate_and_store_report_summary(db, report_card)

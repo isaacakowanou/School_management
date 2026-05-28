@@ -1,6 +1,7 @@
 import os
 import unittest
 import uuid
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
@@ -8,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from models import Base, ReportCard, ReportCardCourse, Student
-from routes.ai import generate_summary_for_report
+from routes.ai import generate_summary_for_report, generate_summary_for_student
 from services.ai_summary import generate_report_summary
 
 
@@ -138,6 +139,51 @@ class AISummaryRouteTests(unittest.TestCase):
     def test_generate_summary_route_missing_report_returns_404(self):
         with self.assertRaises(HTTPException) as exc:
             generate_summary_for_report(uuid.uuid4(), db=self.db, _=object())
+
+        self.assertEqual(exc.exception.status_code, 404)
+
+    def test_generate_student_summary_route_uses_latest_draft_report(self):
+        latest_report = ReportCard(
+            student=self.student,
+            term="Fall",
+            school_year="2026-2027",
+            overall_average=80,
+            gpa=3.0,
+            status="draft",
+        )
+        self.db.add(latest_report)
+        self.db.flush()
+        latest_report.created_at = datetime(2099, 1, 1)
+        self.db.commit()
+
+        expected_summary = "Isaac performed strongly this term in Mathematics."
+        with patch("routes.ai.generate_report_summary", return_value=expected_summary):
+            response = generate_summary_for_student(self.student.id, db=self.db, _=object())
+
+        self.db.refresh(self.report_card)
+        self.db.refresh(latest_report)
+        self.assertEqual(response.report_card_id, latest_report.id)
+        self.assertEqual(latest_report.ai_summary, expected_summary)
+        self.assertIsNone(self.report_card.ai_summary)
+
+    def test_generate_student_summary_route_missing_student_returns_404(self):
+        with self.assertRaises(HTTPException) as exc:
+            generate_summary_for_student(uuid.uuid4(), db=self.db, _=object())
+
+        self.assertEqual(exc.exception.status_code, 404)
+
+    def test_generate_student_summary_route_no_draft_report_returns_404(self):
+        student_without_draft = Student(
+            first_name="No",
+            last_name="Draft",
+            grade_level="Grade 12",
+            student_number="STU-NODRAFT",
+        )
+        self.db.add(student_without_draft)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            generate_summary_for_student(student_without_draft.id, db=self.db, _=object())
 
         self.assertEqual(exc.exception.status_code, 404)
 

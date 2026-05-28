@@ -1,18 +1,23 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from auth import require_admin
+from auth import get_current_user, require_admin
 from database import get_db
-from models import ReportCard, ReportCardCourse, User
+from models import Parent, ReportCard, ReportCardCourse, StudentParent, User
 from schemas import ReportCardCourseResponse, ReportCardResponse, ReportGenerateRequest
 from services.pdf_generator import generate_report_card_pdf
 from services.report_builder import build_report_card_data
 
 
 router = APIRouter(tags=["reports"])
+PDF_STORAGE_DIR = Path(__file__).resolve().parent.parent / "storage" / "pdfs"
+PARENT_VISIBLE_STATUSES = {"approved", "sent"}
 
 
 def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
@@ -37,6 +42,56 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
             for course in report_card.courses
         ],
     )
+
+
+def get_report_card_or_404(db: Session, report_id: UUID) -> ReportCard:
+    report_card = db.get(ReportCard, report_id)
+    if report_card is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
+    return report_card
+
+
+def parent_can_access_student(db: Session, current_user: User, student_id: UUID) -> bool:
+    parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id))
+    if parent is None:
+        return False
+
+    student_link = db.scalar(
+        select(StudentParent).where(
+            StudentParent.parent_id == parent.id,
+            StudentParent.student_id == student_id,
+        )
+    )
+    return student_link is not None
+
+
+def parent_can_access_report(db: Session, current_user: User, report_card: ReportCard) -> bool:
+    return (
+        report_card.status in PARENT_VISIBLE_STATUSES
+        and parent_can_access_student(db, current_user, report_card.student_id)
+    )
+
+
+def ensure_can_view_report(db: Session, current_user: User, report_card: ReportCard) -> None:
+    if current_user.role == "admin":
+        return
+    if current_user.role == "parent" and parent_can_access_report(db, current_user, report_card):
+        return
+
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
+def get_report_pdf_path_or_404(report_card: ReportCard) -> Path:
+    if not report_card.pdf_url:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report PDF not found")
+
+    pdf_path = Path(report_card.pdf_url).resolve()
+    storage_dir = PDF_STORAGE_DIR.resolve()
+
+    if not pdf_path.is_relative_to(storage_dir) or not pdf_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report PDF not found")
+
+    return pdf_path
 
 
 @router.post("/generate/{student_id}", response_model=ReportCardResponse, status_code=status.HTTP_201_CREATED)
@@ -89,4 +144,65 @@ def generate_report_card(
 
     db.commit()
     db.refresh(report_card)
+    return to_report_card_response(report_card)
+
+
+@router.get("", response_model=list[ReportCardResponse])
+def list_reports(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> list[ReportCardResponse]:
+    report_cards = db.scalars(select(ReportCard).order_by(ReportCard.created_at.desc())).all()
+    return [to_report_card_response(report_card) for report_card in report_cards]
+
+
+@router.get("/student/{student_id}", response_model=list[ReportCardResponse])
+def list_student_reports(
+    student_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[ReportCardResponse]:
+    if current_user.role == "admin":
+        report_cards = db.scalars(
+            select(ReportCard)
+            .where(ReportCard.student_id == student_id)
+            .order_by(ReportCard.created_at.desc())
+        ).all()
+        return [to_report_card_response(report_card) for report_card in report_cards]
+
+    if current_user.role == "parent" and parent_can_access_student(db, current_user, student_id):
+        report_cards = db.scalars(
+            select(ReportCard)
+            .where(
+                ReportCard.student_id == student_id,
+                ReportCard.status.in_(PARENT_VISIBLE_STATUSES),
+            )
+            .order_by(ReportCard.created_at.desc())
+        ).all()
+        return [to_report_card_response(report_card) for report_card in report_cards]
+
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
+@router.get("/{report_id}/pdf")
+def download_report_pdf(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> FileResponse:
+    report_card = get_report_card_or_404(db, report_id)
+    ensure_can_view_report(db, current_user, report_card)
+    pdf_path = get_report_pdf_path_or_404(report_card)
+
+    return FileResponse(path=pdf_path, media_type="application/pdf", filename=pdf_path.name)
+
+
+@router.get("/{report_id}", response_model=ReportCardResponse)
+def get_report(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ReportCardResponse:
+    report_card = get_report_card_or_404(db, report_id)
+    ensure_can_view_report(db, current_user, report_card)
     return to_report_card_response(report_card)

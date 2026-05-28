@@ -13,6 +13,7 @@ from models import Parent, ReportCard, ReportCardCourse, StudentParent, User
 from schemas import ReportCardCourseResponse, ReportCardResponse, ReportGenerateRequest
 from services.pdf_generator import generate_report_card_pdf
 from services.report_builder import build_report_card_data
+from utils import get_report_card_or_404
 
 
 router = APIRouter(tags=["reports"])
@@ -42,13 +43,6 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
             for course in report_card.courses
         ],
     )
-
-
-def get_report_card_or_404(db: Session, report_id: UUID) -> ReportCard:
-    report_card = db.get(ReportCard, report_id)
-    if report_card is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
-    return report_card
 
 
 def parent_can_access_student(db: Session, current_user: User, student_id: UUID) -> bool:

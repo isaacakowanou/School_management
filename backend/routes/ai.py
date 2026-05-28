@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 from auth import get_current_user, require_admin
 from database import get_db
 from models import AIWarning, Course, Enrollment, ReportCard, Student, User
-from schemas import AIWarningResponse
+from schemas import AISummaryResponse, AIWarningResponse
 from services.ai_checker import check_report_card_data
-from utils import get_current_teacher
+from services.ai_summary import generate_report_summary
+from utils import get_current_teacher, get_report_card_or_404
 
 
 router = APIRouter(tags=["ai"])
@@ -68,6 +69,30 @@ def get_latest_draft_report_card_or_404(db: Session, student_id: UUID) -> Report
     return report_card
 
 
+def build_summary_report_data(report_card: ReportCard) -> dict:
+    student = report_card.student
+    return {
+        "student": {
+            "id": student.id,
+            "first_name": student.first_name,
+            "last_name": student.last_name,
+            "grade_level": student.grade_level,
+        },
+        "term": report_card.term,
+        "school_year": report_card.school_year,
+        "courses": [
+            {
+                "course_name": course.course_name,
+                "average": course.average,
+                "letter_grade": course.letter_grade,
+            }
+            for course in report_card.courses
+        ],
+        "overall_average": report_card.overall_average,
+        "gpa": report_card.gpa,
+    }
+
+
 @router.post("/check-report/{report_card_id}", response_model=list[AIWarningResponse])
 def check_report_card(
     report_card_id: UUID,
@@ -102,3 +127,24 @@ def check_student_grades(
     report_card = get_latest_draft_report_card_or_404(db, student.id)
     warnings = check_report_card_data(db, report_card.id)
     return store_report_warnings(db, report_card.id, warnings)
+
+
+@router.post("/generate-summary/{report_card_id}", response_model=AISummaryResponse)
+def generate_summary_for_report(
+    report_card_id: UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> AISummaryResponse:
+    report_card = get_report_card_or_404(db, report_card_id)
+    report_data = build_summary_report_data(report_card)
+
+    try:
+        ai_summary = generate_report_summary(report_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    report_card.ai_summary = ai_summary
+    db.commit()
+    db.refresh(report_card)
+
+    return AISummaryResponse(report_card_id=report_card.id, ai_summary=report_card.ai_summary)

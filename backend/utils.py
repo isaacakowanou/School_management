@@ -1,8 +1,16 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from fastapi import HTTPException, status
 
-from models import Course, Student, Teacher, User
+from models import Course, ReportCard, Student, Teacher, User
 from schemas import CourseResponse, StudentResponse
+
+
+def get_report_card_or_404(db: Session, report_id) -> ReportCard:
+    report_card = db.get(ReportCard, report_id)
+    if report_card is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
+    return report_card
 
 
 def get_current_teacher(db: Session, current_user: User) -> Teacher | None:

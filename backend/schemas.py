@@ -255,3 +255,8 @@ class AIWarningResponse(BaseModel):
     severity: str
     entity_type: str | None = None
     entity_id: UUID | None = None
+
+
+class AISummaryResponse(BaseModel):
+    report_card_id: UUID
+    ai_summary: str

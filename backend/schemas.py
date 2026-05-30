@@ -228,6 +228,10 @@ class ReportGenerateRequest(BaseModel):
     school_year: str
 
 
+class ReportReviewUpdate(BaseModel):
+    ai_summary: str | None = None
+
+
 class ReportCardCourseResponse(BaseModel):
     id: UUID
     course_id: UUID

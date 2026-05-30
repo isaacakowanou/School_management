@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user, require_admin
 from database import get_db
 from models import Parent, ReportCard, ReportCardCourse, StudentParent, User
-from schemas import ReportCardCourseResponse, ReportCardResponse, ReportGenerateRequest
+from schemas import ReportCardCourseResponse, ReportCardResponse, ReportGenerateRequest, ReportReviewUpdate
 from services.pdf_generator import generate_report_card_pdf
 from services.report_builder import build_report_card_data
 from utils import get_report_card_or_404
@@ -176,6 +176,25 @@ def list_student_reports(
         return [to_report_card_response(report_card) for report_card in report_cards]
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
+@router.put("/{report_id}/review", response_model=ReportCardResponse)
+def review_report_card(
+    report_id: UUID,
+    payload: ReportReviewUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ReportCardResponse:
+    report_card = get_report_card_or_404(db, report_id)
+    if report_card.status != "draft":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft reports can be reviewed")
+
+    if "ai_summary" in payload.model_fields_set:
+        report_card.ai_summary = payload.ai_summary
+
+    db.commit()
+    db.refresh(report_card)
+    return to_report_card_response(report_card)
 
 
 @router.get("/{report_id}/pdf")

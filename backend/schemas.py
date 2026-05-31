@@ -253,6 +253,14 @@ class ReportCardResponse(BaseModel):
     courses: list[ReportCardCourseResponse]
 
 
+class ReportSendResponse(BaseModel):
+    report_card_id: UUID
+    status: str
+    sent_count: int
+    failed_count: int
+    results: list[dict[str, Any]]
+
+
 class AIWarningResponse(BaseModel):
     warning_type: str
     message: str

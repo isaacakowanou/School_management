@@ -75,7 +75,7 @@ class EmailServiceTests(unittest.TestCase):
             with patch("services.email_service.smtplib.SMTP", return_value=smtp_context) as smtp_class:
                 results = send_report_notification_to_parents(self.db, self.report_card.id)
 
-        self.assertEqual(results, [{"email": "parent@example.test", "sent": True}])
+        self.assertEqual(results, [{"email": "parent@example.test", "sent": True, "error": None}])
         smtp_class.assert_called_once_with("smtp.example.test", 587)
         smtp_instance.starttls.assert_called_once()
         smtp_instance.login.assert_called_once_with("smtp-user", "smtp-password")
@@ -90,6 +90,38 @@ class EmailServiceTests(unittest.TestCase):
         self.assertIn("2026-2027", body)
         self.assertIn(f"https://portal.example.test/reports/{self.report_card.id}", body)
         self.assertFalse(message.is_multipart())
+
+    def test_continues_after_individual_email_failure(self):
+        second_parent_user = User(
+            name="Parent Two",
+            email="parent2@example.test",
+            password_hash="hash",
+            role="parent",
+        )
+        second_parent = Parent(user=second_parent_user, phone="555-0101")
+        self.db.add(second_parent)
+        self.db.flush()
+        self.db.add(StudentParent(student_id=self.student.id, parent_id=second_parent.id, relationship="guardian"))
+        self.db.commit()
+
+        smtp_instance = MagicMock()
+        smtp_instance.send_message.side_effect = [RuntimeError("SMTP failure"), None]
+        smtp_context = MagicMock()
+        smtp_context.__enter__.return_value = smtp_instance
+
+        with patch.dict(os.environ, EMAIL_ENV, clear=False):
+            with patch("services.email_service.smtplib.SMTP", return_value=smtp_context):
+                results = send_report_notification_to_parents(self.db, self.report_card.id)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual({result["email"] for result in results}, {"parent@example.test", "parent2@example.test"})
+        failed_results = [result for result in results if not result["sent"]]
+        successful_results = [result for result in results if result["sent"]]
+        self.assertEqual(len(failed_results), 1)
+        self.assertEqual(len(successful_results), 1)
+        self.assertIn("SMTP failure", failed_results[0]["error"])
+        self.assertIsNone(successful_results[0]["error"])
+        self.assertEqual(smtp_instance.send_message.call_count, 2)
 
     def test_uses_smtp_ssl_for_port_465(self):
         smtp_instance = MagicMock()

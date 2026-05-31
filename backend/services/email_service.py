@@ -90,7 +90,11 @@ def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> li
     for parent in parents:
         email = parent.user.email
         message = _build_email_message(config, parent, report_card)
-        _send_email(config, message)
-        results.append({"email": email, "sent": True})
+        try:
+            _send_email(config, message)
+        except Exception as exc:
+            results.append({"email": email, "sent": False, "error": str(exc)})
+            continue
+        results.append({"email": email, "sent": True, "error": None})
 
     return results

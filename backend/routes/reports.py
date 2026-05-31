@@ -11,7 +11,14 @@ from auth import get_current_user, require_admin
 from audit import create_audit_log
 from database import get_db
 from models import Parent, ReportCard, ReportCardCourse, StudentParent, User
-from schemas import ReportCardCourseResponse, ReportCardResponse, ReportGenerateRequest, ReportReviewUpdate
+from schemas import (
+    ReportCardCourseResponse,
+    ReportCardResponse,
+    ReportGenerateRequest,
+    ReportReviewUpdate,
+    ReportSendResponse,
+)
+from services.email_service import send_report_notification_to_parents
 from services.pdf_generator import generate_report_card_pdf
 from services.report_builder import build_report_card_data
 from utils import get_report_card_or_404
@@ -92,6 +99,11 @@ def get_report_pdf_path_or_404(report_card: ReportCard) -> Path:
 def ensure_report_is_draft(report_card: ReportCard) -> None:
     if report_card.status != "draft":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft reports can be reviewed")
+
+
+def ensure_report_is_approved(report_card: ReportCard) -> None:
+    if report_card.status != "approved":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved reports can be sent")
 
 
 def update_report_summary(report_card: ReportCard, payload: ReportReviewUpdate) -> tuple[str | None, str | None]:
@@ -277,6 +289,50 @@ def approve_report_card(
     db.commit()
     db.refresh(report_card)
     return to_report_card_response(report_card)
+
+
+@router.post("/{report_id}/send", response_model=ReportSendResponse)
+def send_report_card(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ReportSendResponse:
+    report_card = get_report_card_or_404(db, report_id)
+    ensure_report_is_approved(report_card)
+
+    try:
+        send_results = send_report_notification_to_parents(db, report_card.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    sent_count = sum(1 for result in send_results if result.get("sent"))
+    failed_count = len(send_results) - sent_count
+    if sent_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": "No report notifications were sent", "results": send_results},
+        )
+
+    report_card.status = "sent"
+    report_card.sent_at = datetime.now(timezone.utc)
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="report_sent",
+        entity_type="report_card",
+        entity_id=report_card.id,
+        old_value={"status": "approved"},
+        new_value={"status": "sent", "sent_count": sent_count, "failed_count": failed_count},
+    )
+    db.commit()
+
+    return ReportSendResponse(
+        report_card_id=report_card.id,
+        status=report_card.status,
+        sent_count=sent_count,
+        failed_count=failed_count,
+        results=send_results,
+    )
 
 
 @router.get("/{report_id}/pdf")

@@ -247,6 +247,38 @@ def update_report_summary_route(
     return to_report_card_response(report_card)
 
 
+@router.post("/{report_id}/approve", response_model=ReportCardResponse)
+def approve_report_card(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ReportCardResponse:
+    report_card = get_report_card_or_404(db, report_id)
+    ensure_report_is_draft(report_card)
+
+    approved_at = datetime.now(timezone.utc)
+    report_card.status = "approved"
+    report_card.approved_by_admin_id = current_user.id
+    report_card.approved_at = approved_at
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="report_approved",
+        entity_type="report_card",
+        entity_id=report_card.id,
+        old_value={"status": "draft"},
+        new_value={
+            "status": "approved",
+            "approved_by_admin_id": current_user.id,
+            "approved_at": approved_at,
+        },
+    )
+
+    db.commit()
+    db.refresh(report_card)
+    return to_report_card_response(report_card)
+
+
 @router.get("/{report_id}/pdf")
 def download_report_pdf(
     report_id: UUID,

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin
+from audit import create_audit_log
 from database import get_db
 from models import Parent, ReportCard, ReportCardCourse, StudentParent, User
 from schemas import ReportCardCourseResponse, ReportCardResponse, ReportGenerateRequest, ReportReviewUpdate
@@ -86,6 +87,40 @@ def get_report_pdf_path_or_404(report_card: ReportCard) -> Path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report PDF not found")
 
     return pdf_path
+
+
+def ensure_report_is_draft(report_card: ReportCard) -> None:
+    if report_card.status != "draft":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft reports can be reviewed")
+
+
+def update_report_summary(report_card: ReportCard, payload: ReportReviewUpdate) -> tuple[str | None, str | None]:
+    old_summary = report_card.ai_summary
+    if "ai_summary" in payload.model_fields_set:
+        report_card.ai_summary = payload.ai_summary
+    return old_summary, report_card.ai_summary
+
+
+def log_summary_edit_if_needed(
+    db: Session,
+    actor_user_id: UUID,
+    report_card: ReportCard,
+    payload: ReportReviewUpdate,
+    old_summary: str | None,
+    new_summary: str | None,
+) -> None:
+    if "ai_summary" not in payload.model_fields_set:
+        return
+
+    create_audit_log(
+        db=db,
+        actor_user_id=actor_user_id,
+        action="summary_edited",
+        entity_type="report_card",
+        entity_id=report_card.id,
+        old_value={"ai_summary": old_summary},
+        new_value={"ai_summary": new_summary},
+    )
 
 
 @router.post("/generate/{student_id}", response_model=ReportCardResponse, status_code=status.HTTP_201_CREATED)
@@ -183,14 +218,29 @@ def review_report_card(
     report_id: UUID,
     payload: ReportReviewUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
-    if report_card.status != "draft":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft reports can be reviewed")
+    ensure_report_is_draft(report_card)
+    old_summary, new_summary = update_report_summary(report_card, payload)
+    log_summary_edit_if_needed(db, current_user.id, report_card, payload, old_summary, new_summary)
 
-    if "ai_summary" in payload.model_fields_set:
-        report_card.ai_summary = payload.ai_summary
+    db.commit()
+    db.refresh(report_card)
+    return to_report_card_response(report_card)
+
+
+@router.put("/{report_id}/summary", response_model=ReportCardResponse)
+def update_report_summary_route(
+    report_id: UUID,
+    payload: ReportReviewUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ReportCardResponse:
+    report_card = get_report_card_or_404(db, report_id)
+    ensure_report_is_draft(report_card)
+    old_summary, new_summary = update_report_summary(report_card, payload)
+    log_summary_edit_if_needed(db, current_user.id, report_card, payload, old_summary, new_summary)
 
     db.commit()
     db.refresh(report_card)

@@ -1,6 +1,7 @@
 import os
 from collections.abc import Generator
 
+import config  # noqa: F401
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 

@@ -2,6 +2,7 @@ fastapi
 uvicorn
 sqlalchemy
 alembic
+python-dotenv
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt<4.1

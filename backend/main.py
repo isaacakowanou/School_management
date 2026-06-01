@@ -1,3 +1,4 @@
+import config  # noqa: F401
 from fastapi import FastAPI
 
 from routes.audit_logs import router as audit_logs_router

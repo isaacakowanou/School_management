@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from auth import get_current_user, require_admin
+from auth import get_current_user, require_admin, require_parent
 from database import get_db
 from models import Parent, StudentParent, User
 from schemas import ParentCreate, ParentResponse, ParentUpdate, StudentResponse
@@ -66,6 +66,17 @@ def create_parent(
     db.add(parent)
     db.commit()
     db.refresh(parent)
+    return to_parent_response(parent)
+
+
+@router.get("/me", response_model=ParentResponse)
+def get_current_parent_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_parent),
+) -> ParentResponse:
+    parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id))
+    if parent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
     return to_parent_response(parent)
 
 

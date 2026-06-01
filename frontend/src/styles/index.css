@@ -399,3 +399,58 @@ a.card:active {
     align-self: stretch;
   }
 }
+
+/* ---- Filters (audit logs) ---- */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 16px 0 4px;
+}
+
+.filters .field {
+  margin-bottom: 0;
+  flex: 1 1 180px;
+}
+
+.filters-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- Audit log table ---- */
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 14px;
+}
+
+.audit-table {
+  min-width: 860px;
+}
+
+.audit-table td {
+  vertical-align: top;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.json-cell {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 260px;
+  max-height: 160px;
+  overflow: auto;
+  color: var(--muted);
+}

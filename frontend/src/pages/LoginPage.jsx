@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
+import { homePathForRole, isPathForRole } from '../utils/roles.js'
 
 export default function LoginPage() {
-  const { login, isAuthenticated, bootstrapping } = useAuth()
+  const { login, isAuthenticated, bootstrapping, role, homePath } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState('')
@@ -12,11 +13,12 @@ export default function LoginPage() {
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const destination = location.state?.from?.pathname || '/'
+  const from = location.state?.from?.pathname
 
-  // Already signed in -> bounce to where they were headed.
+  // Already signed in -> go to the right area (restore `from` only if it fits the role).
   if (!bootstrapping && isAuthenticated) {
-    return <Navigate to={destination} replace />
+    const dest = from && isPathForRole(from, role) ? from : homePath
+    return <Navigate to={dest} replace />
   }
 
   async function handleSubmit(event) {
@@ -24,8 +26,9 @@ export default function LoginPage() {
     setError(null)
     setSubmitting(true)
     try {
-      await login(email.trim(), password)
-      navigate(destination, { replace: true })
+      const me = await login(email.trim(), password)
+      const dest = from && isPathForRole(from, me.role) ? from : homePathForRole(me.role)
+      navigate(dest, { replace: true })
     } catch (err) {
       setError(err.message || 'Sign in failed. Please try again.')
     } finally {
@@ -37,7 +40,7 @@ export default function LoginPage() {
     <div className="login-wrap">
       <form className="card login-card" onSubmit={handleSubmit}>
         <h1 className="login-title">School Reports</h1>
-        <p className="login-sub">Parent portal sign in</p>
+        <p className="login-sub">Sign in to your account</p>
 
         {error && <ErrorBanner message={error} />}
 

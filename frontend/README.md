@@ -1,7 +1,11 @@
-# Parent Portal (T-33)
+# School Reports — Frontend
 
-A small React + Vite single-page app for parents to view their children's
-approved/sent report cards.
+A small React + Vite single-page app with two role-based areas:
+
+- **Parent portal** — parents view their linked students and those students'
+  approved/sent report cards.
+- **Admin audit log view** (`/admin/audit-logs`) — admins browse and filter the
+  backend audit log.
 
 ## Prerequisites
 
@@ -28,12 +32,14 @@ configuration is needed on the backend during development.
 
 ## Sign in
 
-Use a **parent** account from the backend seed data:
+Accounts come from the backend seed data (all use password `dev-password-123`):
 
-- Email: `parent@school.test`
-- Password: `dev-password-123`
+- **Parent** — `parent@school.test` → parent portal (linked students & reports).
+- **Admin** — `admin@school.test` → audit log view at `/admin/audit-logs`.
+- **Teacher** — `teacher@school.test` → rejected at login (no UI for teachers).
 
-Non-parent accounts (admin/teacher) are rejected after login.
+After login each role lands on its own area, and the routes are role-guarded:
+parents cannot reach admin pages and admins cannot reach the parent portal.
 
 ## Build
 
@@ -44,6 +50,7 @@ npm run preview   # serve the production build locally
 
 ## Scope
 
-Parent portal only — no admin or teacher UI. Parents see only the
-approved/sent reports the backend returns; drafts and AI warnings are never
-requested or displayed.
+- **Parents** see only the approved/sent reports the backend returns; drafts and
+  AI warnings are never requested or displayed.
+- **Admins** get the audit log view only — not a full admin dashboard.
+- **Teachers** have no frontend and are rejected at login.

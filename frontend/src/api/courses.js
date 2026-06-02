@@ -15,3 +15,9 @@ export function getCourse(courseId) {
 export function listCourseStudents(courseId) {
   return apiGet(`/courses/${courseId}/students`)
 }
+
+// GET /api/v1/courses (admin -> all courses). Same endpoint as getMyCourses,
+// named for the admin context where every course is returned.
+export function listCourses() {
+  return apiGet('/courses')
+}

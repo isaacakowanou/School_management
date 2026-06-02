@@ -6,6 +6,10 @@ import { useAuth } from '../auth/AuthContext.jsx'
 const NAV_ITEMS = [
   { to: '/admin', label: 'Dashboard', end: true },
   { to: '/admin/reports', label: 'Reports', end: false },
+  { to: '/admin/students', label: 'Students', end: false },
+  { to: '/admin/teachers', label: 'Teachers', end: false },
+  { to: '/admin/parents', label: 'Parents', end: false },
+  { to: '/admin/courses', label: 'Courses', end: false },
   { to: '/admin/audit-logs', label: 'Audit logs', end: false },
 ]
 

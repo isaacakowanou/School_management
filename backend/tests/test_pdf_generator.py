@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from services.pdf_generator import generate_report_card_pdf
+from services.pdf_generator import generate_report_card_pdf, render_report_card_pdf_bytes
 
 
 def sample_report_data(include_summary=False):
@@ -50,6 +50,19 @@ class PdfGeneratorTests(unittest.TestCase):
 
             self.assertTrue(path.exists())
             self.assertGreater(path.stat().st_size, 0)
+
+    def test_render_report_card_pdf_bytes_returns_pdf_bytes(self):
+        pdf_bytes = render_report_card_pdf_bytes(sample_report_data(include_summary=True))
+
+        self.assertIsInstance(pdf_bytes, bytes)
+        self.assertGreater(len(pdf_bytes), 0)
+        self.assertTrue(pdf_bytes.startswith(b"%PDF"))
+
+    def test_render_report_card_pdf_bytes_works_without_ai_summary(self):
+        pdf_bytes = render_report_card_pdf_bytes(sample_report_data())
+
+        self.assertTrue(pdf_bytes.startswith(b"%PDF"))
+        self.assertGreater(len(pdf_bytes), 0)
 
 
 if __name__ == "__main__":

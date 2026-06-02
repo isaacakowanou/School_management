@@ -4,8 +4,11 @@ import uuid
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from models import Base, Course, CourseResult, Student, Teacher, User
-from services.report_builder import build_report_card_data
+from models import Base, Course, CourseResult, ReportCard, ReportCardCourse, Student, Teacher, User
+from services.report_builder import (
+    build_report_card_data,
+    build_report_card_data_from_report_card,
+)
 
 
 class ReportBuilderTests(unittest.TestCase):
@@ -150,6 +153,122 @@ class ReportBuilderTests(unittest.TestCase):
                 term="Fall 2026",
                 school_year="2026-2027",
             )
+
+
+class BuildFromReportCardTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine(
+            "sqlite+pysqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+        )
+        Base.metadata.create_all(self.engine)
+        self.SessionLocal = sessionmaker(bind=self.engine)
+        self.db = self.SessionLocal()
+
+        self.teacher_user = User(
+            name="Teacher One", email="from-rc@example.test", password_hash="hash", role="teacher"
+        )
+        self.teacher = Teacher(user=self.teacher_user, employee_number="T-200")
+        self.student = Student(
+            first_name="Amina",
+            last_name="Diallo",
+            grade_level="Grade 12",
+            student_number="STU010",
+        )
+        self.math = Course(
+            name="Mathematics",
+            code="MATH-12",
+            teacher=self.teacher,
+            grade_level="Grade 12",
+            term="Fall",
+            school_year="2026-2027",
+        )
+        self.db.add_all([self.student, self.math])
+        self.db.flush()
+
+        # overall_average is intentionally inconsistent with the course average to
+        # prove reconstruction reads stored values rather than recomputing them.
+        self.report_card = ReportCard(
+            student=self.student,
+            term="Fall",
+            school_year="2026-2027",
+            overall_average=88.88,
+            gpa=3.5,
+            status="approved",
+            ai_summary="Strong term.",
+        )
+        self.db.add(self.report_card)
+        self.db.flush()
+        self.db.add(
+            ReportCardCourse(
+                report_card_id=self.report_card.id,
+                course_id=self.math.id,
+                course_name="Mathematics",
+                average=91.7,
+                letter_grade="A",
+            )
+        )
+        self.db.commit()
+        self.db.refresh(self.report_card)
+
+    def tearDown(self):
+        self.db.close()
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_uses_stored_report_card_values(self):
+        data = build_report_card_data_from_report_card(self.db, self.report_card)
+
+        self.assertEqual(data["term"], "Fall")
+        self.assertEqual(data["school_year"], "2026-2027")
+        self.assertEqual(data["overall_average"], 88.88)
+        self.assertEqual(data["gpa"], 3.5)
+        self.assertEqual(data["status"], "approved")
+        self.assertEqual(data["ai_summary"], "Strong term.")
+        self.assertIsNotNone(data["generated_date"])
+
+    def test_includes_student_info(self):
+        data = build_report_card_data_from_report_card(self.db, self.report_card)
+
+        self.assertEqual(data["student"]["first_name"], "Amina")
+        self.assertEqual(data["student"]["last_name"], "Diallo")
+        self.assertEqual(data["student"]["student_number"], "STU010")
+        self.assertEqual(data["student"]["grade_level"], "Grade 12")
+
+    def test_includes_course_rows_and_resolves_course_code(self):
+        data = build_report_card_data_from_report_card(self.db, self.report_card)
+
+        self.assertEqual(len(data["courses"]), 1)
+        course = data["courses"][0]
+        self.assertEqual(course["course_name"], "Mathematics")
+        self.assertEqual(course["course_code"], "MATH-12")
+        self.assertEqual(course["average"], 91.7)
+        self.assertEqual(course["letter_grade"], "A")
+
+    def test_missing_course_falls_back_to_na(self):
+        self.db.add(
+            ReportCardCourse(
+                report_card_id=self.report_card.id,
+                course_id=uuid.uuid4(),
+                course_name="Ghost Course",
+                average=70.0,
+                letter_grade="C",
+            )
+        )
+        self.db.commit()
+        self.db.refresh(self.report_card)
+
+        data = build_report_card_data_from_report_card(self.db, self.report_card)
+        ghost = next(course for course in data["courses"] if course["course_name"] == "Ghost Course")
+        self.assertEqual(ghost["course_code"], "N/A")
+
+    def test_does_not_recompute_from_course_results(self):
+        # No CourseResult rows exist; build_report_card_data would raise. The
+        # reconstruction path must rely solely on the stored snapshot.
+        data = build_report_card_data_from_report_card(self.db, self.report_card)
+
+        self.assertEqual(data["overall_average"], 88.88)
+        self.assertEqual(data["courses"][0]["average"], 91.7)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,8 @@
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,13 +18,12 @@ from schemas import (
     ReportSendResponse,
 )
 from services.email_service import send_report_notification_to_parents
-from services.pdf_generator import generate_report_card_pdf
-from services.report_builder import build_report_card_data
+from services.pdf_generator import _build_pdf_filename, generate_report_card_pdf, render_report_card_pdf_bytes
+from services.report_builder import build_report_card_data, build_report_card_data_from_report_card
 from utils import get_report_card_or_404
 
 
 router = APIRouter(tags=["reports"])
-PDF_STORAGE_DIR = Path(__file__).resolve().parent.parent / "storage" / "pdfs"
 PARENT_VISIBLE_STATUSES = {"approved", "sent"}
 
 
@@ -81,19 +79,6 @@ def ensure_can_view_report(db: Session, current_user: User, report_card: ReportC
         return
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
-
-
-def get_report_pdf_path_or_404(report_card: ReportCard) -> Path:
-    if not report_card.pdf_url:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report PDF not found")
-
-    pdf_path = Path(report_card.pdf_url).resolve()
-    storage_dir = PDF_STORAGE_DIR.resolve()
-
-    if not pdf_path.is_relative_to(storage_dir) or not pdf_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report PDF not found")
-
-    return pdf_path
 
 
 def ensure_report_is_draft(report_card: ReportCard) -> None:
@@ -340,12 +325,21 @@ def download_report_pdf(
     report_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     report_card = get_report_card_or_404(db, report_id)
     ensure_can_view_report(db, current_user, report_card)
-    pdf_path = get_report_pdf_path_or_404(report_card)
 
-    return FileResponse(path=pdf_path, media_type="application/pdf", filename=pdf_path.name)
+    # Regenerate the PDF in memory from the stored snapshot so download does not
+    # depend on a local file existing (deployment-safe). pdf_url is left untouched.
+    report_data = build_report_card_data_from_report_card(db, report_card)
+    pdf_bytes = render_report_card_pdf_bytes(report_data)
+    filename = _build_pdf_filename(report_data)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{report_id}", response_model=ReportCardResponse)

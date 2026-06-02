@@ -1,4 +1,5 @@
 import re
+from io import BytesIO
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -127,18 +128,18 @@ def _build_pdf_story(report_data: dict) -> list:
     return story
 
 
-def generate_report_card_pdf(report_data: dict, output_dir: str = "storage/pdfs") -> str:
-    output_path = Path(output_dir)
-    if not output_path.is_absolute():
-        output_path = BASE_DIR / output_path
-    output_path.mkdir(parents=True, exist_ok=True)
+def render_report_card_pdf_bytes(report_data: dict) -> bytes:
+    """Build the report-card PDF in memory and return the raw bytes.
 
-    pdf_path = output_path / _build_pdf_filename(report_data)
-    # Validate that the HTML template renders successfully before writing the PDF.
+    Validates the Jinja2 template (like generate_report_card_pdf) then renders the
+    ReportLab document into a BytesIO buffer. No disk access.
+    """
+    # Validate that the HTML template renders successfully before building the PDF.
     _render_report_html(report_data)
 
+    buffer = BytesIO()
     document = SimpleDocTemplate(
-        str(pdf_path),
+        buffer,
         pagesize=letter,
         rightMargin=54,
         leftMargin=54,
@@ -146,5 +147,17 @@ def generate_report_card_pdf(report_data: dict, output_dir: str = "storage/pdfs"
         bottomMargin=54,
     )
     document.build(_build_pdf_story(report_data))
+
+    return buffer.getvalue()
+
+
+def generate_report_card_pdf(report_data: dict, output_dir: str = "storage/pdfs") -> str:
+    output_path = Path(output_dir)
+    if not output_path.is_absolute():
+        output_path = BASE_DIR / output_path
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    pdf_path = output_path / _build_pdf_filename(report_data)
+    pdf_path.write_bytes(render_report_card_pdf_bytes(report_data))
 
     return str(pdf_path)

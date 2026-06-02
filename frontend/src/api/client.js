@@ -83,6 +83,19 @@ export async function apiPost(path, body) {
   return response.json()
 }
 
+// Authenticated PUT. Unlike apiPost (used by login), a 401 here means an
+// expired session, so it triggers the global logout like apiGet.
+export async function apiPut(path, body) {
+  const response = await rawFetch(path, {
+    method: 'PUT',
+    headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+    body: body != null ? JSON.stringify(body) : undefined,
+  })
+  if (response.status === 401) throw handleUnauthorized()
+  if (!response.ok) throw await parseError(response)
+  return response.json()
+}
+
 export async function apiGetBlob(path) {
   const response = await rawFetch(path, {
     method: 'GET',

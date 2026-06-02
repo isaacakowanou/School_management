@@ -6,8 +6,8 @@ import { homePathForRole } from '../utils/roles.js'
 
 const AuthContext = createContext(null)
 
-// Roles allowed to sign in to this app. Teachers (and any other role) are rejected.
-const ALLOWED_ROLES = ['parent', 'admin']
+// Roles allowed to sign in to this app. Any other role is rejected.
+const ALLOWED_ROLES = ['parent', 'admin', 'teacher']
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null) // { id, name, email, role }

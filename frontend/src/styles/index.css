@@ -92,8 +92,9 @@ a {
   flex: 1;
 }
 
-/* Admin pages need more horizontal room than the parent portal. */
-.content:has(.admin-page) {
+/* Admin and teacher pages need more horizontal room than the parent portal. */
+.content:has(.admin-page),
+.content:has(.teacher-page) {
   max-width: 1180px;
 }
 
@@ -484,4 +485,77 @@ a.card:active {
   max-height: 160px;
   overflow: auto;
   color: var(--muted);
+}
+
+/* ---- Teacher grade entry matrix ---- */
+.grade-matrix {
+  min-width: 640px;
+}
+
+.grade-matrix th {
+  white-space: nowrap;
+}
+
+.grade-max {
+  margin-left: 4px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.grade-cell {
+  vertical-align: top;
+}
+
+.grade-input {
+  width: 78px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  background: #fff;
+}
+
+.grade-input:focus {
+  outline: 2px solid #c7d4f5;
+  border-color: var(--accent);
+}
+
+.grade-input-error {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.grade-cell-error {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--danger-text);
+}
+
+.grade-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.grade-summary {
+  font-size: 0.9rem;
+  color: var(--sent);
+}
+
+.grade-summary-warn {
+  color: var(--danger-text);
+}
+
+.skipped-note {
+  text-align: left;
+  margin-top: 12px;
+}
+
+.skipped-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 0.9rem;
 }

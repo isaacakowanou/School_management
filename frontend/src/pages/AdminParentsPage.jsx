@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { listParents } from '../api/parents.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -40,6 +41,7 @@ export default function AdminParentsPage() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Phone</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -48,6 +50,11 @@ export default function AdminParentsPage() {
                   <td>{parent.name}</td>
                   <td className="nowrap">{parent.email}</td>
                   <td className="nowrap">{parent.phone || '—'}</td>
+                  <td className="nowrap">
+                    <Link className="back-link" to={`/admin/parents/${parent.id}`}>
+                      Open →
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

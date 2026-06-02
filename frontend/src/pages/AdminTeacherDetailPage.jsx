@@ -1,37 +1,35 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { listCourses } from '../api/courses.js'
-import { listTeachers } from '../api/teachers.js'
+import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { getTeacher, getTeacherCourses } from '../api/teachers.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 
-export default function AdminCoursesPage() {
-  const [courses, setCourses] = useState(null)
-  const [teachers, setTeachers] = useState([])
+export default function AdminTeacherDetailPage() {
+  const { teacherId } = useParams()
+  const [teacher, setTeacher] = useState(null)
+  const [courses, setCourses] = useState([])
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     setError(null)
-    setCourses(null)
-    setTeachers([])
+    setTeacher(null)
+    setCourses([])
 
     async function load() {
-      // Courses are the primary content.
       try {
-        const courseList = await listCourses()
+        const data = await getTeacher(teacherId)
         if (cancelled) return
-        setCourses(courseList)
+        setTeacher(data)
       } catch (err) {
         if (!cancelled) setError(err.message)
         return
       }
-      // Teacher names are a best-effort join (CourseResponse only carries teacher_id);
-      // if this fails we fall back to showing the id.
+      // Assigned courses are best-effort.
       try {
-        const teacherList = await listTeachers()
-        if (!cancelled) setTeachers(teacherList)
+        const list = await getTeacherCourses(teacherId)
+        if (!cancelled) setCourses(list)
       } catch {
         /* non-fatal */
       }
@@ -41,30 +39,47 @@ export default function AdminCoursesPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [teacherId])
 
-  const teacherNameById = useMemo(() => {
-    const map = new Map()
-    for (const teacher of teachers) map.set(teacher.id, teacher.name)
-    return map
-  }, [teachers])
+  if (error) {
+    return (
+      <section className="admin-page">
+        <Link to="/admin/teachers" className="back-link">
+          ← Teachers
+        </Link>
+        <ErrorBanner message={error} />
+      </section>
+    )
+  }
+
+  if (!teacher) {
+    return (
+      <section className="admin-page">
+        <Spinner label="Loading teacher…" />
+      </section>
+    )
+  }
 
   return (
     <section className="admin-page">
-      <h2 className="page-title">Courses</h2>
-      <p className="muted">All courses, read-only.</p>
+      <Link to="/admin/teachers" className="back-link">
+        ← Teachers
+      </Link>
+      <h2 className="page-title">{teacher.name}</h2>
+      <p className="muted">
+        {teacher.email} · Employee #{teacher.employee_number}
+      </p>
 
-      {error && <ErrorBanner message={error} />}
-      {!error && courses === null && <Spinner label="Loading courses…" />}
-      {!error && courses && courses.length === 0 && <Empty message="No courses found." />}
-      {!error && courses && courses.length > 0 && (
+      <h3 className="section-title">Assigned courses</h3>
+      {courses.length === 0 ? (
+        <Empty message="No courses assigned to this teacher." />
+      ) : (
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Code</th>
-                <th>Teacher</th>
                 <th>Grade level</th>
                 <th>Term</th>
                 <th>School year</th>
@@ -76,13 +91,6 @@ export default function AdminCoursesPage() {
                 <tr key={course.id}>
                   <td>{course.name}</td>
                   <td className="nowrap">{course.code}</td>
-                  <td>
-                    {teacherNameById.get(course.teacher_id) || (
-                      <span className="audit-id" title={course.teacher_id}>
-                        {course.teacher_id}
-                      </span>
-                    )}
-                  </td>
                   <td className="nowrap">{course.grade_level}</td>
                   <td className="nowrap">{course.term}</td>
                   <td className="nowrap">{course.school_year}</td>

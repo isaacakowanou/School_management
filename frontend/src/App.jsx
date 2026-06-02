@@ -16,6 +16,10 @@ import AdminStudentsPage from './pages/AdminStudentsPage.jsx'
 import AdminParentsPage from './pages/AdminParentsPage.jsx'
 import AdminTeachersPage from './pages/AdminTeachersPage.jsx'
 import AdminCoursesPage from './pages/AdminCoursesPage.jsx'
+import AdminStudentDetailPage from './pages/AdminStudentDetailPage.jsx'
+import AdminParentDetailPage from './pages/AdminParentDetailPage.jsx'
+import AdminTeacherDetailPage from './pages/AdminTeacherDetailPage.jsx'
+import AdminCourseDetailPage from './pages/AdminCourseDetailPage.jsx'
 
 export default function App() {
   return (
@@ -59,9 +63,13 @@ export default function App() {
         <Route path="/admin/reports" element={<AdminReportsPage />} />
         <Route path="/admin/reports/:reportId" element={<AdminReportDetailPage />} />
         <Route path="/admin/students" element={<AdminStudentsPage />} />
+        <Route path="/admin/students/:studentId" element={<AdminStudentDetailPage />} />
         <Route path="/admin/teachers" element={<AdminTeachersPage />} />
+        <Route path="/admin/teachers/:teacherId" element={<AdminTeacherDetailPage />} />
         <Route path="/admin/parents" element={<AdminParentsPage />} />
+        <Route path="/admin/parents/:parentId" element={<AdminParentDetailPage />} />
         <Route path="/admin/courses" element={<AdminCoursesPage />} />
+        <Route path="/admin/courses/:courseId" element={<AdminCourseDetailPage />} />
         <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
       </Route>
 

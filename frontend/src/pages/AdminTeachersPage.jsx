@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { listTeachers } from '../api/teachers.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -40,6 +41,7 @@ export default function AdminTeachersPage() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Employee #</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -48,6 +50,11 @@ export default function AdminTeachersPage() {
                   <td>{teacher.name}</td>
                   <td className="nowrap">{teacher.email}</td>
                   <td className="nowrap">{teacher.employee_number}</td>
+                  <td className="nowrap">
+                    <Link className="back-link" to={`/admin/teachers/${teacher.id}`}>
+                      Open →
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

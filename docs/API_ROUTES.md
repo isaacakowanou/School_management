@@ -138,3 +138,23 @@ There is also `GET /health` (public) for a liveness check.
 | Method | Path | Access | Purpose |
 |--------|------|--------|---------|
 | GET | `/audit-logs` | Admin | List audit log entries. Optional filters: `entity_type`, `entity_id` (UUID), `actor_user_id` (UUID). Ordered newest-first. |
+
+## Frontend usage notes
+
+The current React frontend consumes these existing routes in three role areas:
+
+- **Parent portal** — auth, `/parents/me`, `/parents/{parent_id}/students`,
+  `/reports/student/{student_id}`, `/reports/{report_id}`, and authenticated
+  `/reports/{report_id}/pdf`.
+- **Teacher portal** — `/courses`, `/courses/{course_id}`,
+  `/courses/{course_id}/students`, `/courses/{course_id}/grade-items`,
+  `/courses/{course_id}/grades`, `/grades`, `/grades/{grade_id}`,
+  `/course-results/{course_id}`, and
+  `/course-results/calculate/{course_id}`.
+- **Admin area** — `/reports`, `/reports/{report_id}`, report review/workflow
+  routes, `/ai/check-report/{report_card_id}`,
+  `/ai/generate-summary/{report_card_id}`, `/audit-logs`, and read-only list
+  and detail calls for students, parents, teachers, and courses.
+
+The admin read-only management pages do not add new backend routes; they reuse
+the existing list/detail and related-resource endpoints documented above.

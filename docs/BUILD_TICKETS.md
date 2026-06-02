@@ -71,10 +71,27 @@ verification passed.
 | Ticket | Title | Status | Notes |
 |--------|-------|--------|-------|
 | T-33 | **Parent portal frontend** | ✅ | React + Vite SPA: login, dashboard (linked students), student reports (approved/sent only), report detail, authenticated PDF download. Included a small backend prep route `GET /api/v1/parents/me` (commit `T-33 prep add current parent route`) so a parent can resolve their `parent_id`. |
-| T-34 | **Admin audit log frontend** | ✅ | Role-aware auth refactor (admin + parent; teachers rejected) and an admin-only audit log view at `/admin/audit-logs` with `entity_type` / `entity_id` / `actor_user_id` filters over `GET /api/v1/audit-logs`. |
+| T-34 | **Admin audit log frontend** | ✅ | Role-aware auth refactor and an admin-only audit log view at `/admin/audit-logs` with `entity_type` / `entity_id` / `actor_user_id` filters over `GET /api/v1/audit-logs`. |
 
-### Notes / out of scope (as of T-34)
-- No teacher frontend exists; teacher accounts are rejected by the SPA at login.
-- The admin frontend is the audit log view only — not a full admin dashboard.
+## Post-roadmap frontend additions
+
+These additions exist in the current repo but are not assigned new T-xx numbers
+here because this document only has confirmed ticket labels through T-34.
+
+| Area | Status | Evidence |
+|------|--------|----------|
+| Teacher portal frontend | ✅ | `/teacher`, `/teacher/courses/:courseId`; `TeacherCoursesPage`, `TeacherCourseDetailPage`, `GradeEntryTable`; supports assigned courses, grade entry/update, and course-result recalculation. |
+| Admin dashboard | ✅ | `/admin`; `AdminDashboardPage`; admin sidebar in `AdminLayout`. |
+| Admin reports workflow frontend | ✅ | `/admin/reports`, `/admin/reports/:reportId`; report list/detail, checker, AI summary generation/editing, approval, sending, and PDF download. |
+| Admin read-only management lists | ✅ | `/admin/students`, `/admin/parents`, `/admin/teachers`, `/admin/courses`; list pages link to details with `Open →`. |
+| Admin read-only management details | ✅ | `/admin/students/:studentId`, `/admin/parents/:parentId`, `/admin/teachers/:teacherId`, `/admin/courses/:courseId`; related read-only data and cross-links. |
+| Local demo data script | ✅ | `backend/scripts/create_demo_data.py`; creates/updates demo users, linked student, teacher, course, grades, approved report card, and PDF. |
+
+### Notes
+
 - Parents never see draft report cards or AI warnings (enforced by the backend
   and respected by the frontend).
+- The current frontend accepts `parent`, `teacher`, and `admin` users and routes
+  each role to its own guarded area.
+- Admin management list/detail pages are read-only. Backend CRUD routes still
+  exist, but those frontend pages do not expose create, edit, or delete controls.

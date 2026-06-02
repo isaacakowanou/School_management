@@ -9,9 +9,10 @@ the source of truth).
 - **Backend** — FastAPI application (`backend/`) exposing a JSON REST API under
   `/api/v1`, backed by SQLAlchemy + SQLite, with Alembic migrations. JWT bearer
   auth with role-based access (`admin`, `teacher`, `parent`).
-- **Frontend** — React + Vite single-page app (`frontend/`) with two role-based
-  areas: a **parent portal** and an **admin audit log view**. Talks to the
-  backend through a Vite dev proxy.
+- **Frontend** — React + Vite single-page app (`frontend/`) with three
+  role-based areas: a **parent portal**, a **teacher portal**, and an **admin
+  area** for report workflow, audit logs, and read-only management views. Talks
+  to the backend through a Vite dev proxy.
 
 ```
 School_management/
@@ -33,6 +34,7 @@ School_management/
 | `audit.py` | `create_audit_log(...)` helper + a `_json_safe` serializer; writes `AuditLog` rows for audited grade, course-result, and report-card actions. |
 | `utils.py` | Shared helpers: `get_report_card_or_404`, `get_current_teacher`, `to_student_response`, `to_course_response`. |
 | `seed_data.py` | Idempotent dev seed (admin/teacher/parent users, a course, grade items, students, enrollments). |
+| `scripts/create_demo_data.py` | Idempotent local demo setup for the finished app: demo users, linked student, course, grades, approved report card, and PDF. |
 | `routes/` | One router module per resource (see below). |
 | `services/` | Business logic separated from HTTP (see below). |
 | `templates/` | `report_card.html` — Jinja2 template used when rendering report-card PDFs. |
@@ -90,11 +92,11 @@ role; many read endpoints instead use `get_current_user` plus an ownership check
 |------|---------|
 | `main.jsx` | Mounts the app inside `BrowserRouter` + `AuthProvider`. |
 | `App.jsx` | Route table; wraps areas in `RequireRole`. |
-| `api/` | `client.js` (fetch wrapper: base URL, bearer token, error + 401 handling, blob download), `auth.js`, `parents.js`, `reports.js`, `auditLogs.js`. |
-| `auth/AuthContext.jsx` | Auth state + `login`/`logout`/bootstrap. Allows `parent` and `admin`; rejects others. Exposes `user`, `role`, `parentId`, `homePath`. |
+| `api/` | `client.js` (fetch wrapper: base URL, bearer token, error + 401 handling, blob download), plus resource wrappers for auth, parents, students, teachers, courses, grade items, grades, course results, reports, AI actions, and audit logs. |
+| `auth/AuthContext.jsx` | Auth state + `login`/`logout`/bootstrap. Allows `parent`, `teacher`, and `admin`. Parents additionally load their `Parent` row. Exposes `user`, `role`, `parentId`, `homePath`. |
 | `auth/RequireRole.jsx` | Route guard: requires auth and (optionally) an exact role; sends wrong-role users to their own home. |
-| `pages/` | `LoginPage`, `DashboardPage`, `StudentReportsPage`, `ReportDetailPage` (parent), `AuditLogsPage` (admin). |
-| `components/` | `Layout` (top bar + outlet), `Spinner`, `ErrorBanner`, `Empty`, `StatusBadge`. |
+| `pages/` | Parent pages (`DashboardPage`, `StudentReportsPage`, `ReportDetailPage`), teacher pages (`TeacherCoursesPage`, `TeacherCourseDetailPage`), admin pages (`AdminDashboardPage`, `AdminReportsPage`, `AdminReportDetailPage`, `AuditLogsPage`, read-only list/detail pages for students, parents, teachers, courses), and `LoginPage`. |
+| `components/` | `Layout` (top bar + outlet), `AdminLayout` (admin sidebar + outlet), `GradeEntryTable`, `Spinner`, `ErrorBanner`, `Empty`, `StatusBadge`. |
 | `utils/` | `format.js` (percent/GPA formatting), `roles.js` (`homePathForRole`, `isPathForRole`). |
 | `styles/index.css` | Plain CSS for the whole app. |
 | `vite.config.js` | Dev server config; proxies `/api` → `http://127.0.0.1:8000`. |
@@ -104,15 +106,20 @@ See [FRONTEND_OVERVIEW.md](FRONTEND_OVERVIEW.md) for pages, auth flow, and the p
 ### Auth context & role guards
 
 `AuthContext` stores the JWT in `localStorage` and, after login (or on a page
-refresh), verifies the account via `GET /auth/me`. Only `parent` and `admin`
-roles are accepted; parents additionally load their `Parent` row via
-`GET /parents/me` for the `parentId`. `RequireRole` gates each route subtree and
-redirects wrong-role or unauthenticated users.
+refresh), verifies the account via `GET /auth/me`. The frontend accepts
+`parent`, `teacher`, and `admin`; parents additionally load their `Parent` row
+via `GET /parents/me` for the `parentId`. `RequireRole` gates each route subtree
+and redirects wrong-role or unauthenticated users.
 
-### Parent portal vs admin audit view
+### Frontend areas
 
 - **Parent portal** (`/`, `/students/:id/reports`, `/reports/:id`) — linked
   students and their **approved/sent** report cards only; drafts and AI warnings
   are never requested.
-- **Admin audit view** (`/admin/audit-logs`) — a filterable table over
-  `GET /api/v1/audit-logs` (admin only). No other admin UI exists yet.
+- **Teacher portal** (`/teacher`, `/teacher/courses/:id`) — teacher's assigned
+  courses, enrolled students, grade items, grade entry/update, and course-result
+  recalculation.
+- **Admin area** (`/admin/*`) — dashboard, report list/detail workflow
+  (checker, AI summary generation/editing, approval, sending, PDF download),
+  audit logs with filters, read-only students/parents/teachers/courses list
+  pages, and read-only detail pages for those resources.

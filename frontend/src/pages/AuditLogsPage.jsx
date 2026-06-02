@@ -58,7 +58,7 @@ export default function AuditLogsPage() {
   }
 
   return (
-    <section>
+    <section className="admin-page">
       <h2 className="page-title">Audit logs</h2>
       <p className="muted">Administrator view</p>
 
@@ -118,10 +118,18 @@ export default function AuditLogsPage() {
               {logs.map((log) => (
                 <tr key={log.id}>
                   <td className="nowrap">{formatTime(log.created_at)}</td>
-                  <td className="mono">{log.actor_user_id}</td>
-                  <td>{log.action}</td>
-                  <td>{log.entity_type}</td>
-                  <td className="mono">{log.entity_id}</td>
+                  <td>
+                    <span className="audit-id" title={log.actor_user_id}>
+                      {log.actor_user_id}
+                    </span>
+                  </td>
+                  <td className="nowrap">{log.action}</td>
+                  <td className="nowrap">{log.entity_type}</td>
+                  <td>
+                    <span className="audit-id" title={log.entity_id}>
+                      {log.entity_id}
+                    </span>
+                  </td>
                   <td>
                     <pre className="json-cell">{formatJson(log.old_value)}</pre>
                   </td>

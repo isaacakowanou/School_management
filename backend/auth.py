@@ -13,9 +13,16 @@ from database import get_db
 from models import User
 
 
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-before-production")
+DEFAULT_JWT_SECRET_KEY = "change-me-before-production"
+APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "development").strip().lower()
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", DEFAULT_JWT_SECRET_KEY).strip() or DEFAULT_JWT_SECRET_KEY
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+if APP_ENV == "production" and JWT_SECRET_KEY == DEFAULT_JWT_SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET_KEY must be set to a non-default value when APP_ENV or ENVIRONMENT is production"
+    )
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")

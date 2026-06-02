@@ -1,6 +1,6 @@
 // Maps a role to the landing path for that role's area of the app.
 export function homePathForRole(role) {
-  if (role === 'admin') return '/admin/audit-logs'
+  if (role === 'admin') return '/admin'
   if (role === 'teacher') return '/teacher'
   return '/'
 }

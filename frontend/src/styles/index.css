@@ -259,6 +259,11 @@ a.card:active {
   color: var(--sent);
 }
 
+.badge-draft {
+  background: #eef0f3;
+  color: var(--muted);
+}
+
 /* ---- Buttons ---- */
 .btn {
   font: inherit;
@@ -558,4 +563,67 @@ a.card:active {
   margin: 8px 0 0;
   padding-left: 18px;
   font-size: 0.9rem;
+}
+
+/* ---- Admin shell (sidebar layout) ---- */
+.admin-shell {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.admin-sidebar {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 24px 12px;
+  border-right: 1px solid var(--border);
+  min-height: calc(100vh - 60px);
+}
+
+.admin-nav-link {
+  display: block;
+  padding: 9px 14px;
+  border-radius: 8px;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.admin-nav-link:hover {
+  background: #f0f2f5;
+}
+
+.admin-nav-link-active {
+  background: var(--approved-bg);
+  color: var(--approved);
+}
+
+.admin-main {
+  flex: 1;
+  min-width: 0;
+  padding: 28px 28px 64px;
+}
+
+@media (max-width: 720px) {
+  .admin-shell {
+    flex-direction: column;
+  }
+  .admin-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    min-height: 0;
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 12px;
+  }
+  .admin-main {
+    width: 100%;
+    padding: 20px 16px 48px;
+  }
 }

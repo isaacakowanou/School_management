@@ -1,5 +1,6 @@
-// Parents only ever receive approved/sent reports, but we render defensively.
+// Parents only ever receive approved/sent reports, but admins also see drafts.
 const LABELS = {
+  draft: 'Draft',
   approved: 'Approved',
   sent: 'Sent',
 }

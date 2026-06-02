@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import RequireRole from './auth/RequireRole.jsx'
 import Layout from './components/Layout.jsx'
+import AdminLayout from './components/AdminLayout.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import StudentReportsPage from './pages/StudentReportsPage.jsx'
@@ -8,6 +9,9 @@ import ReportDetailPage from './pages/ReportDetailPage.jsx'
 import AuditLogsPage from './pages/AuditLogsPage.jsx'
 import TeacherCoursesPage from './pages/TeacherCoursesPage.jsx'
 import TeacherCourseDetailPage from './pages/TeacherCourseDetailPage.jsx'
+import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
+import AdminReportsPage from './pages/AdminReportsPage.jsx'
+import AdminReportDetailPage from './pages/AdminReportDetailPage.jsx'
 
 export default function App() {
   return (
@@ -43,10 +47,13 @@ export default function App() {
       <Route
         element={
           <RequireRole role="admin">
-            <Layout />
+            <AdminLayout />
           </RequireRole>
         }
       >
+        <Route path="/admin" element={<AdminDashboardPage />} />
+        <Route path="/admin/reports" element={<AdminReportsPage />} />
+        <Route path="/admin/reports/:reportId" element={<AdminReportDetailPage />} />
         <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
       </Route>
 

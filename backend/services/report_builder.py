@@ -1,10 +1,24 @@
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Course, CourseResult, ReportCard, Student
+from models import Course, CourseResult, ReportCard, ReportCardCourse, Student
 from services.grade_calculator import calculate_gpa, calculate_overall_average
+
+
+STALE_FLOAT_TOLERANCE = 0.005
+
+
+@dataclass(frozen=True)
+class ReportCardStaleness:
+    is_stale: bool
+    reason: str
+    snapshot_overall_average: float
+    current_overall_average: float | None
+    snapshot_gpa: float | None
+    current_gpa: float | None
 
 
 def build_report_card_data(db: Session, student_id: UUID, term: str, school_year: str) -> dict:
@@ -51,6 +65,66 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
         "overall_average": calculate_overall_average(course_averages),
         "gpa": calculate_gpa(course_averages),
     }
+
+
+def _numbers_match(left: float | None, right: float | None) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    return abs(float(left) - float(right)) <= STALE_FLOAT_TOLERANCE
+
+
+def _snapshot_courses_by_id(report_card: ReportCard) -> dict[UUID, ReportCardCourse]:
+    return {course.course_id: course for course in report_card.courses}
+
+
+def _current_courses_by_id(report_data: dict) -> dict[UUID, dict]:
+    return {course["course_id"]: course for course in report_data["courses"]}
+
+
+def get_report_card_staleness(db: Session, report_card: ReportCard) -> ReportCardStaleness:
+    try:
+        current_data = build_report_card_data(
+            db,
+            report_card.student_id,
+            report_card.term,
+            report_card.school_year,
+        )
+    except ValueError as exc:
+        return ReportCardStaleness(
+            is_stale=True,
+            reason=f"Current report data could not be built: {exc}",
+            snapshot_overall_average=report_card.overall_average,
+            current_overall_average=None,
+            snapshot_gpa=report_card.gpa,
+            current_gpa=None,
+        )
+
+    reasons: list[str] = []
+    if not _numbers_match(report_card.overall_average, current_data["overall_average"]):
+        reasons.append("overall_average changed")
+    if not _numbers_match(report_card.gpa, current_data["gpa"]):
+        reasons.append("gpa changed")
+
+    snapshot_courses = _snapshot_courses_by_id(report_card)
+    current_courses = _current_courses_by_id(current_data)
+    if set(snapshot_courses) != set(current_courses):
+        reasons.append("course set changed")
+    else:
+        for course_id, snapshot_course in snapshot_courses.items():
+            current_course = current_courses[course_id]
+            if not _numbers_match(snapshot_course.average, current_course["average"]):
+                reasons.append(f"course average changed for {snapshot_course.course_name}")
+            if snapshot_course.letter_grade != current_course["letter_grade"]:
+                reasons.append(f"letter grade changed for {snapshot_course.course_name}")
+
+    return ReportCardStaleness(
+        is_stale=bool(reasons),
+        reason="; ".join(reasons) if reasons else "Report snapshot matches current course results.",
+        snapshot_overall_average=report_card.overall_average,
+        current_overall_average=current_data["overall_average"],
+        snapshot_gpa=report_card.gpa,
+        current_gpa=current_data["gpa"],
+    )
 
 
 def build_report_card_data_from_report_card(db: Session, report_card: ReportCard) -> dict:

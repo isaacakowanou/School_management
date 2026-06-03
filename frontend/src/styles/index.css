@@ -565,6 +565,56 @@ a.card:active {
   font-size: 0.9rem;
 }
 
+/* ---- Admin stale report warning ---- */
+.stale-report-warning {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #f2c94c;
+  border-radius: var(--radius);
+  background: #fff8db;
+}
+
+.stale-report-warning h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.stale-report-warning p {
+  margin: 0;
+}
+
+.stale-report-warning .btn {
+  white-space: nowrap;
+}
+
+.stale-report-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stale-report-values div {
+  padding: 8px 10px;
+  border: 1px solid rgba(47, 91, 212, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.stale-report-values span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.stale-report-values strong {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Admin shell (sidebar layout) ---- */
 .admin-shell {
   display: flex;
@@ -625,5 +675,13 @@ a.card:active {
   .admin-main {
     width: 100%;
     padding: 20px 16px 48px;
+  }
+
+  .stale-report-warning {
+    grid-template-columns: 1fr;
+  }
+
+  .stale-report-warning .btn {
+    width: 100%;
   }
 }

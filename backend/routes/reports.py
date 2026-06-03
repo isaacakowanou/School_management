@@ -13,13 +13,18 @@ from models import Parent, ReportCard, ReportCardCourse, StudentParent, User
 from schemas import (
     ReportCardCourseResponse,
     ReportCardResponse,
+    ReportCardStalenessResponse,
     ReportGenerateRequest,
     ReportReviewUpdate,
     ReportSendResponse,
 )
 from services.email_service import send_report_notification_to_parents
 from services.pdf_generator import _build_pdf_filename, generate_report_card_pdf, render_report_card_pdf_bytes
-from services.report_builder import build_report_card_data, build_report_card_data_from_report_card
+from services.report_builder import (
+    build_report_card_data,
+    build_report_card_data_from_report_card,
+    get_report_card_staleness,
+)
 from utils import get_report_card_or_404
 
 
@@ -318,6 +323,119 @@ def send_report_card(
         failed_count=failed_count,
         results=send_results,
     )
+
+
+@router.get("/{report_id}/staleness", response_model=ReportCardStalenessResponse)
+def get_report_staleness(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ReportCardStalenessResponse:
+    report_card = get_report_card_or_404(db, report_id)
+    staleness = get_report_card_staleness(db, report_card)
+    return ReportCardStalenessResponse(
+        is_stale=staleness.is_stale,
+        reason=staleness.reason,
+        snapshot_overall_average=staleness.snapshot_overall_average,
+        current_overall_average=staleness.current_overall_average,
+        snapshot_gpa=staleness.snapshot_gpa,
+        current_gpa=staleness.current_gpa,
+    )
+
+
+@router.post("/{report_id}/regenerate", response_model=ReportCardResponse)
+def regenerate_report_card(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ReportCardResponse:
+    report_card = get_report_card_or_404(db, report_id)
+    try:
+        report_data = build_report_card_data(
+            db,
+            report_card.student_id,
+            report_card.term,
+            report_card.school_year,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "Student not found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+
+    old_value = {
+        "status": report_card.status,
+        "overall_average": report_card.overall_average,
+        "gpa": report_card.gpa,
+        "approved_by_admin_id": report_card.approved_by_admin_id,
+        "approved_at": report_card.approved_at,
+        "sent_at": report_card.sent_at,
+        "courses": [
+            {
+                "course_id": course.course_id,
+                "course_name": course.course_name,
+                "average": course.average,
+                "letter_grade": course.letter_grade,
+            }
+            for course in report_card.courses
+        ],
+    }
+
+    for course in db.scalars(
+        select(ReportCardCourse).where(ReportCardCourse.report_card_id == report_card.id)
+    ).all():
+        db.delete(course)
+    db.flush()
+
+    report_card.overall_average = report_data["overall_average"]
+    report_card.gpa = report_data["gpa"]
+    report_card.status = "draft"
+    report_card.approved_by_admin_id = None
+    report_card.approved_at = None
+    report_card.sent_at = None
+
+    for course in report_data["courses"]:
+        db.add(
+            ReportCardCourse(
+                report_card_id=report_card.id,
+                course_id=course["course_id"],
+                course_name=course["course_name"],
+                average=course["average"],
+                letter_grade=course["letter_grade"],
+            )
+        )
+
+    new_value = {
+        "status": report_card.status,
+        "overall_average": report_card.overall_average,
+        "gpa": report_card.gpa,
+        "approved_by_admin_id": None,
+        "approved_at": None,
+        "sent_at": None,
+        "courses": [
+            {
+                "course_id": course["course_id"],
+                "course_name": course["course_name"],
+                "average": course["average"],
+                "letter_grade": course["letter_grade"],
+            }
+            for course in report_data["courses"]
+        ],
+    }
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="report_regenerated",
+        entity_type="report_card",
+        entity_id=report_card.id,
+        old_value=old_value,
+        new_value=new_value,
+    )
+
+    db.commit()
+    db.refresh(report_card)
+    db.expire(report_card, ["courses"])
+    return to_report_card_response(report_card)
 
 
 @router.get("/{report_id}/pdf")

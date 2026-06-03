@@ -253,6 +253,15 @@ class ReportCardResponse(BaseModel):
     courses: list[ReportCardCourseResponse]
 
 
+class ReportCardStalenessResponse(BaseModel):
+    is_stale: bool
+    reason: str
+    snapshot_overall_average: float
+    current_overall_average: float | None = None
+    snapshot_gpa: float | None = None
+    current_gpa: float | None = None
+
+
 class ReportSendResponse(BaseModel):
     report_card_id: UUID
     status: str

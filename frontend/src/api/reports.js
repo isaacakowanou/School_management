@@ -11,6 +11,11 @@ export function getReport(reportId) {
   return apiGet(`/reports/${reportId}`)
 }
 
+// GET /api/v1/reports/{report_id}/staleness (admin only)
+export function getReportStaleness(reportId) {
+  return apiGet(`/reports/${reportId}/staleness`)
+}
+
 // GET /api/v1/reports/{report_id}/pdf -> Blob (requires Bearer auth)
 export function downloadReportPdf(reportId) {
   return apiGetBlob(`/reports/${reportId}/pdf`)
@@ -36,4 +41,9 @@ export function approveReport(reportId) {
 // POST /api/v1/reports/{report_id}/send -> email approved report to parents
 export function sendReport(reportId) {
   return apiPost(`/reports/${reportId}/send`)
+}
+
+// POST /api/v1/reports/{report_id}/regenerate -> rebuild snapshot as draft (admin only)
+export function regenerateReport(reportId) {
+  return apiPost(`/reports/${reportId}/regenerate`)
 }

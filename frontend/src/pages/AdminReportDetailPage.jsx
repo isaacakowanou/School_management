@@ -4,6 +4,8 @@ import {
   approveReport,
   downloadReportPdf,
   getReport,
+  getReportStaleness,
+  regenerateReport,
   sendReport,
   updateReportSummary,
 } from '../api/reports.js'
@@ -14,11 +16,28 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 
+function hasValue(value) {
+  return value !== null && value !== undefined
+}
+
+function friendlyStaleReason(reason) {
+  if (!reason) return null
+  if (reason.includes('could not be built')) {
+    return 'The latest course results are incomplete or unavailable.'
+  }
+  if (reason.includes('course set changed')) {
+    return 'The courses on this report no longer match the latest course results.'
+  }
+  return 'One or more saved averages or letter grades no longer match the latest results.'
+}
+
 export default function AdminReportDetailPage() {
   const { reportId } = useParams()
 
   const [report, setReport] = useState(null)
   const [error, setError] = useState(null)
+  const [staleness, setStaleness] = useState(null)
+  const [stalenessError, setStalenessError] = useState(null)
 
   const [warnings, setWarnings] = useState(null)
   const [summaryDraft, setSummaryDraft] = useState('')
@@ -35,22 +54,60 @@ export default function AdminReportDetailPage() {
     return data
   }, [reportId])
 
+  const loadStaleness = useCallback(async () => {
+    try {
+      const data = await getReportStaleness(reportId)
+      setStaleness(data)
+      setStalenessError(null)
+      return data
+    } catch {
+      setStaleness(null)
+      setStalenessError('Report loaded, but the freshness check is unavailable right now.')
+      return null
+    }
+  }, [reportId])
+
+  const refreshReportView = useCallback(async () => {
+    const data = await loadReport()
+    await loadStaleness()
+    return data
+  }, [loadReport, loadStaleness])
+
   useEffect(() => {
     let cancelled = false
     setError(null)
     setReport(null)
+    setStaleness(null)
+    setStalenessError(null)
     setWarnings(null)
     setActionError(null)
     setActionMessage(null)
-    getReport(reportId)
-      .then((data) => {
+
+    async function load() {
+      try {
+        const data = await getReport(reportId)
         if (cancelled) return
         setReport(data)
         setSummaryDraft(data.ai_summary ?? '')
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!cancelled) setError(err.message)
-      })
+        return
+      }
+
+      try {
+        const data = await getReportStaleness(reportId)
+        if (cancelled) return
+        setStaleness(data)
+        setStalenessError(null)
+      } catch {
+        if (!cancelled) {
+          setStaleness(null)
+          setStalenessError('Report loaded, but the freshness check is unavailable right now.')
+        }
+      }
+    }
+
+    load()
     return () => {
       cancelled = true
     }
@@ -63,7 +120,7 @@ export default function AdminReportDetailPage() {
     setActionMessage(null)
     try {
       const result = await fn()
-      if (refresh) await loadReport()
+      if (refresh) await refreshReportView()
       if (successMessage) setActionMessage(successMessage)
       return result
     } catch (err) {
@@ -119,6 +176,13 @@ export default function AdminReportDetailPage() {
     }
   }
 
+  async function handleRegenerate() {
+    await runAction('regenerate', () => regenerateReport(reportId), {
+      successMessage:
+        'Report regenerated as a draft. Review and approve it again before parents can see it.',
+    })
+  }
+
   async function handleDownload() {
     await runAction(
       'pdf',
@@ -163,6 +227,7 @@ export default function AdminReportDetailPage() {
   const isApproved = report.status === 'approved'
   const isSent = report.status === 'sent'
   const busy = pending !== null
+  const staleReason = friendlyStaleReason(staleness?.reason)
 
   return (
     <section className="admin-page">
@@ -198,6 +263,55 @@ export default function AdminReportDetailPage() {
           </div>
         </div>
       </div>
+
+      {staleness?.is_stale && (
+        <section className="stale-report-warning" aria-live="polite">
+          <div>
+            <h3>Grades changed</h3>
+            <p>
+              Grades have changed since this report was generated. Regenerate it from the latest
+              grades, then review and approve again.
+            </p>
+            {staleReason && <p className="muted">{staleReason}</p>}
+          </div>
+
+          <div className="stale-report-values" aria-label="Snapshot and current values">
+            <div>
+              <span>Snapshot overall average</span>
+              <strong>{formatPercent(staleness.snapshot_overall_average)}</strong>
+            </div>
+            <div>
+              <span>Current overall average</span>
+              <strong>
+                {hasValue(staleness.current_overall_average)
+                  ? formatPercent(staleness.current_overall_average)
+                  : 'Unavailable'}
+              </strong>
+            </div>
+            <div>
+              <span>Snapshot GPA</span>
+              <strong>{formatGpa(staleness.snapshot_gpa)}</strong>
+            </div>
+            <div>
+              <span>Current GPA</span>
+              <strong>
+                {hasValue(staleness.current_gpa)
+                  ? formatGpa(staleness.current_gpa)
+                  : 'Unavailable'}
+              </strong>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleRegenerate}
+            disabled={busy}
+          >
+            {pending === 'regenerate' ? 'Regenerating…' : 'Regenerate from latest grades'}
+          </button>
+        </section>
+      )}
 
       {/* ---- Workflow actions ---- */}
       <h3 className="section-title">Actions</h3>
@@ -246,6 +360,7 @@ export default function AdminReportDetailPage() {
 
       {actionMessage && <p className="grade-summary">{actionMessage}</p>}
       {actionError && <ErrorBanner message={actionError} />}
+      {stalenessError && <p className="grade-summary grade-summary-warn">{stalenessError}</p>}
 
       {/* ---- AI warnings from checker ---- */}
       {warnings && warnings.length > 0 && (

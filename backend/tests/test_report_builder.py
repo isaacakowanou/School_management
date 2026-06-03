@@ -2,12 +2,14 @@ import unittest
 import uuid
 
 from sqlalchemy import create_engine
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from models import Base, Course, CourseResult, ReportCard, ReportCardCourse, Student, Teacher, User
 from services.report_builder import (
     build_report_card_data,
     build_report_card_data_from_report_card,
+    get_report_card_staleness,
 )
 
 
@@ -153,6 +155,153 @@ class ReportBuilderTests(unittest.TestCase):
                 term="Fall 2026",
                 school_year="2026-2027",
             )
+
+
+class ReportCardStalenessTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine(
+            "sqlite+pysqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+        )
+        Base.metadata.create_all(self.engine)
+        self.SessionLocal = sessionmaker(bind=self.engine)
+        self.db = self.SessionLocal()
+
+        self.teacher_user = User(
+            name="Teacher One",
+            email="stale-teacher@example.test",
+            password_hash="hash",
+            role="teacher",
+        )
+        self.teacher = Teacher(user=self.teacher_user, employee_number="T-STALE")
+        self.student = Student(
+            first_name="Stale",
+            last_name="Student",
+            grade_level="Grade 12",
+            student_number="STU-STALE",
+        )
+        self.math = Course(
+            name="Mathematics",
+            code="MATH-12",
+            teacher=self.teacher,
+            grade_level="Grade 12",
+            term="Fall",
+            school_year="2026-2027",
+        )
+        self.science = Course(
+            name="Science",
+            code="SCI-12",
+            teacher=self.teacher,
+            grade_level="Grade 12",
+            term="Fall",
+            school_year="2026-2027",
+        )
+        self.db.add_all([self.student, self.math, self.science])
+        self.db.flush()
+
+        self.math_result = CourseResult(
+            student=self.student,
+            course=self.math,
+            term="Fall",
+            average=95.0,
+            letter_grade="A",
+        )
+        self.science_result = CourseResult(
+            student=self.student,
+            course=self.science,
+            term="Fall",
+            average=85.0,
+            letter_grade="B",
+        )
+        self.db.add_all([self.math_result, self.science_result])
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def _create_matching_report_card(self) -> ReportCard:
+        report_data = build_report_card_data(
+            self.db,
+            self.student.id,
+            term="Fall",
+            school_year="2026-2027",
+        )
+        report_card = ReportCard(
+            student_id=self.student.id,
+            term="Fall",
+            school_year="2026-2027",
+            overall_average=report_data["overall_average"],
+            gpa=report_data["gpa"],
+            status="approved",
+        )
+        self.db.add(report_card)
+        self.db.flush()
+        for course in report_data["courses"]:
+            self.db.add(
+                ReportCardCourse(
+                    report_card_id=report_card.id,
+                    course_id=course["course_id"],
+                    course_name=course["course_name"],
+                    average=course["average"],
+                    letter_grade=course["letter_grade"],
+                )
+            )
+        self.db.commit()
+        self.db.refresh(report_card)
+        return report_card
+
+    def test_stale_false_when_snapshot_matches_current_results(self):
+        report_card = self._create_matching_report_card()
+
+        staleness = get_report_card_staleness(self.db, report_card)
+
+        self.assertFalse(staleness.is_stale)
+        self.assertEqual(staleness.reason, "Report snapshot matches current course results.")
+        self.assertEqual(staleness.snapshot_overall_average, staleness.current_overall_average)
+        self.assertEqual(staleness.snapshot_gpa, staleness.current_gpa)
+
+    def test_stale_true_when_course_result_changes(self):
+        report_card = self._create_matching_report_card()
+        self.math_result.average = 75.0
+        self.math_result.letter_grade = "C"
+        self.db.commit()
+
+        staleness = get_report_card_staleness(self.db, report_card)
+
+        self.assertTrue(staleness.is_stale)
+        self.assertIn("overall_average changed", staleness.reason)
+        self.assertIn("course average changed", staleness.reason)
+        self.assertIn("letter grade changed", staleness.reason)
+        self.assertNotEqual(staleness.snapshot_overall_average, staleness.current_overall_average)
+
+    def test_stale_true_when_course_set_differs(self):
+        report_card = self._create_matching_report_card()
+        snapshot_course = self.db.scalar(
+            select(ReportCardCourse).where(ReportCardCourse.report_card_id == report_card.id)
+        )
+        self.db.delete(snapshot_course)
+        self.db.commit()
+        self.db.refresh(report_card)
+
+        staleness = get_report_card_staleness(self.db, report_card)
+
+        self.assertTrue(staleness.is_stale)
+        self.assertIn("course set changed", staleness.reason)
+
+    def test_stale_true_when_current_results_are_missing(self):
+        report_card = self._create_matching_report_card()
+        self.db.delete(self.math_result)
+        self.db.delete(self.science_result)
+        self.db.commit()
+
+        staleness = get_report_card_staleness(self.db, report_card)
+
+        self.assertTrue(staleness.is_stale)
+        self.assertIn("Current report data could not be built", staleness.reason)
+        self.assertIsNone(staleness.current_overall_average)
+        self.assertIsNone(staleness.current_gpa)
 
 
 class BuildFromReportCardTests(unittest.TestCase):

@@ -78,7 +78,7 @@ export default function AdminStudentDetailPage() {
         {student.grade_level} · #{student.student_number}
       </p>
 
-      <h3 className="section-title">Linked parents</h3>
+      <h3 className="section-title">Parents</h3>
       {parents.length === 0 ? (
         <Empty message="No parents linked to this student." />
       ) : (

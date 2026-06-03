@@ -165,8 +165,7 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved 
         </button>
         {summary && (
           <span className={`grade-summary${summary.failed ? ' grade-summary-warn' : ''}`}>
-            Saved {summary.saved}
-            {summary.failed ? ` · ${summary.failed} failed` : ''}
+            {summary.failed ? 'Some grades could not be saved.' : 'Grades saved.'}
           </span>
         )}
       </div>

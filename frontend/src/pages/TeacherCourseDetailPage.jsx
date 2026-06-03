@@ -194,10 +194,7 @@ export default function TeacherCourseDetailPage() {
             </button>
             {calcSummary && (
               <span className="grade-summary">
-                Calculated {calcSummary.calculated_count}
-                {calcSummary.skipped_students.length
-                  ? ` · ${calcSummary.skipped_students.length} skipped`
-                  : ''}
+                Results recalculated.
               </span>
             )}
           </div>

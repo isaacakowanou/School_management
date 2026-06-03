@@ -71,7 +71,7 @@ export default function AdminParentDetailPage() {
         {parent.phone ? ` · ${parent.phone}` : ''}
       </p>
 
-      <h3 className="section-title">Linked students</h3>
+      <h3 className="section-title">Students</h3>
       {students.length === 0 ? (
         <Empty message="No students linked to this parent." />
       ) : (

@@ -3,13 +3,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from auth import get_current_user, require_admin
 from audit import create_audit_log
 from database import get_db
-from models import Parent, ReportCard, ReportCardCourse, StudentParent, User
+from models import Course, CourseResult, Parent, ReportCard, ReportCardCourse, StudentParent, User
 from schemas import (
     AdminReportListItem,
     ReportCardCourseResponse,
@@ -57,7 +57,47 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
     )
 
 
-def to_admin_report_list_item(report_card: ReportCard) -> AdminReportListItem:
+def _datetime_for_compare(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is not None and value.utcoffset() is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
+def _course_result_key(student_id: UUID, term: str, school_year: str) -> tuple[UUID, str, str]:
+    return (student_id, term, school_year)
+
+
+def _report_needs_review(report_card: ReportCard, latest_calculated_at: datetime | None) -> bool:
+    if report_card.status not in PARENT_VISIBLE_STATUSES:
+        return False
+    if report_card.approved_at is None or latest_calculated_at is None:
+        return False
+
+    latest = _datetime_for_compare(latest_calculated_at)
+    approved_at = _datetime_for_compare(report_card.approved_at)
+    return latest is not None and approved_at is not None and latest > approved_at
+
+
+def _latest_course_result_times_by_report_key(db: Session) -> dict[tuple[UUID, str, str], datetime]:
+    rows = db.execute(
+        select(
+            CourseResult.student_id,
+            CourseResult.term,
+            Course.school_year,
+            func.max(CourseResult.calculated_at).label("latest_calculated_at"),
+        )
+        .join(Course, CourseResult.course_id == Course.id)
+        .group_by(CourseResult.student_id, CourseResult.term, Course.school_year)
+    ).all()
+    return {
+        _course_result_key(student_id, term, school_year): latest_calculated_at
+        for student_id, term, school_year, latest_calculated_at in rows
+    }
+
+
+def to_admin_report_list_item(report_card: ReportCard, *, needs_review: bool) -> AdminReportListItem:
     student = report_card.student
     return AdminReportListItem(
         id=report_card.id,
@@ -70,6 +110,7 @@ def to_admin_report_list_item(report_card: ReportCard) -> AdminReportListItem:
         overall_average=report_card.overall_average,
         gpa=report_card.gpa,
         created_at=report_card.created_at,
+        needs_review=needs_review,
     )
 
 
@@ -203,9 +244,35 @@ def list_reports(
     report_cards = db.scalars(
         select(ReportCard)
         .options(joinedload(ReportCard.student))
-        .order_by(ReportCard.created_at.desc())
     ).all()
-    return [to_admin_report_list_item(report_card) for report_card in report_cards]
+    latest_by_key = _latest_course_result_times_by_report_key(db)
+    needs_review_by_report_id = {
+        report_card.id: _report_needs_review(
+            report_card,
+            latest_by_key.get(
+                _course_result_key(
+                    report_card.student_id,
+                    report_card.term,
+                    report_card.school_year,
+                )
+            ),
+        )
+        for report_card in report_cards
+    }
+    report_cards.sort(
+        key=lambda report_card: (
+            needs_review_by_report_id[report_card.id],
+            _datetime_for_compare(report_card.created_at) or datetime.min,
+        ),
+        reverse=True,
+    )
+    return [
+        to_admin_report_list_item(
+            report_card,
+            needs_review=needs_review_by_report_id[report_card.id],
+        )
+        for report_card in report_cards
+    ]
 
 
 @router.get("/student/{student_id}", response_model=list[ReportCardResponse])

@@ -264,6 +264,7 @@ class AdminReportListItem(BaseModel):
     overall_average: float
     gpa: float | None = None
     created_at: datetime
+    needs_review: bool
 
 
 class ReportCardStalenessResponse(BaseModel):

@@ -20,10 +20,13 @@ const STATUS_HELP = {
   sent: 'sent/notified',
 }
 
+const NEEDS_REVIEW_COPY = 'Grades changed after approval — open to regenerate and re-approve.'
+
 export default function AdminReportsPage() {
   const [reports, setReports] = useState(null)
   const [error, setError] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
+  const [needsReviewOnly, setNeedsReviewOnly] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -43,14 +46,17 @@ export default function AdminReportsPage() {
 
   const filtered = useMemo(() => {
     if (!reports) return []
-    if (statusFilter === 'all') return reports
-    return reports.filter((r) => r.status === statusFilter)
-  }, [reports, statusFilter])
+    return reports.filter((report) => {
+      if (statusFilter !== 'all' && report.status !== statusFilter) return false
+      if (needsReviewOnly && !report.needs_review) return false
+      return true
+    })
+  }, [reports, statusFilter, needsReviewOnly])
 
   return (
     <section className="admin-page">
       <h2 className="page-title">Reports</h2>
-      <p className="muted">All report cards across the school, newest first.</p>
+      <p className="muted">Reports needing review appear first, then newest reports.</p>
 
       {error && <ErrorBanner message={error} />}
       {!error && reports === null && <Spinner label="Loading reports…" />}
@@ -73,6 +79,14 @@ export default function AdminReportsPage() {
                 ))}
               </select>
             </label>
+            <label className="filter-check">
+              <input
+                type="checkbox"
+                checked={needsReviewOnly}
+                onChange={(e) => setNeedsReviewOnly(e.target.checked)}
+              />
+              <span>Needs review only</span>
+            </label>
           </div>
           <div className="status-help" aria-label="Report status meanings">
             {Object.entries(STATUS_HELP).map(([status, help]) => (
@@ -80,6 +94,9 @@ export default function AdminReportsPage() {
                 <StatusBadge status={status} /> {help}
               </span>
             ))}
+            <span className="status-help-item">
+              <span className="badge badge-review">Needs review</span> {NEEDS_REVIEW_COPY}
+            </span>
           </div>
 
           {filtered.length === 0 ? (
@@ -112,9 +129,16 @@ export default function AdminReportsPage() {
                       <td className="nowrap">{report.term}</td>
                       <td className="nowrap">{report.school_year}</td>
                       <td>
-                        <span title={STATUS_HELP[report.status] || report.status}>
-                          <StatusBadge status={report.status} />
-                        </span>
+                        <div className="report-status-cell">
+                          <span title={STATUS_HELP[report.status] || report.status}>
+                            <StatusBadge status={report.status} />
+                          </span>
+                          {report.needs_review && (
+                            <span className="badge badge-review" title={NEEDS_REVIEW_COPY}>
+                              Needs review
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="num">{formatPercent(report.overall_average)}</td>
                       <td className="num">{formatGpa(report.gpa)}</td>

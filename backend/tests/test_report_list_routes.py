@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -11,6 +12,7 @@ from main import app
 from models import (
     Base,
     Course,
+    CourseResult,
     Parent,
     ReportCard,
     ReportCardCourse,
@@ -62,6 +64,7 @@ class ReportListRouteTests(unittest.TestCase):
         self.parent_user = self._user(name="Parent", email="parent-list@example.test", role="parent")
         self.teacher_user = self._user(name="Teacher", email="teacher-list@example.test", role="teacher")
         self.db.flush()
+        self.base_time = datetime.now() - timedelta(days=5)
 
         self.parent = Parent(user=self.parent_user, phone="555-0100")
         self.teacher = Teacher(user=self.teacher_user, employee_number="T-LIST-1")
@@ -85,6 +88,16 @@ class ReportListRouteTests(unittest.TestCase):
         )
         self.db.add(self.course)
         self.db.flush()
+        self.course_result = CourseResult(
+            student=self.student,
+            course=self.course,
+            term="Fall",
+            average=92.5,
+            letter_grade="A",
+            calculated_at=self.base_time,
+        )
+        self.db.add(self.course_result)
+        self.db.flush()
 
         self.report_card = ReportCard(
             student=self.student,
@@ -94,6 +107,8 @@ class ReportListRouteTests(unittest.TestCase):
             gpa=4.0,
             status="approved",
             ai_summary="Strong work.",
+            approved_by_admin_id=self.admin_user.id,
+            approved_at=self.base_time + timedelta(hours=1),
         )
         self.db.add(self.report_card)
         self.db.flush()
@@ -108,6 +123,70 @@ class ReportListRouteTests(unittest.TestCase):
         )
         self.db.commit()
         self.db.refresh(self.report_card)
+
+    def _create_report_with_course_result(
+        self,
+        *,
+        suffix: str,
+        status: str,
+        approved_at: datetime | None,
+        calculated_at: datetime,
+        created_at: datetime | None = None,
+    ) -> ReportCard:
+        student = Student(
+            first_name="Student",
+            last_name=suffix,
+            grade_level="Grade 12",
+            student_number=f"LIST-{suffix}",
+        )
+        course = Course(
+            name=f"Course {suffix}",
+            code=f"COURSE-{suffix}",
+            teacher=self.teacher,
+            grade_level="Grade 12",
+            term="Fall",
+            school_year="2026-2027",
+        )
+        self.db.add_all([student, course])
+        self.db.flush()
+
+        self.db.add(
+            CourseResult(
+                student=student,
+                course=course,
+                term="Fall",
+                average=88.0,
+                letter_grade="B",
+                calculated_at=calculated_at,
+            )
+        )
+        report_values = {
+            "student": student,
+            "term": "Fall",
+            "school_year": "2026-2027",
+            "overall_average": 88.0,
+            "gpa": 3.0,
+            "status": status,
+            "approved_by_admin_id": self.admin_user.id if approved_at is not None else None,
+            "approved_at": approved_at,
+        }
+        if created_at is not None:
+            report_values["created_at"] = created_at
+        report_card = ReportCard(**report_values)
+        self.db.add(report_card)
+        self.db.flush()
+        self.db.add(
+            ReportCardCourse(
+                report_card_id=report_card.id,
+                course_id=course.id,
+                course_name=course.name,
+                average=88.0,
+                letter_grade="B",
+            )
+        )
+        self.db.commit()
+        self.db.refresh(report_card)
+        return report_card
 
     def _headers(self, email: str) -> dict[str, str]:
         response = self.client.post(
@@ -134,7 +213,128 @@ class ReportListRouteTests(unittest.TestCase):
         self.assertEqual(report["overall_average"], 92.5)
         self.assertEqual(report["gpa"], 4.0)
         self.assertIn("created_at", report)
+        self.assertFalse(report["needs_review"])
         self.assertNotIn("courses", report)
+
+    def test_needs_review_true_when_course_result_calculated_after_approval(self):
+        report_card = self._create_report_with_course_result(
+            suffix="STALE",
+            status="approved",
+            approved_at=self.base_time,
+            calculated_at=self.base_time + timedelta(hours=1),
+        )
+
+        response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
+
+        self.assertEqual(response.status_code, 200)
+        reports_by_id = {report["id"]: report for report in response.json()}
+        self.assertTrue(reports_by_id[str(report_card.id)]["needs_review"])
+
+    def test_needs_review_false_when_course_result_calculated_before_or_at_approval(self):
+        older_report = self._create_report_with_course_result(
+            suffix="OLDER",
+            status="approved",
+            approved_at=self.base_time + timedelta(hours=1),
+            calculated_at=self.base_time,
+        )
+        equal_report = self._create_report_with_course_result(
+            suffix="EQUAL",
+            status="approved",
+            approved_at=self.base_time,
+            calculated_at=self.base_time,
+        )
+
+        response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
+
+        self.assertEqual(response.status_code, 200)
+        reports_by_id = {report["id"]: report for report in response.json()}
+        self.assertFalse(reports_by_id[str(older_report.id)]["needs_review"])
+        self.assertFalse(reports_by_id[str(equal_report.id)]["needs_review"])
+
+    def test_needs_review_false_for_draft_even_when_course_result_is_newer(self):
+        report_card = self._create_report_with_course_result(
+            suffix="DRAFT",
+            status="draft",
+            approved_at=self.base_time,
+            calculated_at=self.base_time + timedelta(hours=1),
+        )
+
+        response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
+
+        self.assertEqual(response.status_code, 200)
+        reports_by_id = {report["id"]: report for report in response.json()}
+        self.assertFalse(reports_by_id[str(report_card.id)]["needs_review"])
+
+    def test_needs_review_true_for_sent_report_when_course_result_is_newer(self):
+        report_card = self._create_report_with_course_result(
+            suffix="SENT",
+            status="sent",
+            approved_at=self.base_time,
+            calculated_at=self.base_time + timedelta(hours=1),
+        )
+
+        response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
+
+        self.assertEqual(response.status_code, 200)
+        reports_by_id = {report["id"]: report for report in response.json()}
+        self.assertTrue(reports_by_id[str(report_card.id)]["needs_review"])
+
+    def test_needs_review_false_after_regenerate_and_reapprove(self):
+        self.course_result.average = 84.0
+        self.course_result.letter_grade = "B"
+        self.course_result.calculated_at = self.base_time + timedelta(days=1)
+        self.report_card.approved_at = self.base_time
+        self.db.commit()
+
+        before_response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
+        self.assertEqual(before_response.status_code, 200)
+        before_by_id = {report["id"]: report for report in before_response.json()}
+        self.assertTrue(before_by_id[str(self.report_card.id)]["needs_review"])
+
+        regenerate_response = self.client.post(
+            f"/api/v1/reports/{self.report_card.id}/regenerate",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(regenerate_response.status_code, 200)
+        self.assertEqual(regenerate_response.json()["status"], "draft")
+
+        approve_response = self.client.post(
+            f"/api/v1/reports/{self.report_card.id}/approve",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.json()["status"], "approved")
+
+        after_response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
+        self.assertEqual(after_response.status_code, 200)
+        after_by_id = {report["id"]: report for report in after_response.json()}
+        self.assertFalse(after_by_id[str(self.report_card.id)]["needs_review"])
+
+    def test_needs_review_reports_sort_above_non_review_reports(self):
+        non_review_report = self._create_report_with_course_result(
+            suffix="NEWER-NONREVIEW",
+            status="approved",
+            approved_at=self.base_time + timedelta(hours=2),
+            calculated_at=self.base_time,
+            created_at=self.base_time + timedelta(days=3),
+        )
+        review_report = self._create_report_with_course_result(
+            suffix="OLDER-REVIEW",
+            status="approved",
+            approved_at=self.base_time,
+            calculated_at=self.base_time + timedelta(hours=1),
+            created_at=self.base_time,
+        )
+
+        response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data[0]["id"], str(review_report.id))
+        self.assertTrue(data[0]["needs_review"])
+        non_review_index = [report["id"] for report in data].index(str(non_review_report.id))
+        self.assertGreater(non_review_index, 0)
+        self.assertFalse(data[non_review_index]["needs_review"])
 
     def test_parent_student_reports_keep_existing_shape(self):
         response = self.client.get(
@@ -150,6 +350,7 @@ class ReportListRouteTests(unittest.TestCase):
         self.assertIn("courses", report)
         self.assertNotIn("student_name", report)
         self.assertNotIn("student_number", report)
+        self.assertNotIn("needs_review", report)
 
 
 if __name__ == "__main__":

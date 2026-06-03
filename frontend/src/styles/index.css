@@ -264,6 +264,11 @@ a.card:active {
   color: var(--muted);
 }
 
+.badge-review {
+  background: #fff8db;
+  color: #8a5a00;
+}
+
 /* ---- Buttons ---- */
 .btn {
   font: inherit;
@@ -435,6 +440,23 @@ a.card:active {
   gap: 8px;
 }
 
+.filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  margin-bottom: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.filter-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
 .status-help {
   display: flex;
   flex-wrap: wrap;
@@ -500,6 +522,13 @@ a.card:active {
   color: var(--muted);
   font-size: 0.82rem;
   white-space: nowrap;
+}
+
+.report-status-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 
 .mono {

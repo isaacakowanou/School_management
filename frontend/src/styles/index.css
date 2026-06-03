@@ -531,6 +531,12 @@ a.card:active {
   align-items: center;
 }
 
+.status-secondary {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8rem;

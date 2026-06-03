@@ -15,12 +15,38 @@ const STATUS_OPTIONS = [
 ]
 
 const STATUS_HELP = {
-  draft: 'not visible to parents yet',
-  approved: 'visible to parents',
-  sent: 'sent/notified',
+  draft: 'parents cannot see it yet',
+  approved: 'parents can see it',
+  sent: 'parents can see it and were notified',
 }
 
-const NEEDS_REVIEW_COPY = 'Grades changed after approval — open to regenerate and re-approve.'
+const NEEDS_REVIEW_COPY =
+  'grades changed after approval/sending; admin must regenerate and approve again'
+
+function ReportStatus({ report }) {
+  if (report.needs_review) {
+    const previousStatus =
+      report.status === 'sent' ? 'Previously sent' : 'Previously approved'
+    return (
+      <div className="report-status-cell">
+        <span className="badge badge-review" title={NEEDS_REVIEW_COPY}>
+          Needs review
+        </span>
+        {(report.status === 'approved' || report.status === 'sent') && (
+          <span className="status-secondary">{previousStatus}</span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="report-status-cell">
+      <span title={STATUS_HELP[report.status] || report.status}>
+        <StatusBadge status={report.status} />
+      </span>
+    </div>
+  )
+}
 
 export default function AdminReportsPage() {
   const [reports, setReports] = useState(null)
@@ -129,16 +155,7 @@ export default function AdminReportsPage() {
                       <td className="nowrap">{report.term}</td>
                       <td className="nowrap">{report.school_year}</td>
                       <td>
-                        <div className="report-status-cell">
-                          <span title={STATUS_HELP[report.status] || report.status}>
-                            <StatusBadge status={report.status} />
-                          </span>
-                          {report.needs_review && (
-                            <span className="badge badge-review" title={NEEDS_REVIEW_COPY}>
-                              Needs review
-                            </span>
-                          )}
-                        </div>
+                        <ReportStatus report={report} />
                       </td>
                       <td className="num">{formatPercent(report.overall_average)}</td>
                       <td className="num">{formatGpa(report.gpa)}</td>

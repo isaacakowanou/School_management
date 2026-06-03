@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -143,6 +143,28 @@ def numbers_differ(left: float | None, right: float | None, tolerance: float = 0
     if left is None or right is None:
         return left is not None or right is not None
     return abs(float(left) - float(right)) > tolerance
+
+
+def timestamp_seconds(value: datetime | None) -> float | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).timestamp()
+
+
+def approved_after_course_results(latest_calculated_at: datetime | None) -> datetime:
+    if latest_calculated_at is None:
+        return datetime.now(timezone.utc)
+    return latest_calculated_at + timedelta(seconds=1)
+
+
+def approval_needs_refresh(approved_at: datetime | None, latest_calculated_at: datetime | None) -> bool:
+    if approved_at is None:
+        return True
+    latest_seconds = timestamp_seconds(latest_calculated_at)
+    approved_seconds = timestamp_seconds(approved_at)
+    return latest_seconds is not None and approved_seconds is not None and approved_seconds <= latest_seconds
 
 
 def padded(index: int) -> str:
@@ -435,6 +457,20 @@ def stress_summary_for(student: Student, report_data: dict) -> str:
     )
 
 
+def latest_report_course_result_time(db: Session, *, student: Student) -> datetime | None:
+    return db.scalar(
+        select(CourseResult.calculated_at)
+        .join(Course, CourseResult.course_id == Course.id)
+        .where(
+            CourseResult.student_id == student.id,
+            CourseResult.term == STRESS_TERM,
+            Course.school_year == STRESS_SCHOOL_YEAR,
+        )
+        .order_by(CourseResult.calculated_at.desc())
+        .limit(1)
+    )
+
+
 def get_or_create_report_card(
     db: Session,
     stats: StressStats,
@@ -444,6 +480,8 @@ def get_or_create_report_card(
     report_data: dict,
 ) -> ReportCard:
     summary = stress_summary_for(student, report_data)
+    latest_calculated_at = latest_report_course_result_time(db, student=student)
+    target_approved_at = approved_after_course_results(latest_calculated_at)
     report_card = db.scalar(
         select(ReportCard)
         .where(
@@ -464,7 +502,7 @@ def get_or_create_report_card(
             ai_summary=summary,
             pdf_url=None,
             approved_by_admin=admin_user,
-            approved_at=datetime.now(timezone.utc),
+            approved_at=target_approved_at,
             sent_at=None,
         )
         db.add(report_card)
@@ -481,7 +519,10 @@ def get_or_create_report_card(
         did_change = True
     if report_card.status != "approved":
         report_card.status = "approved"
-        report_card.approved_at = datetime.now(timezone.utc)
+        report_card.approved_at = target_approved_at
+        did_change = True
+    elif approval_needs_refresh(report_card.approved_at, latest_calculated_at):
+        report_card.approved_at = target_approved_at
         did_change = True
     if report_card.ai_summary != summary:
         report_card.ai_summary = summary
@@ -491,8 +532,8 @@ def get_or_create_report_card(
         did_change = True
     if report_card.approved_by_admin_id != admin_user.id:
         report_card.approved_by_admin = admin_user
-        if report_card.approved_at is None:
-            report_card.approved_at = datetime.now(timezone.utc)
+        if approval_needs_refresh(report_card.approved_at, latest_calculated_at):
+            report_card.approved_at = target_approved_at
         did_change = True
     if report_card.sent_at is not None:
         report_card.sent_at = None

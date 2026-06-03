@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager
 
 from auth import get_current_user, require_admin
 from database import get_db
@@ -42,7 +42,12 @@ def list_teachers(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[TeacherResponse]:
-    teachers = db.scalars(select(Teacher).join(User).order_by(User.name)).all()
+    teachers = db.scalars(
+        select(Teacher)
+        .join(Teacher.user)
+        .options(contains_eager(Teacher.user))
+        .order_by(User.name)
+    ).all()
     return [to_teacher_response(teacher) for teacher in teachers]
 
 

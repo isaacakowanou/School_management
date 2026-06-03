@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from auth import get_current_user, require_admin
 from audit import create_audit_log
@@ -183,7 +183,11 @@ def list_reports(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[ReportCardResponse]:
-    report_cards = db.scalars(select(ReportCard).order_by(ReportCard.created_at.desc())).all()
+    report_cards = db.scalars(
+        select(ReportCard)
+        .options(selectinload(ReportCard.courses))
+        .order_by(ReportCard.created_at.desc())
+    ).all()
     return [to_report_card_response(report_card) for report_card in report_cards]
 
 
@@ -196,6 +200,7 @@ def list_student_reports(
     if current_user.role == "admin":
         report_cards = db.scalars(
             select(ReportCard)
+            .options(selectinload(ReportCard.courses))
             .where(ReportCard.student_id == student_id)
             .order_by(ReportCard.created_at.desc())
         ).all()
@@ -204,6 +209,7 @@ def list_student_reports(
     if current_user.role == "parent" and parent_can_access_student(db, current_user, student_id):
         report_cards = db.scalars(
             select(ReportCard)
+            .options(selectinload(ReportCard.courses))
             .where(
                 ReportCard.student_id == student_id,
                 ReportCard.status.in_(PARENT_VISIBLE_STATUSES),

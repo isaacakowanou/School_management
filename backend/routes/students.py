@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from auth import get_current_user, require_admin
 from database import get_db
@@ -161,7 +161,11 @@ def list_student_parents(
     _: User = Depends(require_admin),
 ) -> list[LinkedParentResponse]:
     get_student_or_404(db, student_id)
-    links = db.scalars(select(StudentParent).where(StudentParent.student_id == student_id)).all()
+    links = db.scalars(
+        select(StudentParent)
+        .options(joinedload(StudentParent.parent).joinedload(Parent.user))
+        .where(StudentParent.student_id == student_id)
+    ).all()
     return [to_linked_parent_response(link) for link in links]
 
 

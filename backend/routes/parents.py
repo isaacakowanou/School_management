@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from auth import get_current_user, require_admin, require_parent
 from database import get_db
@@ -42,7 +42,12 @@ def list_parents(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[ParentResponse]:
-    parents = db.scalars(select(Parent).join(User).order_by(User.name)).all()
+    parents = db.scalars(
+        select(Parent)
+        .join(Parent.user)
+        .options(contains_eager(Parent.user))
+        .order_by(User.name)
+    ).all()
     return [to_parent_response(parent) for parent in parents]
 
 
@@ -116,5 +121,9 @@ def list_parent_students(
     if not can_read_parent(current_user, parent):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
-    links = db.scalars(select(StudentParent).where(StudentParent.parent_id == parent_id)).all()
+    links = db.scalars(
+        select(StudentParent)
+        .options(joinedload(StudentParent.student))
+        .where(StudentParent.parent_id == parent_id)
+    ).all()
     return [to_student_response(link.student) for link in links]

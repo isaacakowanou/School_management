@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager
 
 from auth import get_current_user, require_admin
 from audit import create_audit_log
@@ -105,7 +105,8 @@ def list_course_grades(
 
     grades = db.scalars(
         select(Grade)
-        .join(GradeItem, Grade.grade_item_id == GradeItem.id)
+        .join(Grade.grade_item)
+        .options(contains_eager(Grade.grade_item))
         .where(GradeItem.course_id == course_id)
         .order_by(Grade.created_at)
     ).all()

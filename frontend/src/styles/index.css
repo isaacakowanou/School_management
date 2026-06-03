@@ -298,6 +298,11 @@ a.card:active {
   background: #f0f2f5;
 }
 
+.btn-small {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
 /* ---- Login ---- */
 .login-wrap {
   min-height: 100vh;
@@ -459,7 +464,7 @@ a.card:active {
 }
 
 .audit-table {
-  min-width: 760px;
+  min-width: 720px;
 }
 
 /* Keep headers like "Entity type" on a single line. */
@@ -469,6 +474,22 @@ a.card:active {
 
 .audit-table td {
   vertical-align: top;
+}
+
+.audit-details-row td {
+  background: #fafbfc;
+  padding: 16px;
+}
+
+.audit-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.audit-details-grid h3 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
 }
 
 .student-cell-main {
@@ -515,6 +536,15 @@ a.card:active {
   max-height: 160px;
   overflow: auto;
   color: var(--muted);
+}
+
+.json-cell-expanded {
+  max-width: none;
+  max-height: 340px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
 }
 
 /* ---- Teacher grade entry matrix ---- */
@@ -700,6 +730,10 @@ a.card:active {
   .admin-main {
     width: 100%;
     padding: 20px 16px 48px;
+  }
+
+  .audit-details-grid {
+    grid-template-columns: 1fr;
   }
 
   .stale-report-warning {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { getAuditLogs } from '../api/auditLogs.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -14,6 +14,8 @@ function formatTime(iso) {
 
 function formatJson(value) {
   if (value === null || value === undefined) return '—'
+  if (Array.isArray(value) && value.length === 0) return '—'
+  if (typeof value === 'object' && Object.keys(value).length === 0) return '—'
   try {
     return JSON.stringify(value, null, 2)
   } catch {
@@ -26,11 +28,13 @@ export default function AuditLogsPage() {
   const [filters, setFilters] = useState(EMPTY_FILTERS) // applied filters (drives fetch)
   const [logs, setLogs] = useState(null)
   const [error, setError] = useState(null)
+  const [expandedLogId, setExpandedLogId] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     setError(null)
     setLogs(null)
+    setExpandedLogId(null)
     getAuditLogs(filters)
       .then((data) => {
         if (!cancelled) setLogs(data)
@@ -55,6 +59,10 @@ export default function AuditLogsPage() {
   function clearFilters() {
     setDraft(EMPTY_FILTERS)
     setFilters(EMPTY_FILTERS)
+  }
+
+  function toggleDetails(logId) {
+    setExpandedLogId((current) => (current === logId ? null : logId))
   }
 
   return (
@@ -110,34 +118,60 @@ export default function AuditLogsPage() {
                 <th>Action</th>
                 <th>Entity type</th>
                 <th>Entity ID</th>
-                <th>Old value</th>
-                <th>New value</th>
+                <th>Details</th>
               </tr>
             </thead>
             <tbody>
-              {logs.map((log) => (
-                <tr key={log.id}>
-                  <td className="nowrap">{formatTime(log.created_at)}</td>
-                  <td>
-                    <span className="audit-id" title={log.actor_user_id}>
-                      {log.actor_user_id}
-                    </span>
-                  </td>
-                  <td className="nowrap">{log.action}</td>
-                  <td className="nowrap">{log.entity_type}</td>
-                  <td>
-                    <span className="audit-id" title={log.entity_id}>
-                      {log.entity_id}
-                    </span>
-                  </td>
-                  <td>
-                    <pre className="json-cell">{formatJson(log.old_value)}</pre>
-                  </td>
-                  <td>
-                    <pre className="json-cell">{formatJson(log.new_value)}</pre>
-                  </td>
-                </tr>
-              ))}
+              {logs.map((log) => {
+                const isExpanded = expandedLogId === log.id
+                const oldValue = formatJson(log.old_value)
+                const newValue = formatJson(log.new_value)
+                return (
+                  <Fragment key={log.id}>
+                    <tr>
+                      <td className="nowrap">{formatTime(log.created_at)}</td>
+                      <td>
+                        <span className="audit-id" title={log.actor_user_id}>
+                          {log.actor_user_id}
+                        </span>
+                      </td>
+                      <td>{log.action}</td>
+                      <td className="nowrap">{log.entity_type}</td>
+                      <td>
+                        <span className="audit-id" title={log.entity_id}>
+                          {log.entity_id}
+                        </span>
+                      </td>
+                      <td className="nowrap">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-small"
+                          onClick={() => toggleDetails(log.id)}
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? 'Hide details' : 'View details'}
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="audit-details-row">
+                        <td colSpan={6}>
+                          <div className="audit-details-grid">
+                            <div>
+                              <h3>Old value</h3>
+                              <pre className="json-cell json-cell-expanded">{oldValue}</pre>
+                            </div>
+                            <div>
+                              <h3>New value</h3>
+                              <pre className="json-cell json-cell-expanded">{newValue}</pre>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>

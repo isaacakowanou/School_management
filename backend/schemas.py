@@ -253,6 +253,19 @@ class ReportCardResponse(BaseModel):
     courses: list[ReportCardCourseResponse]
 
 
+class AdminReportListItem(BaseModel):
+    id: UUID
+    student_id: UUID
+    student_name: str
+    student_number: str
+    term: str
+    school_year: str
+    status: str
+    overall_average: float
+    gpa: float | None = None
+    created_at: datetime
+
+
 class ReportCardStalenessResponse(BaseModel):
     is_stale: bool
     reason: str

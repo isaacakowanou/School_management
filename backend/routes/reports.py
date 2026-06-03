@@ -4,13 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from auth import get_current_user, require_admin
 from audit import create_audit_log
 from database import get_db
 from models import Parent, ReportCard, ReportCardCourse, StudentParent, User
 from schemas import (
+    AdminReportListItem,
     ReportCardCourseResponse,
     ReportCardResponse,
     ReportCardStalenessResponse,
@@ -53,6 +54,22 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
             )
             for course in report_card.courses
         ],
+    )
+
+
+def to_admin_report_list_item(report_card: ReportCard) -> AdminReportListItem:
+    student = report_card.student
+    return AdminReportListItem(
+        id=report_card.id,
+        student_id=report_card.student_id,
+        student_name=f"{student.first_name} {student.last_name}",
+        student_number=student.student_number,
+        term=report_card.term,
+        school_year=report_card.school_year,
+        status=report_card.status,
+        overall_average=report_card.overall_average,
+        gpa=report_card.gpa,
+        created_at=report_card.created_at,
     )
 
 
@@ -178,17 +195,17 @@ def generate_report_card(
     return to_report_card_response(report_card)
 
 
-@router.get("", response_model=list[ReportCardResponse])
+@router.get("", response_model=list[AdminReportListItem])
 def list_reports(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
-) -> list[ReportCardResponse]:
+) -> list[AdminReportListItem]:
     report_cards = db.scalars(
         select(ReportCard)
-        .options(selectinload(ReportCard.courses))
+        .options(joinedload(ReportCard.student))
         .order_by(ReportCard.created_at.desc())
     ).all()
-    return [to_report_card_response(report_card) for report_card in report_cards]
+    return [to_admin_report_list_item(report_card) for report_card in report_cards]
 
 
 @router.get("/student/{student_id}", response_model=list[ReportCardResponse])

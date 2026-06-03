@@ -430,6 +430,21 @@ a.card:active {
   gap: 8px;
 }
 
+.status-help {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 2px 0 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.status-help-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ---- Audit log table ---- */
 .table-scroll {
   overflow-x: auto;
@@ -454,6 +469,16 @@ a.card:active {
 
 .audit-table td {
   vertical-align: top;
+}
+
+.student-cell-main {
+  font-weight: 600;
+}
+
+.student-cell-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .mono {

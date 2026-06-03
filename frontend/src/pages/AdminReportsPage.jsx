@@ -14,6 +14,12 @@ const STATUS_OPTIONS = [
   { value: 'sent', label: 'Sent' },
 ]
 
+const STATUS_HELP = {
+  draft: 'not visible to parents yet',
+  approved: 'visible to parents',
+  sent: 'sent/notified',
+}
+
 export default function AdminReportsPage() {
   const [reports, setReports] = useState(null)
   const [error, setError] = useState(null)
@@ -68,6 +74,13 @@ export default function AdminReportsPage() {
               </select>
             </label>
           </div>
+          <div className="status-help" aria-label="Report status meanings">
+            {Object.entries(STATUS_HELP).map(([status, help]) => (
+              <span key={status} className="status-help-item">
+                <StatusBadge status={status} /> {help}
+              </span>
+            ))}
+          </div>
 
           {filtered.length === 0 ? (
             <Empty message="No reports match this filter." />
@@ -76,7 +89,7 @@ export default function AdminReportsPage() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Student ID</th>
+                    <th>Student</th>
                     <th>Term</th>
                     <th>School year</th>
                     <th>Status</th>
@@ -89,14 +102,19 @@ export default function AdminReportsPage() {
                   {filtered.map((report) => (
                     <tr key={report.id}>
                       <td>
-                        <span className="audit-id" title={report.student_id}>
-                          {report.student_id}
-                        </span>
+                        <div className="student-cell-main">
+                          {report.student_name || 'Unknown student'}
+                        </div>
+                        <div className="student-cell-meta">
+                          #{report.student_number || report.student_id}
+                        </div>
                       </td>
                       <td className="nowrap">{report.term}</td>
                       <td className="nowrap">{report.school_year}</td>
                       <td>
-                        <StatusBadge status={report.status} />
+                        <span title={STATUS_HELP[report.status] || report.status}>
+                          <StatusBadge status={report.status} />
+                        </span>
                       </td>
                       <td className="num">{formatPercent(report.overall_average)}</td>
                       <td className="num">{formatGpa(report.gpa)}</td>

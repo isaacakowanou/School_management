@@ -1,4 +1,4 @@
-import { apiGet } from './client.js'
+import { apiGet, apiPost } from './client.js'
 
 // GET /api/v1/parents/me -> { id, user_id, name, email, phone }
 export function getCurrentParent() {
@@ -13,6 +13,17 @@ export function getParentStudents(parentId) {
 // GET /api/v1/parents (admin) -> [{ id, user_id, name, email, phone }]
 export function listParents() {
   return apiGet('/parents')
+}
+
+// POST /api/v1/parents (admin)
+export function createParent({ name, email, password, phone }) {
+  const trimmedPhone = (phone || '').trim()
+  return apiPost('/parents', {
+    name: name.trim(),
+    email: email.trim(),
+    password: password.trim(),
+    phone: trimmedPhone || null,
+  })
 }
 
 // GET /api/v1/parents/{parent_id} (admin, or the parent themselves)

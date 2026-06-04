@@ -68,7 +68,9 @@ class LinkedParentResponse(BaseModel):
 
 
 class ParentCreate(BaseModel):
-    user_id: UUID
+    name: str
+    email: str
+    password: str
     phone: str | None = None
 
 

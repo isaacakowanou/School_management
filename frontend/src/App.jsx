@@ -18,6 +18,7 @@ import AdminTeachersPage from './pages/AdminTeachersPage.jsx'
 import AdminCoursesPage from './pages/AdminCoursesPage.jsx'
 import AdminStudentCreatePage from './pages/AdminStudentCreatePage.jsx'
 import AdminStudentDetailPage from './pages/AdminStudentDetailPage.jsx'
+import AdminParentCreatePage from './pages/AdminParentCreatePage.jsx'
 import AdminParentDetailPage from './pages/AdminParentDetailPage.jsx'
 import AdminTeacherDetailPage from './pages/AdminTeacherDetailPage.jsx'
 import AdminCourseDetailPage from './pages/AdminCourseDetailPage.jsx'
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="/admin/teachers" element={<AdminTeachersPage />} />
         <Route path="/admin/teachers/:teacherId" element={<AdminTeacherDetailPage />} />
         <Route path="/admin/parents" element={<AdminParentsPage />} />
+        <Route path="/admin/parents/new" element={<AdminParentCreatePage />} />
         <Route path="/admin/parents/:parentId" element={<AdminParentDetailPage />} />
         <Route path="/admin/courses" element={<AdminCoursesPage />} />
         <Route path="/admin/courses/:courseId" element={<AdminCourseDetailPage />} />

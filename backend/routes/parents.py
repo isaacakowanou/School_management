@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
-from auth import get_current_user, require_admin, require_parent
+from audit import create_audit_log
+from auth import get_current_user, hash_password, require_admin, require_parent
 from database import get_db
 from models import Parent, StudentParent, User
 from schemas import ParentCreate, ParentResponse, ParentUpdate, StudentResponse
@@ -37,6 +38,16 @@ def can_read_parent(current_user: User, parent: Parent) -> bool:
     )
 
 
+def clean_required_text(value: str, field_name: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} cannot be empty",
+        )
+    return cleaned
+
+
 @router.get("", response_model=list[ParentResponse])
 def list_parents(
     db: Session = Depends(get_db),
@@ -55,20 +66,42 @@ def list_parents(
 def create_parent(
     payload: ParentCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> ParentResponse:
-    user = db.get(User, payload.user_id)
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if user.role != "parent":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User must have parent role")
+    name = clean_required_text(payload.name, "name")
+    email = clean_required_text(payload.email, "email")
+    password = clean_required_text(payload.password, "password")
+    phone = payload.phone.strip() if payload.phone is not None else None
+    if phone == "":
+        phone = None
 
-    existing_parent = db.scalar(select(Parent).where(Parent.user_id == payload.user_id))
-    if existing_parent is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Parent profile already exists")
+    existing_user = db.scalar(select(User).where(User.email == email))
+    if existing_user is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
-    parent = Parent(user=user, phone=payload.phone)
-    db.add(parent)
+    user = User(
+        name=name,
+        email=email,
+        password_hash=hash_password(password),
+        role="parent",
+    )
+    parent = Parent(user=user, phone=phone)
+    db.add_all([user, parent])
+    db.flush()
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="parent_created",
+        entity_type="parent",
+        entity_id=parent.id,
+        old_value=None,
+        new_value={
+            "user_id": parent.user_id,
+            "name": user.name,
+            "email": user.email,
+            "phone": parent.phone,
+        },
+    )
     db.commit()
     db.refresh(parent)
     return to_parent_response(parent)

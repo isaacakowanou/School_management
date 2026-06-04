@@ -1,14 +1,15 @@
 import unittest
+from uuid import UUID
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from auth import hash_password
 from database import get_db
 from main import app
-from models import Base, Parent, User
+from models import AuditLog, Base, Parent, User
 
 
 class CurrentParentRouteTests(unittest.TestCase):
@@ -91,6 +92,14 @@ class CurrentParentRouteTests(unittest.TestCase):
         token = self._login(email)
         return {"Authorization": f"Bearer {token}"}
 
+    def _parent_payload(self, email: str = "new-parent@example.test") -> dict[str, str]:
+        return {
+            "name": "New Parent",
+            "email": email,
+            "password": "new-parent-password",
+            "phone": "555-0199",
+        }
+
     def test_parent_token_can_get_current_parent_profile(self):
         response = self.client.get(
             "/api/v1/parents/me",
@@ -129,6 +138,116 @@ class CurrentParentRouteTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_admin_can_create_parent(self):
+        response = self.client.post(
+            "/api/v1/parents",
+            json=self._parent_payload(),
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["name"], "New Parent")
+        self.assertEqual(data["email"], "new-parent@example.test")
+        self.assertEqual(data["phone"], "555-0199")
+
+        user = self.db.scalar(select(User).where(User.email == "new-parent@example.test"))
+        self.assertIsNotNone(user)
+        self.assertEqual(user.name, "New Parent")
+        self.assertEqual(user.role, "parent")
+
+        parent = self.db.scalar(select(Parent).where(Parent.user_id == user.id))
+        self.assertIsNotNone(parent)
+        self.assertEqual(str(parent.id), data["id"])
+
+        login_response = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": "new-parent@example.test", "password": "new-parent-password"},
+        )
+        self.assertEqual(login_response.status_code, 200)
+
+    def test_create_parent_trims_fields_and_allows_empty_phone(self):
+        response = self.client.post(
+            "/api/v1/parents",
+            json={
+                "name": "  Trimmed Parent  ",
+                "email": "  trimmed-parent@example.test  ",
+                "password": "  trimmed-password  ",
+                "phone": "   ",
+            },
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["name"], "Trimmed Parent")
+        self.assertEqual(data["email"], "trimmed-parent@example.test")
+        self.assertIsNone(data["phone"])
+
+    def test_non_admin_cannot_create_parent(self):
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.post(
+                    "/api/v1/parents",
+                    json=self._parent_payload(f"new-parent-{user.role}@example.test"),
+                    headers=self._auth_headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_duplicate_parent_email_is_rejected(self):
+        response = self.client.post(
+            "/api/v1/parents",
+            json=self._parent_payload(self.parent_user.email),
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "Email already exists")
+
+    def test_empty_parent_required_fields_are_rejected(self):
+        response = self.client.post(
+            "/api/v1/parents",
+            json={
+                "name": " ",
+                "email": "empty-parent@example.test",
+                "password": "new-parent-password",
+                "phone": None,
+            },
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "name cannot be empty")
+
+    def test_create_parent_writes_audit_log(self):
+        response = self.client.post(
+            "/api/v1/parents",
+            json=self._parent_payload("audit-parent@example.test"),
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        parent_id = UUID(response.json()["id"])
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "parent_created",
+                AuditLog.entity_type == "parent",
+                AuditLog.entity_id == parent_id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertIsNone(audit_log.old_value)
+        self.assertEqual(
+            audit_log.new_value,
+            {
+                "user_id": str(response.json()["user_id"]),
+                "name": "New Parent",
+                "email": "audit-parent@example.test",
+                "phone": "555-0199",
+            },
+        )
 
 
 if __name__ == "__main__":

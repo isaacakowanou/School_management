@@ -87,7 +87,9 @@ class ParentResponse(BaseModel):
 
 
 class TeacherCreate(BaseModel):
-    user_id: UUID
+    name: str
+    email: str
+    password: str
     employee_number: str
 
 

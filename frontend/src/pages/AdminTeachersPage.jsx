@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { listTeachers } from '../api/teachers.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 
 export default function AdminTeachersPage() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [teachers, setTeachers] = useState(null)
   const [error, setError] = useState(null)
+  const [notice] = useState(location.state?.message || null)
+
+  useEffect(() => {
+    if (location.state?.message) {
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
     let cancelled = false
@@ -27,9 +36,17 @@ export default function AdminTeachersPage() {
 
   return (
     <section className="admin-page">
-      <h2 className="page-title">Teachers</h2>
-      <p className="muted">All teacher accounts, read-only.</p>
+      <div className="report-header">
+        <div>
+          <h2 className="page-title">Teachers</h2>
+          <p className="muted">All teacher accounts.</p>
+        </div>
+        <Link to="/admin/teachers/new" className="btn btn-primary">
+          Add teacher
+        </Link>
+      </div>
 
+      {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
       {!error && teachers === null && <Spinner label="Loading teachers…" />}
       {!error && teachers && teachers.length === 0 && <Empty message="No teachers found." />}

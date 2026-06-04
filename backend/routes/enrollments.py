@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from audit import create_audit_log
 from auth import get_current_user, require_admin
 from database import get_db
 from models import Course, Enrollment, Student, User
@@ -69,7 +70,7 @@ def list_course_students(
 def create_enrollment(
     payload: EnrollmentCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> EnrollmentResponse:
     student = get_student_or_404(db, payload.student_id)
     course = get_course_or_404(db, payload.course_id)
@@ -85,6 +86,19 @@ def create_enrollment(
 
     enrollment = Enrollment(student=student, course=course)
     db.add(enrollment)
+    db.flush()
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="student_enrolled_in_course",
+        entity_type="enrollment",
+        entity_id=enrollment.id,
+        old_value=None,
+        new_value={
+            "student_id": student.id,
+            "course_id": course.id,
+        },
+    )
     db.commit()
     db.refresh(enrollment)
     return to_enrollment_response(enrollment)

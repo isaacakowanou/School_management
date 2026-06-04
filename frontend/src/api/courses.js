@@ -33,3 +33,11 @@ export function createCourse({ name, code, teacherId, gradeLevel, term, schoolYe
     school_year: schoolYear.trim(),
   })
 }
+
+// POST /api/v1/enrollments (admin)
+export function enrollStudentInCourse(courseId, studentId) {
+  return apiPost('/enrollments', {
+    course_id: courseId,
+    student_id: studentId,
+  })
+}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getCourse, listCourseStudents } from '../api/courses.js'
+import { enrollStudentInCourse, getCourse, listCourseStudents } from '../api/courses.js'
+import { listStudents } from '../api/students.js'
 import { getTeacher } from '../api/teachers.js'
 import { listGradeItems } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
@@ -14,9 +15,14 @@ export default function AdminCourseDetailPage() {
   const [course, setCourse] = useState(null)
   const [teacher, setTeacher] = useState(null)
   const [students, setStudents] = useState([])
+  const [allStudents, setAllStudents] = useState([])
   const [gradeItems, setGradeItems] = useState([])
   const [results, setResults] = useState([])
   const [error, setError] = useState(null)
+  const [enrollStudentId, setEnrollStudentId] = useState('')
+  const [enrolling, setEnrolling] = useState(false)
+  const [enrollError, setEnrollError] = useState(null)
+  const [enrollMessage, setEnrollMessage] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -24,8 +30,12 @@ export default function AdminCourseDetailPage() {
     setCourse(null)
     setTeacher(null)
     setStudents([])
+    setAllStudents([])
     setGradeItems([])
     setResults([])
+    setEnrollStudentId('')
+    setEnrollError(null)
+    setEnrollMessage(null)
 
     async function load() {
       let courseData
@@ -38,17 +48,19 @@ export default function AdminCourseDetailPage() {
         return
       }
       // Related data is best-effort; each section degrades independently.
-      const [teacherRes, studentsRes, gradeItemsRes, resultsRes] = await Promise.allSettled([
+      const [teacherRes, studentsRes, gradeItemsRes, resultsRes, allStudentsRes] = await Promise.allSettled([
         getTeacher(courseData.teacher_id),
         listCourseStudents(courseId),
         listGradeItems(courseId),
         listCourseResults(courseId),
+        listStudents(),
       ])
       if (cancelled) return
       if (teacherRes.status === 'fulfilled') setTeacher(teacherRes.value)
       if (studentsRes.status === 'fulfilled') setStudents(studentsRes.value)
       if (gradeItemsRes.status === 'fulfilled') setGradeItems(gradeItemsRes.value)
       if (resultsRes.status === 'fulfilled') setResults(resultsRes.value)
+      if (allStudentsRes.status === 'fulfilled') setAllStudents(allStudentsRes.value)
     }
 
     load()
@@ -64,6 +76,45 @@ export default function AdminCourseDetailPage() {
     }
     return map
   }, [students])
+
+  const enrolledStudentIds = useMemo(() => new Set(students.map((student) => student.id)), [students])
+  const availableStudents = useMemo(
+    () => allStudents.filter((student) => !enrolledStudentIds.has(student.id)),
+    [allStudents, enrolledStudentIds],
+  )
+
+  useEffect(() => {
+    if (availableStudents.length === 0) {
+      if (enrollStudentId) setEnrollStudentId('')
+      return
+    }
+    if (!availableStudents.some((student) => student.id === enrollStudentId)) {
+      setEnrollStudentId(availableStudents[0].id)
+    }
+  }, [availableStudents, enrollStudentId])
+
+  async function handleEnrollStudent(event) {
+    event.preventDefault()
+    setEnrollError(null)
+    setEnrollMessage(null)
+
+    if (!enrollStudentId) {
+      setEnrollError('Choose a student to enroll.')
+      return
+    }
+
+    setEnrolling(true)
+    try {
+      await enrollStudentInCourse(courseId, enrollStudentId)
+      const refreshed = await listCourseStudents(courseId)
+      setStudents(refreshed)
+      setEnrollMessage('Student enrolled.')
+    } catch (err) {
+      setEnrollError(err.message)
+    } finally {
+      setEnrolling(false)
+    }
+  }
 
   if (error) {
     return (
@@ -107,6 +158,42 @@ export default function AdminCourseDetailPage() {
       </p>
 
       <h3 className="section-title">Enrolled students</h3>
+      <form className="card admin-form" onSubmit={handleEnrollStudent}>
+        <label className="field">
+          <span>Student</span>
+          <select
+            className="grade-input"
+            value={enrollStudentId}
+            onChange={(event) => setEnrollStudentId(event.target.value)}
+            disabled={enrolling || availableStudents.length === 0}
+            required
+            style={{ width: '100%', textAlign: 'left' }}
+          >
+            {availableStudents.length === 0 ? (
+              <option value="">No available students</option>
+            ) : (
+              availableStudents.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.first_name} {student.last_name} — #{student.student_number}
+                </option>
+              ))
+            )}
+          </select>
+        </label>
+
+        <div className="grade-actions">
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={enrolling || availableStudents.length === 0}
+          >
+            {enrolling ? 'Enrolling...' : 'Enroll student'}
+          </button>
+          {enrollMessage && <span className="grade-summary">{enrollMessage}</span>}
+        </div>
+        {enrollError && <ErrorBanner message={enrollError} />}
+      </form>
+
       {students.length === 0 ? (
         <Empty message="No students enrolled in this course." />
       ) : (

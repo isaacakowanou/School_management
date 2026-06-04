@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from auth import require_admin
 from database import get_db
@@ -14,9 +14,12 @@ router = APIRouter(tags=["audit logs"])
 
 
 def to_audit_log_response(audit_log: AuditLog) -> AuditLogResponse:
+    actor = audit_log.actor
     return AuditLogResponse(
         id=audit_log.id,
         actor_user_id=audit_log.actor_user_id,
+        actor_name=actor.name if actor is not None else None,
+        actor_email=actor.email if actor is not None else None,
         action=audit_log.action,
         entity_type=audit_log.entity_type,
         entity_id=audit_log.entity_id,
@@ -34,7 +37,7 @@ def list_audit_logs(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[AuditLogResponse]:
-    query = select(AuditLog)
+    query = select(AuditLog).options(joinedload(AuditLog.actor))
 
     if entity_type is not None:
         query = query.where(AuditLog.entity_type == entity_type)

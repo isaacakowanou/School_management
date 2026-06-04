@@ -23,6 +23,23 @@ function formatJson(value) {
   }
 }
 
+function ActorCell({ log }) {
+  if (!log.actor_name && !log.actor_email) {
+    return (
+      <span className="audit-id" title={log.actor_user_id}>
+        {log.actor_user_id}
+      </span>
+    )
+  }
+
+  return (
+    <div>
+      <div className="student-cell-main">{log.actor_name || 'Unknown actor'}</div>
+      {log.actor_email && <div className="student-cell-meta">{log.actor_email}</div>}
+    </div>
+  )
+}
+
 export default function AuditLogsPage() {
   const [draft, setDraft] = useState(EMPTY_FILTERS) // form inputs
   const [filters, setFilters] = useState(EMPTY_FILTERS) // applied filters (drives fetch)
@@ -131,9 +148,7 @@ export default function AuditLogsPage() {
                     <tr>
                       <td className="nowrap">{formatTime(log.created_at)}</td>
                       <td>
-                        <span className="audit-id" title={log.actor_user_id}>
-                          {log.actor_user_id}
-                        </span>
+                        <ActorCell log={log} />
                       </td>
                       <td>{log.action}</td>
                       <td className="nowrap">{log.entity_type}</td>

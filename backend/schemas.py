@@ -219,6 +219,8 @@ class CourseResultCalculationResponse(BaseModel):
 class AuditLogResponse(BaseModel):
     id: UUID
     actor_user_id: UUID
+    actor_name: str | None = None
+    actor_email: str | None = None
     action: str
     entity_type: str
     entity_id: UUID

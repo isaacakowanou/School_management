@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from audit import create_audit_log
 from auth import get_current_user, require_admin
 from database import get_db
 from models import Course, Enrollment, Parent, Student, StudentParent, Teacher, User
@@ -60,6 +61,16 @@ def teacher_can_read_student(db: Session, current_user: User, student_id: UUID) 
     return enrollment is not None
 
 
+def clean_required_text(value: str, field_name: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} cannot be empty",
+        )
+    return cleaned
+
+
 @router.get("", response_model=list[StudentResponse])
 def list_students(
     db: Session = Depends(get_db),
@@ -73,19 +84,39 @@ def list_students(
 def create_student(
     payload: StudentCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> StudentResponse:
-    existing_student = db.scalar(select(Student).where(Student.student_number == payload.student_number))
+    first_name = clean_required_text(payload.first_name, "first_name")
+    last_name = clean_required_text(payload.last_name, "last_name")
+    grade_level = clean_required_text(payload.grade_level, "grade_level")
+    student_number = clean_required_text(payload.student_number, "student_number")
+
+    existing_student = db.scalar(select(Student).where(Student.student_number == student_number))
     if existing_student is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Student number already exists")
 
     student = Student(
-        first_name=payload.first_name,
-        last_name=payload.last_name,
-        grade_level=payload.grade_level,
-        student_number=payload.student_number,
+        first_name=first_name,
+        last_name=last_name,
+        grade_level=grade_level,
+        student_number=student_number,
     )
     db.add(student)
+    db.flush()
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="student_created",
+        entity_type="student",
+        entity_id=student.id,
+        old_value=None,
+        new_value={
+            "first_name": student.first_name,
+            "last_name": student.last_name,
+            "grade_level": student.grade_level,
+            "student_number": student.student_number,
+        },
+    )
     db.commit()
     db.refresh(student)
     return to_student_response(student)

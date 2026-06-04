@@ -365,6 +365,12 @@ a.card:active {
   margin-top: 4px;
 }
 
+/* ---- Admin forms ---- */
+.admin-form {
+  max-width: 560px;
+  margin-top: 18px;
+}
+
 /* ---- States ---- */
 .state {
   padding: 16px 18px;

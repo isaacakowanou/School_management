@@ -205,10 +205,13 @@ def link_student_parent(
     student_id: UUID,
     payload: StudentParentLinkCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> LinkedParentResponse:
     student = get_student_or_404(db, student_id)
     parent = get_parent_or_404(db, payload.parent_id)
+    relationship = payload.relationship.strip() if payload.relationship is not None else None
+    if relationship == "":
+        relationship = None
 
     existing_link = db.scalar(
         select(StudentParent).where(
@@ -219,8 +222,22 @@ def link_student_parent(
     if existing_link is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Parent is already linked to student")
 
-    link = StudentParent(student=student, parent=parent, relationship=payload.relationship)
+    link = StudentParent(student=student, parent=parent, relationship=relationship)
     db.add(link)
+    db.flush()
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="parent_linked_to_student",
+        entity_type="student_parent",
+        entity_id=link.id,
+        old_value=None,
+        new_value={
+            "student_id": student.id,
+            "parent_id": parent.id,
+            "relationship": link.relationship,
+        },
+    )
     db.commit()
     db.refresh(link)
     return to_linked_parent_response(link)

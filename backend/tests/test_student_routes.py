@@ -1,5 +1,5 @@
 import unittest
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Student, User
+from models import AuditLog, Base, Parent, Student, StudentParent, User
 
 
 class StudentRouteTests(unittest.TestCase):
@@ -69,6 +69,9 @@ class StudentRouteTests(unittest.TestCase):
             email="parent-students@example.test",
             role="parent",
         )
+        self.db.flush()
+        self.parent = Parent(user=self.parent_user, phone="555-0100")
+        self.db.add(self.parent)
         self.db.commit()
 
     def _headers(self, email: str) -> dict[str, str]:
@@ -86,6 +89,18 @@ class StudentRouteTests(unittest.TestCase):
             "student_number": student_number,
             "grade_level": "12",
         }
+
+    def _create_student(self, student_number: str = "LINK-STU-001") -> Student:
+        student = Student(
+            first_name="Link",
+            last_name="Student",
+            student_number=student_number,
+            grade_level="12",
+        )
+        self.db.add(student)
+        self.db.commit()
+        self.db.refresh(student)
+        return student
 
     def test_admin_can_create_student(self):
         response = self.client.post(
@@ -193,6 +208,112 @@ class StudentRouteTests(unittest.TestCase):
                 "last_name": "Student",
                 "grade_level": "12",
                 "student_number": "AUDIT-STU-001",
+            },
+        )
+
+    def test_admin_can_link_parent_to_student(self):
+        student = self._create_student()
+
+        response = self.client.post(
+            f"/api/v1/students/{student.id}/parents",
+            json={"parent_id": str(self.parent.id), "relationship": "  Guardian  "},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["id"], str(self.parent.id))
+        self.assertEqual(data["user_id"], str(self.parent_user.id))
+        self.assertEqual(data["name"], self.parent_user.name)
+        self.assertEqual(data["email"], self.parent_user.email)
+        self.assertEqual(data["relationship"], "Guardian")
+
+        link = self.db.scalar(
+            select(StudentParent).where(
+                StudentParent.student_id == student.id,
+                StudentParent.parent_id == self.parent.id,
+            )
+        )
+        self.assertIsNotNone(link)
+        self.assertEqual(link.relationship, "Guardian")
+
+    def test_non_admin_cannot_link_parent_to_student(self):
+        student = self._create_student("LINK-STU-NONADMIN")
+
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.post(
+                    f"/api/v1/students/{student.id}/parents",
+                    json={"parent_id": str(self.parent.id), "relationship": "Guardian"},
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_duplicate_parent_student_link_is_rejected(self):
+        student = self._create_student("LINK-STU-DUP")
+        self.db.add(StudentParent(student=student, parent=self.parent, relationship="Guardian"))
+        self.db.commit()
+
+        response = self.client.post(
+            f"/api/v1/students/{student.id}/parents",
+            json={"parent_id": str(self.parent.id), "relationship": "Guardian"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "Parent is already linked to student")
+
+    def test_missing_student_or_parent_link_is_handled_cleanly(self):
+        student = self._create_student("LINK-STU-MISSING")
+
+        missing_student_response = self.client.post(
+            f"/api/v1/students/{uuid4()}/parents",
+            json={"parent_id": str(self.parent.id), "relationship": "Guardian"},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(missing_student_response.status_code, 404)
+        self.assertEqual(missing_student_response.json()["detail"], "Student not found")
+
+        missing_parent_response = self.client.post(
+            f"/api/v1/students/{student.id}/parents",
+            json={"parent_id": str(uuid4()), "relationship": "Guardian"},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(missing_parent_response.status_code, 404)
+        self.assertEqual(missing_parent_response.json()["detail"], "Parent not found")
+
+    def test_link_parent_to_student_writes_audit_log(self):
+        student = self._create_student("LINK-STU-AUDIT")
+
+        response = self.client.post(
+            f"/api/v1/students/{student.id}/parents",
+            json={"parent_id": str(self.parent.id), "relationship": "Mother"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        link = self.db.scalar(
+            select(StudentParent).where(
+                StudentParent.student_id == student.id,
+                StudentParent.parent_id == self.parent.id,
+            )
+        )
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "parent_linked_to_student",
+                AuditLog.entity_type == "student_parent",
+                AuditLog.entity_id == link.id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertIsNone(audit_log.old_value)
+        self.assertEqual(
+            audit_log.new_value,
+            {
+                "student_id": str(student.id),
+                "parent_id": str(self.parent.id),
+                "relationship": "Mother",
             },
         )
 

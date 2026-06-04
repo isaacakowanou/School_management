@@ -24,3 +24,12 @@ export function getStudent(studentId) {
 export function getStudentParents(studentId) {
   return apiGet(`/students/${studentId}/parents`)
 }
+
+// POST /api/v1/students/{student_id}/parents (admin)
+export function linkStudentParent(studentId, { parentId, relationship }) {
+  const trimmedRelationship = (relationship || '').trim()
+  return apiPost(`/students/${studentId}/parents`, {
+    parent_id: parentId,
+    relationship: trimmedRelationship || null,
+  })
+}

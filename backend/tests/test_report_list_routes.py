@@ -216,6 +216,31 @@ class ReportListRouteTests(unittest.TestCase):
         self.assertFalse(report["needs_review"])
         self.assertNotIn("courses", report)
 
+    def test_admin_report_detail_includes_student_display_fields(self):
+        response = self.client.get(
+            f"/api/v1/reports/admin/{self.report_card.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()
+        self.assertEqual(report["id"], str(self.report_card.id))
+        self.assertEqual(report["student_id"], str(self.student.id))
+        self.assertEqual(report["student_name"], "Ada Lovelace")
+        self.assertEqual(report["student_number"], "LIST001")
+        self.assertEqual(report["term"], "Fall")
+        self.assertEqual(report["school_year"], "2026-2027")
+        self.assertEqual(report["status"], "approved")
+        self.assertIn("courses", report)
+
+    def test_parent_cannot_access_admin_report_detail(self):
+        response = self.client.get(
+            f"/api/v1/reports/admin/{self.report_card.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+
+        self.assertEqual(response.status_code, 403)
+
     def test_needs_review_true_when_course_result_calculated_after_approval(self):
         report_card = self._create_report_with_course_result(
             suffix="STALE",
@@ -346,6 +371,20 @@ class ReportListRouteTests(unittest.TestCase):
         data = response.json()
         self.assertEqual(len(data), 1)
         report = data[0]
+        self.assertEqual(report["student_id"], str(self.student.id))
+        self.assertIn("courses", report)
+        self.assertNotIn("student_name", report)
+        self.assertNotIn("student_number", report)
+        self.assertNotIn("needs_review", report)
+
+    def test_parent_report_detail_keeps_existing_shape(self):
+        response = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()
         self.assertEqual(report["student_id"], str(self.student.id))
         self.assertIn("courses", report)
         self.assertNotIn("student_name", report)

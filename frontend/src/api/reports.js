@@ -11,6 +11,11 @@ export function getReport(reportId) {
   return apiGet(`/reports/${reportId}`)
 }
 
+// GET /api/v1/reports/admin/{report_id} -> admin detail with student display fields
+export function getAdminReport(reportId) {
+  return apiGet(`/reports/admin/${reportId}`)
+}
+
 // GET /api/v1/reports/{report_id}/staleness (admin only)
 export function getReportStaleness(reportId) {
   return apiGet(`/reports/${reportId}/staleness`)

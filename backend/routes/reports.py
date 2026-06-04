@@ -12,6 +12,7 @@ from database import get_db
 from models import Course, CourseResult, Parent, ReportCard, ReportCardCourse, StudentParent, User
 from schemas import (
     AdminReportListItem,
+    AdminReportCardResponse,
     ReportCardCourseResponse,
     ReportCardResponse,
     ReportCardStalenessResponse,
@@ -54,6 +55,15 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
             )
             for course in report_card.courses
         ],
+    )
+
+
+def to_admin_report_card_response(report_card: ReportCard) -> AdminReportCardResponse:
+    student = report_card.student
+    return AdminReportCardResponse(
+        **to_report_card_response(report_card).model_dump(),
+        student_name=f"{student.first_name} {student.last_name}",
+        student_number=student.student_number,
     )
 
 
@@ -273,6 +283,16 @@ def list_reports(
         )
         for report_card in report_cards
     ]
+
+
+@router.get("/admin/{report_id}", response_model=AdminReportCardResponse)
+def get_admin_report(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> AdminReportCardResponse:
+    report_card = get_report_card_or_404(db, report_id)
+    return to_admin_report_card_response(report_card)
 
 
 @router.get("/student/{student_id}", response_model=list[ReportCardResponse])

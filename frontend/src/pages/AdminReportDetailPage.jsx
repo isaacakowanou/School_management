@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   approveReport,
   downloadReportPdf,
-  getReport,
+  getAdminReport,
   getReportStaleness,
   regenerateReport,
   sendReport,
@@ -48,7 +48,7 @@ export default function AdminReportDetailPage() {
   const [actionMessage, setActionMessage] = useState(null)
 
   const loadReport = useCallback(async () => {
-    const data = await getReport(reportId)
+    const data = await getAdminReport(reportId)
     setReport(data)
     setSummaryDraft(data.ai_summary ?? '')
     return data
@@ -85,7 +85,7 @@ export default function AdminReportDetailPage() {
 
     async function load() {
       try {
-        const data = await getReport(reportId)
+        const data = await getAdminReport(reportId)
         if (cancelled) return
         setReport(data)
         setSummaryDraft(data.ai_summary ?? '')
@@ -228,6 +228,8 @@ export default function AdminReportDetailPage() {
   const isSent = report.status === 'sent'
   const busy = pending !== null
   const staleReason = friendlyStaleReason(staleness?.reason)
+  const studentName = report.student_name || 'Unknown student'
+  const studentNumber = report.student_number || report.student_id
 
   return (
     <section className="admin-page">
@@ -242,7 +244,10 @@ export default function AdminReportDetailPage() {
             {report.term} · {report.school_year} · <StatusBadge status={report.status} />
           </p>
           <p className="muted">
-            Student ID: <span className="mono">{report.student_id}</span>
+            Student: <strong>{studentName}</strong>
+          </p>
+          <p className="muted">
+            Student number: <span className="mono">{studentNumber}</span>
           </p>
         </div>
       </div>

@@ -257,6 +257,11 @@ class ReportCardResponse(BaseModel):
     courses: list[ReportCardCourseResponse]
 
 
+class AdminReportCardResponse(ReportCardResponse):
+    student_name: str
+    student_number: str
+
+
 class AdminReportListItem(BaseModel):
     id: UUID
     student_id: UUID

@@ -50,7 +50,7 @@ STRESS_SCHOOL_YEAR = "2026-2027"
 STUDENT_COUNT = 100
 PARENT_COUNT = 20
 TEACHER_COUNT = 8
-REPORT_COUNT = 30
+REPORT_COUNT = STUDENT_COUNT
 STUDENTS_PER_COURSE = 25
 
 COURSE_DEFS = [
@@ -783,7 +783,7 @@ def create_large_demo_data() -> None:
         print(f"Stress parent logins: stress-parent-001..{padded(PARENT_COUNT)}@school.test / {STRESS_PASSWORD}")
         print(f"Stress teacher logins: stress-teacher-001..{padded(TEACHER_COUNT)}@school.test / {STRESS_PASSWORD}")
         print(f"Students per course: {STUDENTS_PER_COURSE}")
-        print(f"Approved reports generated/reused for first {REPORT_COUNT} stress students.")
+        print(f"Approved reports generated/reused for all {REPORT_COUNT} stress students.")
         print("No OpenAI calls or emails were sent.")
     except Exception:
         db.rollback()

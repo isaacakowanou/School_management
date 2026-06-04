@@ -9,7 +9,12 @@ from auth import get_current_user
 from audit import create_audit_log
 from database import get_db
 from models import Course, CourseResult, Enrollment, Grade, GradeItem, Student, User
-from schemas import CourseResultCalculationResponse, CourseResultResponse, SkippedCourseResultStudent
+from schemas import (
+    CourseResultCalculationRequest,
+    CourseResultCalculationResponse,
+    CourseResultResponse,
+    SkippedCourseResultStudent,
+)
 from services.grade_calculator import calculate_course_average, get_letter_grade
 from utils import get_current_teacher
 
@@ -79,28 +84,58 @@ def validate_course_grade_items(grade_items: list[GradeItem]) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.post("/course-results/calculate/{course_id}", response_model=CourseResultCalculationResponse)
-def calculate_course_results(
-    course_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CourseResultCalculationResponse:
-    course = get_course_or_404(db, course_id)
-    if not can_access_course_results(db, current_user, course):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
-
+def get_course_grade_items(db: Session, course: Course) -> list[GradeItem]:
     grade_items = db.scalars(
         select(GradeItem).where(GradeItem.course_id == course.id).order_by(GradeItem.created_at)
     ).all()
     validate_course_grade_items(list(grade_items))
+    return list(grade_items)
 
-    students = db.scalars(
-        select(Student)
-        .join(Enrollment, Enrollment.student_id == Student.id)
-        .where(Enrollment.course_id == course.id)
-        .order_by(Student.last_name, Student.first_name)
-    ).all()
 
+def get_enrolled_students_for_course(db: Session, course: Course) -> list[Student]:
+    return list(
+        db.scalars(
+            select(Student)
+            .join(Enrollment, Enrollment.student_id == Student.id)
+            .where(Enrollment.course_id == course.id)
+            .order_by(Student.last_name, Student.first_name)
+        ).all()
+    )
+
+
+def get_selected_enrolled_students(db: Session, course: Course, student_ids: list[UUID]) -> list[Student]:
+    unique_student_ids = list(dict.fromkeys(student_ids))
+    if not unique_student_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one student_id is required")
+
+    students = list(
+        db.scalars(
+            select(Student)
+            .join(Enrollment, Enrollment.student_id == Student.id)
+            .where(
+                Enrollment.course_id == course.id,
+                Student.id.in_(unique_student_ids),
+            )
+            .order_by(Student.last_name, Student.first_name)
+        ).all()
+    )
+    found_student_ids = {student.id for student in students}
+    if any(student_id not in found_student_ids for student_id in unique_student_ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="One or more students are not enrolled in this course",
+        )
+
+    return students
+
+
+def calculate_results_for_students(
+    db: Session,
+    *,
+    course: Course,
+    grade_items: list[GradeItem],
+    students: list[Student],
+) -> tuple[list[CourseResult], list[SkippedCourseResultStudent]]:
     results: list[CourseResult] = []
     skipped_students: list[SkippedCourseResultStudent] = []
 
@@ -167,6 +202,28 @@ def calculate_course_results(
 
         results.append(course_result)
 
+    return results, skipped_students
+
+
+@router.post("/course-results/calculate/{course_id}", response_model=CourseResultCalculationResponse)
+def calculate_course_results(
+    course_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CourseResultCalculationResponse:
+    course = get_course_or_404(db, course_id)
+    if not can_access_course_results(db, current_user, course):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    grade_items = get_course_grade_items(db, course)
+    students = get_enrolled_students_for_course(db, course)
+    results, skipped_students = calculate_results_for_students(
+        db,
+        course=course,
+        grade_items=grade_items,
+        students=students,
+    )
+
     create_audit_log(
         db=db,
         actor_user_id=current_user.id,
@@ -177,6 +234,52 @@ def calculate_course_results(
             "course_id": course.id,
             "calculated_count": len(results),
             "skipped_students_count": len(skipped_students),
+        },
+    )
+    db.commit()
+    for result in results:
+        db.refresh(result)
+
+    return CourseResultCalculationResponse(
+        course_id=course.id,
+        term=course.term,
+        calculated_count=len(results),
+        skipped_students=skipped_students,
+        results=[to_course_result_response(result) for result in results],
+    )
+
+
+@router.post("/course-results/calculate/{course_id}/students", response_model=CourseResultCalculationResponse)
+def calculate_selected_course_results(
+    course_id: UUID,
+    payload: CourseResultCalculationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CourseResultCalculationResponse:
+    course = get_course_or_404(db, course_id)
+    if not can_access_course_results(db, current_user, course):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    grade_items = get_course_grade_items(db, course)
+    students = get_selected_enrolled_students(db, course, payload.student_ids)
+    results, skipped_students = calculate_results_for_students(
+        db,
+        course=course,
+        grade_items=grade_items,
+        students=students,
+    )
+
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="course_results_calculated",
+        entity_type="course",
+        entity_id=course.id,
+        new_value={
+            "course_id": course.id,
+            "calculated_count": len(results),
+            "skipped_students_count": len(skipped_students),
+            "requested_student_count": len(dict.fromkeys(payload.student_ids)),
         },
     )
     db.commit()

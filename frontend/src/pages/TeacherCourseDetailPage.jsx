@@ -3,7 +3,11 @@ import { Link, useParams } from 'react-router-dom'
 import { getCourse, listCourseStudents } from '../api/courses.js'
 import { listGradeItems } from '../api/gradeItems.js'
 import { listCourseGrades } from '../api/grades.js'
-import { calculateCourseResults, listCourseResults } from '../api/courseResults.js'
+import {
+  calculateCourseResults,
+  calculateSelectedCourseResults,
+  listCourseResults,
+} from '../api/courseResults.js'
 import { formatPercent } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -23,6 +27,7 @@ export default function TeacherCourseDetailPage() {
   const [calculating, setCalculating] = useState(false)
   const [calcSummary, setCalcSummary] = useState(null)
   const [calcError, setCalcError] = useState(null)
+  const [pendingRecalcStudentIds, setPendingRecalcStudentIds] = useState([])
 
   useEffect(() => {
     let cancelled = false
@@ -34,6 +39,7 @@ export default function TeacherCourseDetailPage() {
     setResults(null)
     setCalcSummary(null)
     setCalcError(null)
+    setPendingRecalcStudentIds([])
 
     async function load() {
       try {
@@ -62,7 +68,15 @@ export default function TeacherCourseDetailPage() {
   }, [courseId])
 
   // Refresh grades after a save so the matrix reflects newly created grade ids.
-  const reloadGrades = useCallback(async () => {
+  const handleGradesSaved = useCallback(async (changedStudentIds = []) => {
+    if (changedStudentIds.length > 0) {
+      setPendingRecalcStudentIds((current) =>
+        Array.from(new Set([...current, ...changedStudentIds])),
+      )
+      setCalcSummary(null)
+      setCalcError(null)
+    }
+
     try {
       const g = await listCourseGrades(courseId)
       setGrades(g)
@@ -76,10 +90,30 @@ export default function TeacherCourseDetailPage() {
     setCalcError(null)
     setCalcSummary(null)
     try {
-      const res = await calculateCourseResults(courseId)
+      const shouldBootstrapAllResults = pendingRecalcStudentIds.length === 0 && results.length === 0
+      if (pendingRecalcStudentIds.length === 0 && !shouldBootstrapAllResults) {
+        setCalcSummary({
+          calculated_count: 0,
+          skipped_students: [],
+          no_changes: true,
+        })
+        return
+      }
+
+      const studentIdsToRecalculate = [...pendingRecalcStudentIds]
+      const res = shouldBootstrapAllResults
+        ? await calculateCourseResults(courseId)
+        : await calculateSelectedCourseResults(courseId, studentIdsToRecalculate)
+      const calculatedStudentIds = new Set((res.results || []).map((result) => result.student_id))
+      if (!shouldBootstrapAllResults) {
+        setPendingRecalcStudentIds((current) =>
+          current.filter((studentId) => !calculatedStudentIds.has(studentId)),
+        )
+      }
       setCalcSummary({
         calculated_count: res.calculated_count,
         skipped_students: res.skipped_students || [],
+        no_changes: false,
       })
       const refreshed = await listCourseResults(courseId)
       setResults(refreshed)
@@ -179,7 +213,7 @@ export default function TeacherCourseDetailPage() {
             students={students}
             gradeItems={gradeItems}
             grades={grades}
-            onSaved={reloadGrades}
+            onSaved={handleGradesSaved}
           />
 
           <h3 className="section-title">Course results</h3>
@@ -194,7 +228,7 @@ export default function TeacherCourseDetailPage() {
             </button>
             {calcSummary && (
               <span className="grade-summary">
-                Results recalculated.
+                {calcSummary.no_changes ? 'No grade changes to recalculate.' : 'Results recalculated.'}
               </span>
             )}
           </div>

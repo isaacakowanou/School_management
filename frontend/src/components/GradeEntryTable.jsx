@@ -74,6 +74,7 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved 
     setSaving(true)
     setSummary(null)
     const nextErrors = {}
+    const changedStudentIds = new Set()
     let saved = 0
     let failed = 0
 
@@ -99,6 +100,7 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved 
             await createGrade({ studentId: student.id, gradeItemId: item.id, score: result.value })
           }
           saved += 1
+          changedStudentIds.add(student.id)
         } catch (err) {
           nextErrors[key] = err.message
           failed += 1
@@ -109,7 +111,7 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved 
     setCellErrors(nextErrors)
     setSaving(false)
     setSummary({ saved, failed })
-    if (saved > 0 && onSaved) onSaved()
+    if (saved > 0 && onSaved) onSaved(Array.from(changedStudentIds))
   }
 
   return (

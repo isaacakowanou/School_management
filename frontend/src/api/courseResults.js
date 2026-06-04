@@ -11,3 +11,11 @@ export function listCourseResults(courseId) {
 export function calculateCourseResults(courseId) {
   return apiPost(`/course-results/calculate/${courseId}`)
 }
+
+// POST /api/v1/course-results/calculate/{course_id}/students
+// Recalculates results only for selected students.
+export function calculateSelectedCourseResults(courseId, studentIds) {
+  return apiPost(`/course-results/calculate/${courseId}/students`, {
+    student_ids: studentIds,
+  })
+}

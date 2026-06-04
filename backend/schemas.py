@@ -198,6 +198,10 @@ class CourseResultResponse(BaseModel):
     letter_grade: str
 
 
+class CourseResultCalculationRequest(BaseModel):
+    student_ids: list[UUID]
+
+
 class SkippedCourseResultStudent(BaseModel):
     student_id: UUID
     student_name: str

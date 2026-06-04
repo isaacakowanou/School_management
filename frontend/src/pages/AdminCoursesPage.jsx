@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { listCourses } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
 import Spinner from '../components/Spinner.jsx'
@@ -7,9 +7,18 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 
 export default function AdminCoursesPage() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [courses, setCourses] = useState(null)
   const [teachers, setTeachers] = useState([])
   const [error, setError] = useState(null)
+  const [notice] = useState(location.state?.message || null)
+
+  useEffect(() => {
+    if (location.state?.message) {
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
     let cancelled = false
@@ -51,9 +60,17 @@ export default function AdminCoursesPage() {
 
   return (
     <section className="admin-page">
-      <h2 className="page-title">Courses</h2>
-      <p className="muted">All courses, read-only.</p>
+      <div className="report-header">
+        <div>
+          <h2 className="page-title">Courses</h2>
+          <p className="muted">All courses.</p>
+        </div>
+        <Link to="/admin/courses/new" className="btn btn-primary">
+          Add course
+        </Link>
+      </div>
 
+      {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
       {!error && courses === null && <Spinner label="Loading courses…" />}
       {!error && courses && courses.length === 0 && <Empty message="No courses found." />}

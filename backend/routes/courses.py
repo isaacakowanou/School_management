@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from audit import create_audit_log
 from auth import get_current_user, require_admin
 from database import get_db
 from models import Course, Teacher, User
@@ -44,6 +45,16 @@ def ensure_unique_course_code(db: Session, code: str, course_id: UUID | None = N
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Course code already exists")
 
 
+def clean_required_text(value: str, field_name: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} cannot be empty",
+        )
+    return cleaned
+
+
 @router.get("", response_model=list[CourseResponse])
 def list_courses(
     db: Session = Depends(get_db),
@@ -69,20 +80,43 @@ def list_courses(
 def create_course(
     payload: CourseCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> CourseResponse:
+    name = clean_required_text(payload.name, "name")
+    code = clean_required_text(payload.code, "code")
+    grade_level = clean_required_text(payload.grade_level, "grade_level")
+    term = clean_required_text(payload.term, "term")
+    school_year = clean_required_text(payload.school_year, "school_year")
+
     get_teacher_or_404(db, payload.teacher_id)
-    ensure_unique_course_code(db, payload.code)
+    ensure_unique_course_code(db, code)
 
     course = Course(
-        name=payload.name,
-        code=payload.code,
+        name=name,
+        code=code,
         teacher_id=payload.teacher_id,
-        grade_level=payload.grade_level,
-        term=payload.term,
-        school_year=payload.school_year,
+        grade_level=grade_level,
+        term=term,
+        school_year=school_year,
     )
     db.add(course)
+    db.flush()
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="course_created",
+        entity_type="course",
+        entity_id=course.id,
+        old_value=None,
+        new_value={
+            "name": course.name,
+            "code": course.code,
+            "teacher_id": course.teacher_id,
+            "grade_level": course.grade_level,
+            "term": course.term,
+            "school_year": course.school_year,
+        },
+    )
     db.commit()
     db.refresh(course)
     return to_course_response(course)

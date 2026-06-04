@@ -3,12 +3,20 @@ import { Link, useParams } from 'react-router-dom'
 import { enrollStudentInCourse, getCourse, listCourseStudents } from '../api/courses.js'
 import { listStudents } from '../api/students.js'
 import { getTeacher } from '../api/teachers.js'
-import { listGradeItems } from '../api/gradeItems.js'
+import { createGradeItem, listGradeItems } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
 import { formatPercent } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
+
+const EMPTY_GRADE_ITEM_FORM = {
+  title: '',
+  category: '',
+  maxScore: '100',
+  weight: '',
+  term: '',
+}
 
 export default function AdminCourseDetailPage() {
   const { courseId } = useParams()
@@ -23,6 +31,10 @@ export default function AdminCourseDetailPage() {
   const [enrolling, setEnrolling] = useState(false)
   const [enrollError, setEnrollError] = useState(null)
   const [enrollMessage, setEnrollMessage] = useState(null)
+  const [gradeItemForm, setGradeItemForm] = useState(EMPTY_GRADE_ITEM_FORM)
+  const [addingGradeItem, setAddingGradeItem] = useState(false)
+  const [gradeItemError, setGradeItemError] = useState(null)
+  const [gradeItemMessage, setGradeItemMessage] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -36,6 +48,9 @@ export default function AdminCourseDetailPage() {
     setEnrollStudentId('')
     setEnrollError(null)
     setEnrollMessage(null)
+    setGradeItemForm(EMPTY_GRADE_ITEM_FORM)
+    setGradeItemError(null)
+    setGradeItemMessage(null)
 
     async function load() {
       let courseData
@@ -43,6 +58,10 @@ export default function AdminCourseDetailPage() {
         courseData = await getCourse(courseId)
         if (cancelled) return
         setCourse(courseData)
+        setGradeItemForm((current) => ({
+          ...current,
+          term: current.term || courseData.term || '',
+        }))
       } catch (err) {
         if (!cancelled) setError(err.message)
         return
@@ -113,6 +132,53 @@ export default function AdminCourseDetailPage() {
       setEnrollError(err.message)
     } finally {
       setEnrolling(false)
+    }
+  }
+
+  function updateGradeItemField(field, value) {
+    setGradeItemForm((current) => ({ ...current, [field]: value }))
+  }
+
+  async function handleAddGradeItem(event) {
+    event.preventDefault()
+    setGradeItemError(null)
+    setGradeItemMessage(null)
+
+    const maxScore = Number(gradeItemForm.maxScore)
+    const weight = Number(gradeItemForm.weight)
+    if (
+      !gradeItemForm.title.trim() ||
+      !gradeItemForm.category.trim() ||
+      !gradeItemForm.term.trim() ||
+      !Number.isFinite(maxScore) ||
+      !Number.isFinite(weight)
+    ) {
+      setGradeItemError('Title, category, max score, weight, and term are required.')
+      return
+    }
+    if (maxScore <= 0) {
+      setGradeItemError('Max score must be greater than 0.')
+      return
+    }
+    if (weight <= 0 || weight > 1) {
+      setGradeItemError('Weight must be greater than 0 and at most 1.')
+      return
+    }
+
+    setAddingGradeItem(true)
+    try {
+      await createGradeItem(courseId, gradeItemForm)
+      const refreshed = await listGradeItems(courseId)
+      setGradeItems(refreshed)
+      setGradeItemForm({
+        ...EMPTY_GRADE_ITEM_FORM,
+        term: gradeItemForm.term.trim(),
+      })
+      setGradeItemMessage('Grade item added.')
+    } catch (err) {
+      setGradeItemError(err.message)
+    } finally {
+      setAddingGradeItem(false)
     }
   }
 
@@ -228,6 +294,74 @@ export default function AdminCourseDetailPage() {
       )}
 
       <h3 className="section-title">Grade items</h3>
+      <form className="card admin-form" onSubmit={handleAddGradeItem}>
+        <label className="field">
+          <span>Title</span>
+          <input
+            value={gradeItemForm.title}
+            onChange={(event) => updateGradeItemField('title', event.target.value)}
+            disabled={addingGradeItem}
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Category</span>
+          <input
+            value={gradeItemForm.category}
+            onChange={(event) => updateGradeItemField('category', event.target.value)}
+            disabled={addingGradeItem}
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Max score</span>
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={gradeItemForm.maxScore}
+            onChange={(event) => updateGradeItemField('maxScore', event.target.value)}
+            disabled={addingGradeItem}
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Weight</span>
+          <input
+            type="number"
+            min="0.01"
+            max="1"
+            step="0.01"
+            value={gradeItemForm.weight}
+            onChange={(event) => updateGradeItemField('weight', event.target.value)}
+            disabled={addingGradeItem}
+            required
+          />
+          <p className="muted">0.30 = 30%</p>
+        </label>
+
+        <label className="field">
+          <span>Term</span>
+          <input
+            value={gradeItemForm.term}
+            onChange={(event) => updateGradeItemField('term', event.target.value)}
+            disabled={addingGradeItem}
+            required
+          />
+        </label>
+
+        <div className="grade-actions">
+          <button type="submit" className="btn btn-primary" disabled={addingGradeItem}>
+            {addingGradeItem ? 'Adding...' : 'Add grade item'}
+          </button>
+          {gradeItemMessage && <span className="grade-summary">{gradeItemMessage}</span>}
+        </div>
+        {gradeItemError && <ErrorBanner message={gradeItemError} />}
+      </form>
+
       {gradeItems.length === 0 ? (
         <Empty message="No grade items for this course." />
       ) : (

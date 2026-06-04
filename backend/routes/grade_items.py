@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from audit import create_audit_log
 from auth import get_current_user
 from database import get_db
 from models import Course, GradeItem, User
@@ -52,11 +53,21 @@ def can_manage_course_grade_items(db: Session, current_user: User, course: Cours
     return teacher is not None and course.teacher_id == teacher.id
 
 
+def clean_required_text(value: str, field_name: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} cannot be empty",
+        )
+    return cleaned
+
+
 def validate_grade_item_values(max_score: float | None = None, weight: float | None = None) -> None:
     if max_score is not None and max_score <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="max_score must be greater than 0")
-    if weight is not None and (weight < 0 or weight > 1):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="weight must be between 0 and 1")
+    if weight is not None and (weight <= 0 or weight > 1):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="weight must be greater than 0 and at most 1")
 
 
 @router.get("/courses/{course_id}/grade-items", response_model=list[GradeItemResponse])
@@ -81,6 +92,9 @@ def create_grade_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GradeItemResponse:
+    title = clean_required_text(payload.title, "title")
+    category = clean_required_text(payload.category, "category")
+    term = clean_required_text(payload.term, "term")
     validate_grade_item_values(max_score=payload.max_score, weight=payload.weight)
     course = get_course_or_404(db, payload.course_id)
     if not can_manage_course_grade_items(db, current_user, course):
@@ -88,14 +102,32 @@ def create_grade_item(
 
     grade_item = GradeItem(
         course=course,
-        title=payload.title,
-        category=payload.category,
+        title=title,
+        category=category,
         max_score=payload.max_score,
         weight=payload.weight,
-        term=payload.term,
+        term=term,
         due_date=payload.due_date,
     )
     db.add(grade_item)
+    db.flush()
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="grade_item_created",
+        entity_type="grade_item",
+        entity_id=grade_item.id,
+        old_value=None,
+        new_value={
+            "course_id": grade_item.course_id,
+            "title": grade_item.title,
+            "category": grade_item.category,
+            "max_score": grade_item.max_score,
+            "weight": grade_item.weight,
+            "term": grade_item.term,
+            "due_date": str(grade_item.due_date) if grade_item.due_date else None,
+        },
+    )
     db.commit()
     db.refresh(grade_item)
     return to_grade_item_response(grade_item)

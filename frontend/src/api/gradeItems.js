@@ -1,7 +1,19 @@
-import { apiGet } from './client.js'
+import { apiGet, apiPost } from './client.js'
 
 // GET /api/v1/courses/{course_id}/grade-items
 // Read-only for the teacher portal in this pass.
 export function listGradeItems(courseId) {
   return apiGet(`/courses/${courseId}/grade-items`)
+}
+
+// POST /api/v1/grade-items (admin or assigned teacher)
+export function createGradeItem(courseId, { title, category, maxScore, weight, term }) {
+  return apiPost('/grade-items', {
+    course_id: courseId,
+    title: title.trim(),
+    category: category.trim(),
+    max_score: Number(maxScore),
+    weight: Number(weight),
+    term: term.trim(),
+  })
 }

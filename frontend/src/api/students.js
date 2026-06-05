@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './client.js'
+import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/students (admin) -> [{ id, first_name, last_name, grade_level, student_number }]
 export function listStudents() {
@@ -42,4 +42,9 @@ export function linkStudentParent(studentId, { parentId, relationship }) {
     parent_id: parentId,
     relationship: trimmedRelationship || null,
   })
+}
+
+// DELETE /api/v1/students/{student_id}/parents/{parent_id} (admin)
+export function unlinkStudentParent(studentId, parentId) {
+  return apiDelete(`/students/${studentId}/parents/${parentId}`)
 }

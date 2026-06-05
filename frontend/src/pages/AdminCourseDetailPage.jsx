@@ -1,6 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { enrollStudentInCourse, getCourse, listCourseStudents, updateCourse } from '../api/courses.js'
+import {
+  enrollStudentInCourse,
+  getCourse,
+  listCourseStudents,
+  unenrollStudentFromCourse,
+  updateCourse,
+} from '../api/courses.js'
 import { listStudents } from '../api/students.js'
 import { getTeacher, listTeachers } from '../api/teachers.js'
 import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
@@ -91,6 +97,7 @@ export default function AdminCourseDetailPage() {
   const [enrollError, setEnrollError] = useState(null)
   const [enrollMessage, setEnrollMessage] = useState(null)
   const [showEnrollForm, setShowEnrollForm] = useState(false)
+  const [unenrollingStudentId, setUnenrollingStudentId] = useState(null)
   const [gradeItemForm, setGradeItemForm] = useState(EMPTY_GRADE_ITEM_FORM)
   const [addingGradeItem, setAddingGradeItem] = useState(false)
   const [gradeItemError, setGradeItemError] = useState(null)
@@ -120,6 +127,7 @@ export default function AdminCourseDetailPage() {
     setEnrollError(null)
     setEnrollMessage(null)
     setShowEnrollForm(false)
+    setUnenrollingStudentId(null)
     setGradeItemForm(EMPTY_GRADE_ITEM_FORM)
     setGradeItemError(null)
     setGradeItemMessage(null)
@@ -266,6 +274,26 @@ export default function AdminCourseDetailPage() {
       setEnrollError(err.message)
     } finally {
       setEnrolling(false)
+    }
+  }
+
+  async function handleUnenrollStudent(student) {
+    const studentName = `${student.first_name} ${student.last_name}`
+    const confirmed = window.confirm(`Unenroll ${studentName} (#${student.student_number}) from ${course.code}?`)
+    if (!confirmed) return
+
+    setEnrollError(null)
+    setEnrollMessage(null)
+    setUnenrollingStudentId(student.id)
+    try {
+      await unenrollStudentFromCourse(courseId, student.id)
+      const refreshed = await listCourseStudents(courseId)
+      setStudents(refreshed)
+      setEnrollMessage('Student unenrolled.')
+    } catch (err) {
+      setEnrollError(err.message)
+    } finally {
+      setUnenrollingStudentId(null)
     }
   }
 
@@ -551,6 +579,7 @@ export default function AdminCourseDetailPage() {
         </div>
       )}
       {enrollMessage && <p className="grade-summary">{enrollMessage}</p>}
+      {enrollError && !showEnrollForm && <ErrorBanner message={enrollError} />}
       {showEnrollForm && (
         <form className="card admin-form" onSubmit={handleEnrollStudent}>
           <label className="field">
@@ -624,6 +653,14 @@ export default function AdminCourseDetailPage() {
                     <Link className="back-link" to={`/admin/students/${student.id}`}>
                       Open →
                     </Link>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={unenrollingStudentId === student.id}
+                      onClick={() => handleUnenrollStudent(student)}
+                    >
+                      {unenrollingStudentId === student.id ? 'Unenrolling...' : 'Unenroll'}
+                    </button>
                   </td>
                 </tr>
               ))}

@@ -202,6 +202,67 @@ class EnrollmentRouteTests(unittest.TestCase):
             },
         )
 
+    def test_admin_can_unenroll_student_from_course(self):
+        response = self.client.delete(
+            f"/api/v1/courses/{self.course.id}/students/{self.duplicate_student.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["message"], "Student unenrolled from course")
+        enrollment = self.db.scalar(
+            select(Enrollment).where(
+                Enrollment.student_id == self.duplicate_student.id,
+                Enrollment.course_id == self.course.id,
+            )
+        )
+        self.assertIsNone(enrollment)
+
+    def test_non_admin_cannot_unenroll_student_from_course(self):
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.delete(
+                    f"/api/v1/courses/{self.course.id}/students/{self.duplicate_student.id}",
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_missing_enrollment_unenroll_gets_404(self):
+        response = self.client.delete(
+            f"/api/v1/courses/{self.course.id}/students/{self.student.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "Enrollment not found")
+
+    def test_unenroll_student_from_course_writes_audit_log(self):
+        enrollment_id = self.existing_enrollment.id
+
+        response = self.client.delete(
+            f"/api/v1/courses/{self.course.id}/students/{self.duplicate_student.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "student_unenrolled_from_course",
+                AuditLog.entity_type == "enrollment",
+                AuditLog.entity_id == enrollment_id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertEqual(
+            audit_log.old_value,
+            {
+                "student_id": str(self.duplicate_student.id),
+                "course_id": str(self.course.id),
+            },
+        )
+        self.assertIsNone(audit_log.new_value)
+
 
 if __name__ == "__main__":
     unittest.main()

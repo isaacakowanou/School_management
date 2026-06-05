@@ -47,6 +47,39 @@ def can_read_course_students(db: Session, current_user: User, course: Course) ->
     return teacher is not None and course.teacher_id == teacher.id
 
 
+def get_enrollment_or_404(db: Session, enrollment_id: UUID) -> Enrollment:
+    enrollment = db.get(Enrollment, enrollment_id)
+    if enrollment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
+    return enrollment
+
+
+def get_course_student_enrollment_or_404(db: Session, course_id: UUID, student_id: UUID) -> Enrollment | None:
+    return db.scalar(
+        select(Enrollment).where(
+            Enrollment.course_id == course_id,
+            Enrollment.student_id == student_id,
+        )
+    )
+
+
+def delete_enrollment_with_audit(db: Session, current_user: User, enrollment: Enrollment) -> None:
+    old_value = {
+        "student_id": enrollment.student_id,
+        "course_id": enrollment.course_id,
+    }
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="student_unenrolled_from_course",
+        entity_type="enrollment",
+        entity_id=enrollment.id,
+        old_value=old_value,
+        new_value=None,
+    )
+    db.delete(enrollment)
+
+
 @router.get("/courses/{course_id}/students", response_model=list[StudentResponse])
 def list_course_students(
     course_id: UUID,
@@ -64,6 +97,24 @@ def list_course_students(
         .order_by(Student.last_name, Student.first_name)
     ).all()
     return [to_student_response(student) for student in students]
+
+
+@router.delete("/courses/{course_id}/students/{student_id}", response_model=StatusResponse)
+def unenroll_student_from_course(
+    course_id: UUID,
+    student_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> StatusResponse:
+    get_course_or_404(db, course_id)
+    get_student_or_404(db, student_id)
+    enrollment = get_course_student_enrollment_or_404(db, course_id, student_id)
+    if enrollment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
+
+    delete_enrollment_with_audit(db, current_user, enrollment)
+    db.commit()
+    return StatusResponse(status="ok", message="Student unenrolled from course")
 
 
 @router.post("/enrollments", response_model=EnrollmentResponse, status_code=status.HTTP_201_CREATED)
@@ -108,12 +159,10 @@ def create_enrollment(
 def delete_enrollment(
     enrollment_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> StatusResponse:
-    enrollment = db.get(Enrollment, enrollment_id)
-    if enrollment is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
+    enrollment = get_enrollment_or_404(db, enrollment_id)
 
-    db.delete(enrollment)
+    delete_enrollment_with_audit(db, current_user, enrollment)
     db.commit()
-    return StatusResponse(status="ok", message="Enrollment deleted")
+    return StatusResponse(status="ok", message="Student unenrolled from course")

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getStudent, getStudentParents, linkStudentParent, updateStudent } from '../api/students.js'
+import { getStudent, getStudentParents, linkStudentParent, unlinkStudentParent, updateStudent } from '../api/students.js'
 import { listParents } from '../api/parents.js'
 import { getStudentReports } from '../api/reports.js'
 import { formatGpa, formatPercent } from '../utils/format.js'
@@ -31,6 +31,7 @@ export default function AdminStudentDetailPage() {
   const [linkError, setLinkError] = useState(null)
   const [linkMessage, setLinkMessage] = useState(null)
   const [showLinkParentForm, setShowLinkParentForm] = useState(false)
+  const [unlinkingParentId, setUnlinkingParentId] = useState(null)
   const [showEditForm, setShowEditForm] = useState(false)
   const [editForm, setEditForm] = useState(studentToForm(null))
   const [savingEdit, setSavingEdit] = useState(false)
@@ -49,6 +50,7 @@ export default function AdminStudentDetailPage() {
     setLinkError(null)
     setLinkMessage(null)
     setShowLinkParentForm(false)
+    setUnlinkingParentId(null)
     setShowEditForm(false)
     setEditForm(studentToForm(null))
     setSavingEdit(false)
@@ -164,6 +166,25 @@ export default function AdminStudentDetailPage() {
       setLinkError(err.message)
     } finally {
       setLinking(false)
+    }
+  }
+
+  async function handleUnlinkParent(parent) {
+    const confirmed = window.confirm(`Unlink ${parent.name} (${parent.email}) from this student?`)
+    if (!confirmed) return
+
+    setLinkError(null)
+    setLinkMessage(null)
+    setUnlinkingParentId(parent.id)
+    try {
+      await unlinkStudentParent(studentId, parent.id)
+      const linked = await getStudentParents(studentId)
+      setParents(linked)
+      setLinkMessage('Parent unlinked.')
+    } catch (err) {
+      setLinkError(err.message)
+    } finally {
+      setUnlinkingParentId(null)
     }
   }
 
@@ -285,6 +306,7 @@ export default function AdminStudentDetailPage() {
         </div>
       )}
       {linkMessage && <p className="grade-summary">{linkMessage}</p>}
+      {linkError && !showLinkParentForm && <ErrorBanner message={linkError} />}
       {showLinkParentForm && (
         <form className="card admin-form" onSubmit={handleLinkParent}>
           <label className="field">
@@ -375,6 +397,14 @@ export default function AdminStudentDetailPage() {
                     <Link className="back-link" to={`/admin/parents/${parent.id}`}>
                       Open →
                     </Link>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={unlinkingParentId === parent.id}
+                      onClick={() => handleUnlinkParent(parent)}
+                    >
+                      {unlinkingParentId === parent.id ? 'Unlinking...' : 'Unlink'}
+                    </button>
                   </td>
                 </tr>
               ))}

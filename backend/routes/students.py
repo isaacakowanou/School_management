@@ -272,7 +272,7 @@ def unlink_student_parent(
     student_id: UUID,
     parent_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     get_student_or_404(db, student_id)
     link = db.scalar(
@@ -284,6 +284,20 @@ def unlink_student_parent(
     if link is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent link not found")
 
+    old_value = {
+        "student_id": link.student_id,
+        "parent_id": link.parent_id,
+        "relationship": link.relationship,
+    }
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="parent_unlinked_from_student",
+        entity_type="student_parent",
+        entity_id=link.id,
+        old_value=old_value,
+        new_value=None,
+    )
     db.delete(link)
     db.commit()
     return StatusResponse(status="ok", message="Parent unlinked from student")

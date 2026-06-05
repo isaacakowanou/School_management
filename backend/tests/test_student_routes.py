@@ -397,6 +397,83 @@ class StudentRouteTests(unittest.TestCase):
             },
         )
 
+    def test_admin_can_unlink_parent_from_student(self):
+        student = self._create_student("UNLINK-STU-001")
+        link = StudentParent(student=student, parent=self.parent, relationship="Guardian")
+        self.db.add(link)
+        self.db.commit()
+
+        response = self.client.delete(
+            f"/api/v1/students/{student.id}/parents/{self.parent.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["message"], "Parent unlinked from student")
+        removed_link = self.db.scalar(
+            select(StudentParent).where(
+                StudentParent.student_id == student.id,
+                StudentParent.parent_id == self.parent.id,
+            )
+        )
+        self.assertIsNone(removed_link)
+
+    def test_non_admin_cannot_unlink_parent_from_student(self):
+        student = self._create_student("UNLINK-STU-NONADMIN")
+        self.db.add(StudentParent(student=student, parent=self.parent, relationship="Guardian"))
+        self.db.commit()
+
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.delete(
+                    f"/api/v1/students/{student.id}/parents/{self.parent.id}",
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_missing_parent_student_link_unlink_gets_404(self):
+        student = self._create_student("UNLINK-STU-MISSING")
+
+        response = self.client.delete(
+            f"/api/v1/students/{student.id}/parents/{self.parent.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "Parent link not found")
+
+    def test_unlink_parent_from_student_writes_audit_log(self):
+        student = self._create_student("UNLINK-STU-AUDIT")
+        link = StudentParent(student=student, parent=self.parent, relationship="Mother")
+        self.db.add(link)
+        self.db.commit()
+        link_id = link.id
+
+        response = self.client.delete(
+            f"/api/v1/students/{student.id}/parents/{self.parent.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "parent_unlinked_from_student",
+                AuditLog.entity_type == "student_parent",
+                AuditLog.entity_id == link_id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertEqual(
+            audit_log.old_value,
+            {
+                "student_id": str(student.id),
+                "parent_id": str(self.parent.id),
+                "relationship": "Mother",
+            },
+        )
+        self.assertIsNone(audit_log.new_value)
+
 
 if __name__ == "__main__":
     unittest.main()

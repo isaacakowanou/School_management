@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './client.js'
+import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/courses
 // For teachers the backend returns ONLY the courses assigned to them.
@@ -52,4 +52,9 @@ export function enrollStudentInCourse(courseId, studentId) {
     course_id: courseId,
     student_id: studentId,
   })
+}
+
+// DELETE /api/v1/courses/{course_id}/students/{student_id} (admin)
+export function unenrollStudentFromCourse(courseId, studentId) {
+  return apiDelete(`/courses/${courseId}/students/${studentId}`)
 }

@@ -96,6 +96,16 @@ export async function apiPut(path, body) {
   return response.json()
 }
 
+export async function apiDelete(path) {
+  const response = await rawFetch(path, {
+    method: 'DELETE',
+    headers: authHeaders({ Accept: 'application/json' }),
+  })
+  if (response.status === 401) throw handleUnauthorized()
+  if (!response.ok) throw await parseError(response)
+  return response.json()
+}
+
 export async function apiGetBlob(path) {
   const response = await rawFetch(path, {
     method: 'GET',

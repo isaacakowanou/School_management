@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listReports } from '../api/reports.js'
 import { formatGpa, formatPercent } from '../utils/format.js'
@@ -54,6 +54,16 @@ export default function AdminReportsPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [needsReviewOnly, setNeedsReviewOnly] = useState(false)
 
+  const refreshReports = useCallback(async () => {
+    try {
+      const data = await listReports()
+      setReports(data)
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     setError(null)
@@ -69,6 +79,21 @@ export default function AdminReportsPage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    function refreshWhenVisible() {
+      if (document.visibilityState === 'visible') {
+        refreshReports()
+      }
+    }
+
+    window.addEventListener('focus', refreshReports)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.removeEventListener('focus', refreshReports)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [refreshReports])
 
   const filtered = useMemo(() => {
     if (!reports) return []

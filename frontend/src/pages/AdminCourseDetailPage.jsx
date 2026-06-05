@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   enrollStudentInCourse,
@@ -113,6 +113,15 @@ export default function AdminCourseDetailPage() {
   const [savingGradeItemEdit, setSavingGradeItemEdit] = useState(false)
   const [gradeItemEditError, setGradeItemEditError] = useState(null)
 
+  const refreshCourseResults = useCallback(async () => {
+    try {
+      const refreshed = await listCourseResults(courseId)
+      setResults(refreshed)
+    } catch {
+      /* non-fatal: keep the current course detail view visible */
+    }
+  }, [courseId])
+
   useEffect(() => {
     let cancelled = false
     setError(null)
@@ -180,6 +189,21 @@ export default function AdminCourseDetailPage() {
       cancelled = true
     }
   }, [courseId])
+
+  useEffect(() => {
+    function refreshWhenVisible() {
+      if (document.visibilityState === 'visible') {
+        refreshCourseResults()
+      }
+    }
+
+    window.addEventListener('focus', refreshCourseResults)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.removeEventListener('focus', refreshCourseResults)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [refreshCourseResults])
 
   const studentNameById = useMemo(() => {
     const map = new Map()

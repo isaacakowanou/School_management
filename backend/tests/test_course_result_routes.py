@@ -242,6 +242,63 @@ class CourseResultRouteTests(unittest.TestCase):
         self.assertTrue(reports["CR001"]["needs_review"])
         self.assertFalse(reports["CR002"]["needs_review"])
 
+    def test_teacher_grade_update_recalculate_is_visible_to_admin_and_marks_report_stale(self):
+        original_calculated_at = self.student_one_result.calculated_at
+        grade = self.db.scalar(
+            select(Grade).where(
+                Grade.student_id == self.student_one.id,
+                Grade.grade_item_id == self.homework.id,
+            )
+        )
+
+        grade_response = self.client.put(
+            f"/api/v1/grades/{grade.id}",
+            headers=self._headers(self.teacher_user.email),
+            json={"score": 100},
+        )
+        self.assertEqual(grade_response.status_code, 200)
+        self.assertEqual(grade_response.json()["score"], 100)
+
+        recalc_response = self.client.post(
+            f"/api/v1/course-results/calculate/{self.course.id}/students",
+            headers=self._headers(self.teacher_user.email),
+            json={"student_ids": [str(self.student_one.id)]},
+        )
+        self.assertEqual(recalc_response.status_code, 200)
+        self.assertEqual(recalc_response.json()["calculated_count"], 1)
+        self.assertEqual(recalc_response.json()["results"][0]["average"], 95.0)
+
+        self.db.expire_all()
+        course_result = self.db.get(CourseResult, self.student_one_result.id)
+        self.assertEqual(course_result.average, 95.0)
+        self.assertEqual(course_result.letter_grade, "A")
+        self.assertGreater(course_result.calculated_at, original_calculated_at)
+
+        admin_results_response = self.client.get(
+            f"/api/v1/course-results/{self.course.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(admin_results_response.status_code, 200)
+        admin_results = {
+            result["student_id"]: result
+            for result in admin_results_response.json()
+        }
+        self.assertEqual(admin_results[str(self.student_one.id)]["average"], 95.0)
+        self.assertEqual(admin_results[str(self.student_one.id)]["letter_grade"], "A")
+
+        reports = self._report_list_by_student_number()
+        self.assertTrue(reports["CR001"]["needs_review"])
+
+        staleness_response = self.client.get(
+            f"/api/v1/reports/{self.student_one_report.id}/staleness",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(staleness_response.status_code, 200)
+        staleness = staleness_response.json()
+        self.assertTrue(staleness["is_stale"])
+        self.assertEqual(staleness["snapshot_overall_average"], 85.0)
+        self.assertEqual(staleness["current_overall_average"], 95.0)
+
     def test_whole_course_recalculation_still_updates_all_enrolled_students(self):
         original_one_calculated_at = self.student_one_result.calculated_at
         original_two_calculated_at = self.student_two_result.calculated_at

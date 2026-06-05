@@ -113,6 +113,21 @@ export default function AdminReportDetailPage() {
     }
   }, [reportId])
 
+  useEffect(() => {
+    function refreshWhenVisible() {
+      if (document.visibilityState === 'visible') {
+        loadStaleness()
+      }
+    }
+
+    window.addEventListener('focus', loadStaleness)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.removeEventListener('focus', loadStaleness)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [loadStaleness])
+
   // Run an action, surface a readable error, and refresh the report on success.
   async function runAction(name, fn, { refresh = true, successMessage = null } = {}) {
     setPending(name)

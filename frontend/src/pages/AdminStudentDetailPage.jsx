@@ -21,6 +21,7 @@ export default function AdminStudentDetailPage() {
   const [linking, setLinking] = useState(false)
   const [linkError, setLinkError] = useState(null)
   const [linkMessage, setLinkMessage] = useState(null)
+  const [showLinkParentForm, setShowLinkParentForm] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -33,6 +34,7 @@ export default function AdminStudentDetailPage() {
     setRelationship('')
     setLinkError(null)
     setLinkMessage(null)
+    setShowLinkParentForm(false)
 
     async function load() {
       try {
@@ -97,6 +99,7 @@ export default function AdminStudentDetailPage() {
       setParents(linked)
       setRelationship('')
       setLinkMessage('Parent linked.')
+      setShowLinkParentForm(false)
     } catch (err) {
       setLinkError(err.message)
     } finally {
@@ -136,58 +139,86 @@ export default function AdminStudentDetailPage() {
       </p>
 
       <h3 className="section-title">Parents</h3>
-      <form className="card admin-form" onSubmit={handleLinkParent}>
-        <label className="field">
-          <span>Parent</span>
-          <select
-            className="grade-input"
-            value={linkParentId}
-            onChange={(event) => setLinkParentId(event.target.value)}
-            disabled={linking || availableParents.length === 0}
-            required
-            style={{ width: '100%', textAlign: 'left' }}
-          >
-            {availableParents.length === 0 ? (
-              <option value="">No available parents</option>
-            ) : (
-              availableParents.map((parent) => (
-                <option key={parent.id} value={parent.id}>
-                  {parent.name} — {parent.email}
-                </option>
-              ))
-            )}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Relationship</span>
-          <select
-            className="grade-input"
-            value={relationship}
-            onChange={(event) => setRelationship(event.target.value)}
-            disabled={linking}
-            style={{ width: '100%', textAlign: 'left' }}
-          >
-            <option value="">Optional</option>
-            <option value="Mother">Mother</option>
-            <option value="Father">Father</option>
-            <option value="Guardian">Guardian</option>
-            <option value="Other">Other</option>
-          </select>
-        </label>
-
+      {!showLinkParentForm && (
         <div className="grade-actions">
           <button
-            type="submit"
+            type="button"
             className="btn btn-primary"
-            disabled={linking || availableParents.length === 0}
+            onClick={() => {
+              setLinkError(null)
+              setLinkMessage(null)
+              setShowLinkParentForm(true)
+            }}
           >
-            {linking ? 'Linking...' : 'Link parent'}
+            Link parent
           </button>
-          {linkMessage && <span className="grade-summary">{linkMessage}</span>}
         </div>
-        {linkError && <ErrorBanner message={linkError} />}
-      </form>
+      )}
+      {linkMessage && <p className="grade-summary">{linkMessage}</p>}
+      {showLinkParentForm && (
+        <form className="card admin-form" onSubmit={handleLinkParent}>
+          <label className="field">
+            <span>Parent</span>
+            <select
+              className="grade-input"
+              value={linkParentId}
+              onChange={(event) => setLinkParentId(event.target.value)}
+              disabled={linking || availableParents.length === 0}
+              required
+              style={{ width: '100%', textAlign: 'left' }}
+            >
+              {availableParents.length === 0 ? (
+                <option value="">No available parents</option>
+              ) : (
+                availableParents.map((parent) => (
+                  <option key={parent.id} value={parent.id}>
+                    {parent.name} — {parent.email}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Relationship</span>
+            <select
+              className="grade-input"
+              value={relationship}
+              onChange={(event) => setRelationship(event.target.value)}
+              disabled={linking}
+              style={{ width: '100%', textAlign: 'left' }}
+            >
+              <option value="">Optional</option>
+              <option value="Mother">Mother</option>
+              <option value="Father">Father</option>
+              <option value="Guardian">Guardian</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+
+          <div className="grade-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={linking || availableParents.length === 0}
+            >
+              {linking ? 'Linking...' : 'Link parent'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={linking}
+              onClick={() => {
+                setShowLinkParentForm(false)
+                setLinkError(null)
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+          {linkError && <ErrorBanner message={linkError} />}
+        </form>
+      )}
 
       {parents.length === 0 ? (
         <Empty message="No parents linked to this student." />

@@ -18,6 +18,23 @@ const EMPTY_GRADE_ITEM_FORM = {
   term: '',
 }
 
+const GRADE_ITEM_SUGGESTIONS = [
+  'Homework',
+  'Quiz',
+  'Exam',
+  'Midterm',
+  'Final',
+  'Project',
+  'Participation',
+]
+
+const TERM_SUGGESTIONS = ['Fall', 'Spring', 'Summer', 'Trimester 1', 'Trimester 2', 'Trimester 3']
+const WEIGHT_TOLERANCE = 0.005
+
+function formatWeight(value) {
+  return value.toFixed(2)
+}
+
 export default function AdminCourseDetailPage() {
   const { courseId } = useParams()
   const [course, setCourse] = useState(null)
@@ -31,10 +48,12 @@ export default function AdminCourseDetailPage() {
   const [enrolling, setEnrolling] = useState(false)
   const [enrollError, setEnrollError] = useState(null)
   const [enrollMessage, setEnrollMessage] = useState(null)
+  const [showEnrollForm, setShowEnrollForm] = useState(false)
   const [gradeItemForm, setGradeItemForm] = useState(EMPTY_GRADE_ITEM_FORM)
   const [addingGradeItem, setAddingGradeItem] = useState(false)
   const [gradeItemError, setGradeItemError] = useState(null)
   const [gradeItemMessage, setGradeItemMessage] = useState(null)
+  const [showGradeItemForm, setShowGradeItemForm] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -48,9 +67,11 @@ export default function AdminCourseDetailPage() {
     setEnrollStudentId('')
     setEnrollError(null)
     setEnrollMessage(null)
+    setShowEnrollForm(false)
     setGradeItemForm(EMPTY_GRADE_ITEM_FORM)
     setGradeItemError(null)
     setGradeItemMessage(null)
+    setShowGradeItemForm(false)
 
     async function load() {
       let courseData
@@ -128,6 +149,7 @@ export default function AdminCourseDetailPage() {
       const refreshed = await listCourseStudents(courseId)
       setStudents(refreshed)
       setEnrollMessage('Student enrolled.')
+      setShowEnrollForm(false)
     } catch (err) {
       setEnrollError(err.message)
     } finally {
@@ -175,6 +197,7 @@ export default function AdminCourseDetailPage() {
         term: gradeItemForm.term.trim(),
       })
       setGradeItemMessage('Grade item added.')
+      setShowGradeItemForm(false)
     } catch (err) {
       setGradeItemError(err.message)
     } finally {
@@ -201,6 +224,14 @@ export default function AdminCourseDetailPage() {
     )
   }
 
+  const totalWeight = gradeItems.reduce((sum, item) => sum + Number(item.weight || 0), 0)
+  const isWeightReady = Math.abs(totalWeight - 1) <= WEIGHT_TOLERANCE
+  const weightSummary = isWeightReady
+    ? `Grade item weights total ${formatWeight(totalWeight)}. Recalculation is ready.`
+    : totalWeight < 1
+      ? `Grade item weights total ${formatWeight(totalWeight)}. Missing ${formatWeight(1 - totalWeight)} before recalculation will work correctly.`
+      : `Grade item weights total ${formatWeight(totalWeight)}. Over by ${formatWeight(totalWeight - 1)} before recalculation will work correctly.`
+
   return (
     <section className="admin-page">
       <Link to="/admin/courses" className="back-link">
@@ -224,41 +255,69 @@ export default function AdminCourseDetailPage() {
       </p>
 
       <h3 className="section-title">Enrolled students</h3>
-      <form className="card admin-form" onSubmit={handleEnrollStudent}>
-        <label className="field">
-          <span>Student</span>
-          <select
-            className="grade-input"
-            value={enrollStudentId}
-            onChange={(event) => setEnrollStudentId(event.target.value)}
-            disabled={enrolling || availableStudents.length === 0}
-            required
-            style={{ width: '100%', textAlign: 'left' }}
-          >
-            {availableStudents.length === 0 ? (
-              <option value="">No available students</option>
-            ) : (
-              availableStudents.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {student.first_name} {student.last_name} — #{student.student_number}
-                </option>
-              ))
-            )}
-          </select>
-        </label>
-
+      {!showEnrollForm && (
         <div className="grade-actions">
           <button
-            type="submit"
+            type="button"
             className="btn btn-primary"
-            disabled={enrolling || availableStudents.length === 0}
+            onClick={() => {
+              setEnrollError(null)
+              setEnrollMessage(null)
+              setShowEnrollForm(true)
+            }}
           >
-            {enrolling ? 'Enrolling...' : 'Enroll student'}
+            Enroll student
           </button>
-          {enrollMessage && <span className="grade-summary">{enrollMessage}</span>}
         </div>
-        {enrollError && <ErrorBanner message={enrollError} />}
-      </form>
+      )}
+      {enrollMessage && <p className="grade-summary">{enrollMessage}</p>}
+      {showEnrollForm && (
+        <form className="card admin-form" onSubmit={handleEnrollStudent}>
+          <label className="field">
+            <span>Student</span>
+            <select
+              className="grade-input"
+              value={enrollStudentId}
+              onChange={(event) => setEnrollStudentId(event.target.value)}
+              disabled={enrolling || availableStudents.length === 0}
+              required
+              style={{ width: '100%', textAlign: 'left' }}
+            >
+              {availableStudents.length === 0 ? (
+                <option value="">No available students</option>
+              ) : (
+                availableStudents.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.first_name} {student.last_name} — #{student.student_number}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          <div className="grade-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={enrolling || availableStudents.length === 0}
+            >
+              {enrolling ? 'Enrolling...' : 'Enroll student'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={enrolling}
+              onClick={() => {
+                setShowEnrollForm(false)
+                setEnrollError(null)
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+          {enrollError && <ErrorBanner message={enrollError} />}
+        </form>
+      )}
 
       {students.length === 0 ? (
         <Empty message="No students enrolled in this course." />
@@ -294,73 +353,124 @@ export default function AdminCourseDetailPage() {
       )}
 
       <h3 className="section-title">Grade items</h3>
-      <form className="card admin-form" onSubmit={handleAddGradeItem}>
-        <label className="field">
-          <span>Title</span>
-          <input
-            value={gradeItemForm.title}
-            onChange={(event) => updateGradeItemField('title', event.target.value)}
-            disabled={addingGradeItem}
-            required
-          />
-        </label>
-
-        <label className="field">
-          <span>Category</span>
-          <input
-            value={gradeItemForm.category}
-            onChange={(event) => updateGradeItemField('category', event.target.value)}
-            disabled={addingGradeItem}
-            required
-          />
-        </label>
-
-        <label className="field">
-          <span>Max score</span>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            value={gradeItemForm.maxScore}
-            onChange={(event) => updateGradeItemField('maxScore', event.target.value)}
-            disabled={addingGradeItem}
-            required
-          />
-        </label>
-
-        <label className="field">
-          <span>Weight</span>
-          <input
-            type="number"
-            min="0.01"
-            max="1"
-            step="0.01"
-            value={gradeItemForm.weight}
-            onChange={(event) => updateGradeItemField('weight', event.target.value)}
-            disabled={addingGradeItem}
-            required
-          />
-          <p className="muted">0.30 = 30%</p>
-        </label>
-
-        <label className="field">
-          <span>Term</span>
-          <input
-            value={gradeItemForm.term}
-            onChange={(event) => updateGradeItemField('term', event.target.value)}
-            disabled={addingGradeItem}
-            required
-          />
-        </label>
-
+      {!showGradeItemForm && (
         <div className="grade-actions">
-          <button type="submit" className="btn btn-primary" disabled={addingGradeItem}>
-            {addingGradeItem ? 'Adding...' : 'Add grade item'}
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setGradeItemError(null)
+              setGradeItemMessage(null)
+              setShowGradeItemForm(true)
+            }}
+          >
+            Add grade item
           </button>
-          {gradeItemMessage && <span className="grade-summary">{gradeItemMessage}</span>}
         </div>
-        {gradeItemError && <ErrorBanner message={gradeItemError} />}
-      </form>
+      )}
+      {gradeItemMessage && <p className="grade-summary">{gradeItemMessage}</p>}
+      <div className="state state-empty weight-summary">
+        <strong>{weightSummary}</strong>
+        <p>Weights should add up to 1.00, for example 0.30 = 30%.</p>
+      </div>
+      {showGradeItemForm && (
+        <form className="card admin-form" onSubmit={handleAddGradeItem}>
+          <label className="field">
+            <span>Title</span>
+            <input
+              value={gradeItemForm.title}
+              onChange={(event) => updateGradeItemField('title', event.target.value)}
+              disabled={addingGradeItem}
+              list="grade-item-title-options"
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Category</span>
+            <input
+              value={gradeItemForm.category}
+              onChange={(event) => updateGradeItemField('category', event.target.value)}
+              disabled={addingGradeItem}
+              list="grade-item-category-options"
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Max score</span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={gradeItemForm.maxScore}
+              onChange={(event) => updateGradeItemField('maxScore', event.target.value)}
+              disabled={addingGradeItem}
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Weight</span>
+            <input
+              type="number"
+              min="0.01"
+              max="1"
+              step="0.01"
+              value={gradeItemForm.weight}
+              onChange={(event) => updateGradeItemField('weight', event.target.value)}
+              disabled={addingGradeItem}
+              required
+            />
+            <p className="muted">0.30 = 30%</p>
+          </label>
+
+          <label className="field">
+            <span>Term</span>
+            <input
+              value={gradeItemForm.term}
+              onChange={(event) => updateGradeItemField('term', event.target.value)}
+              disabled={addingGradeItem}
+              list="grade-item-term-options"
+              required
+            />
+          </label>
+
+          <datalist id="grade-item-title-options">
+            {GRADE_ITEM_SUGGESTIONS.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+          <datalist id="grade-item-category-options">
+            {GRADE_ITEM_SUGGESTIONS.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+          <datalist id="grade-item-term-options">
+            {TERM_SUGGESTIONS.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+
+          <div className="grade-actions">
+            <button type="submit" className="btn btn-primary" disabled={addingGradeItem}>
+              {addingGradeItem ? 'Adding...' : 'Add grade item'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={addingGradeItem}
+              onClick={() => {
+                setShowGradeItemForm(false)
+                setGradeItemError(null)
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+          {gradeItemError && <ErrorBanner message={gradeItemError} />}
+        </form>
+      )}
 
       {gradeItems.length === 0 ? (
         <Empty message="No grade items for this course." />

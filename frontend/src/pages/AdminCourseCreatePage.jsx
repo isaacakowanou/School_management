@@ -15,6 +15,19 @@ const EMPTY_FORM = {
   schoolYear: '',
 }
 
+const GRADE_LEVEL_SUGGESTIONS = [
+  'Grade 6',
+  'Grade 7',
+  'Grade 8',
+  'Grade 9',
+  'Grade 10',
+  'Grade 11',
+  'Grade 12',
+]
+
+const TERM_SUGGESTIONS = ['Fall', 'Spring', 'Summer', 'Trimester 1', 'Trimester 2', 'Trimester 3']
+const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
+
 export default function AdminCourseCreatePage() {
   const navigate = useNavigate()
   const [form, setForm] = useState(EMPTY_FORM)
@@ -143,6 +156,7 @@ export default function AdminCourseCreatePage() {
               value={form.gradeLevel}
               onChange={(event) => updateField('gradeLevel', event.target.value)}
               disabled={saving}
+              list="course-grade-level-options"
               required
             />
           </label>
@@ -153,6 +167,7 @@ export default function AdminCourseCreatePage() {
               value={form.term}
               onChange={(event) => updateField('term', event.target.value)}
               disabled={saving}
+              list="course-term-options"
               required
             />
           </label>
@@ -163,9 +178,26 @@ export default function AdminCourseCreatePage() {
               value={form.schoolYear}
               onChange={(event) => updateField('schoolYear', event.target.value)}
               disabled={saving}
+              list="course-school-year-options"
               required
             />
           </label>
+
+          <datalist id="course-grade-level-options">
+            {GRADE_LEVEL_SUGGESTIONS.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+          <datalist id="course-term-options">
+            {TERM_SUGGESTIONS.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+          <datalist id="course-school-year-options">
+            {SCHOOL_YEAR_SUGGESTIONS.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
 
           <div className="grade-actions">
             <button type="submit" className="btn btn-primary" disabled={saving}>

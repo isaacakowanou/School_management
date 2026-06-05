@@ -650,6 +650,14 @@ a.card:active {
   color: var(--danger-text);
 }
 
+.weight-summary {
+  text-align: left;
+}
+
+.weight-summary p {
+  margin: 4px 0 0;
+}
+
 .skipped-note {
   text-align: left;
   margin-top: 12px;

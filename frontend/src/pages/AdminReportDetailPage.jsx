@@ -429,32 +429,26 @@ export default function AdminReportDetailPage() {
 
       {/* ---- AI summary ---- */}
       <h3 className="section-title">Parent summary</h3>
-      {isDraft ? (
-        <div>
-          <textarea
-            className="field"
-            style={{ width: '100%', minHeight: 140, padding: '10px 12px' }}
-            value={summaryDraft}
-            onChange={(e) => setSummaryDraft(e.target.value)}
-            placeholder="Generate a summary above, or write one here…"
+      <div>
+        <textarea
+          className="field"
+          style={{ width: '100%', minHeight: 140, padding: '10px 12px' }}
+          value={summaryDraft}
+          onChange={(e) => setSummaryDraft(e.target.value)}
+          placeholder="Generate a summary above, or write one here…"
+          disabled={busy}
+        />
+        <div className="grade-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleSaveSummary}
             disabled={busy}
-          />
-          <div className="grade-actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleSaveSummary}
-              disabled={busy}
-            >
-              {pending === 'save' ? 'Saving…' : 'Save summary'}
-            </button>
-          </div>
+          >
+            {pending === 'save' ? 'Saving…' : 'Save summary'}
+          </button>
         </div>
-      ) : report.ai_summary ? (
-        <div className="card summary-card">{report.ai_summary}</div>
-      ) : (
-        <Empty message="No summary was set for this report." />
-      )}
+      </div>
     </section>
   )
 }

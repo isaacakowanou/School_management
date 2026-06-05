@@ -33,7 +33,15 @@ export function listReports() {
   return apiGet('/reports')
 }
 
-// PUT /api/v1/reports/{report_id}/summary -> save an edited AI summary (draft only)
+// POST /api/v1/reports/generate/{student_id} -> creates an admin draft report
+export function generateReport(studentId, { term, schoolYear }) {
+  return apiPost(`/reports/generate/${studentId}`, {
+    term,
+    school_year: schoolYear,
+  })
+}
+
+// PUT /api/v1/reports/{report_id}/summary -> save an edited parent-facing summary
 export function updateReportSummary(reportId, aiSummary) {
   return apiPut(`/reports/${reportId}/summary`, { ai_summary: aiSummary })
 }

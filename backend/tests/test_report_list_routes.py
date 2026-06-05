@@ -10,6 +10,7 @@ from auth import hash_password
 from database import get_db
 from main import app
 from models import (
+    AuditLog,
     Base,
     Course,
     CourseResult,
@@ -188,6 +189,38 @@ class ReportListRouteTests(unittest.TestCase):
         self.db.refresh(report_card)
         return report_card
 
+    def _create_student_with_course_result_no_report(self) -> Student:
+        student = Student(
+            first_name="New",
+            last_name="Student",
+            grade_level="Grade 12",
+            student_number="LIST-FIRST-REPORT",
+        )
+        course = Course(
+            name="First Report Course",
+            code="COURSE-FIRST-REPORT",
+            teacher=self.teacher,
+            grade_level="Grade 12",
+            term="Spring",
+            school_year="2026-2027",
+        )
+        self.db.add_all([student, course])
+        self.db.flush()
+        self.db.add(StudentParent(student=student, parent=self.parent, relationship="Guardian"))
+        self.db.add(
+            CourseResult(
+                student=student,
+                course=course,
+                term="Spring",
+                average=91.0,
+                letter_grade="A",
+                calculated_at=self.base_time,
+            )
+        )
+        self.db.commit()
+        self.db.refresh(student)
+        return student
+
     def _headers(self, email: str) -> dict[str, str]:
         response = self.client.post(
             "/api/v1/auth/login",
@@ -195,6 +228,25 @@ class ReportListRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+    def _report_course_snapshot(self, report_card_id) -> list[tuple[str, str, float, str]]:
+        self.db.expire_all()
+        report_card = self.db.get(ReportCard, report_card_id)
+        return sorted(
+            (
+                str(course.course_id),
+                course.course_name,
+                course.average,
+                course.letter_grade,
+            )
+            for course in report_card.courses
+        )
+
+    def _admin_report_list_item(self, report_card_id) -> dict:
+        response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
+        self.assertEqual(response.status_code, 200)
+        reports_by_id = {report["id"]: report for report in response.json()}
+        return reports_by_id[str(report_card_id)]
 
     def test_admin_report_list_includes_student_display_fields(self):
         response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
@@ -390,6 +442,211 @@ class ReportListRouteTests(unittest.TestCase):
         self.assertNotIn("student_name", report)
         self.assertNotIn("student_number", report)
         self.assertNotIn("needs_review", report)
+
+    def test_admin_can_edit_summary_on_approved_report_without_changing_snapshot(self):
+        old_courses = self._report_course_snapshot(self.report_card.id)
+
+        response = self.client.put(
+            f"/api/v1/reports/{self.report_card.id}/summary",
+            json={"ai_summary": "Updated parent summary."},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()
+        self.assertEqual(report["ai_summary"], "Updated parent summary.")
+        self.assertEqual(report["status"], "approved")
+        self.assertEqual(report["overall_average"], 92.5)
+        self.assertEqual(report["gpa"], 4.0)
+        self.assertEqual(
+            sorted(
+                (
+                    course["course_id"],
+                    course["course_name"],
+                    course["average"],
+                    course["letter_grade"],
+                )
+                for course in report["courses"]
+            ),
+            old_courses,
+        )
+
+        self.db.expire_all()
+        saved_report = self.db.get(ReportCard, self.report_card.id)
+        self.assertEqual(saved_report.status, "approved")
+        self.assertEqual(saved_report.overall_average, 92.5)
+        self.assertEqual(saved_report.gpa, 4.0)
+        self.assertEqual(self._report_course_snapshot(self.report_card.id), old_courses)
+        audit_log = (
+            self.db.query(AuditLog)
+            .filter(
+                AuditLog.action == "summary_edited",
+                AuditLog.entity_id == self.report_card.id,
+            )
+            .one()
+        )
+        self.assertEqual(audit_log.old_value, {"ai_summary": "Strong work."})
+        self.assertEqual(audit_log.new_value, {"ai_summary": "Updated parent summary."})
+
+        parent_response = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_response.status_code, 200)
+        self.assertEqual(parent_response.json()["ai_summary"], "Updated parent summary.")
+
+    def test_admin_can_edit_summary_on_sent_report_without_changing_status(self):
+        self.report_card.status = "sent"
+        self.report_card.sent_at = self.base_time + timedelta(hours=2)
+        self.db.commit()
+
+        response = self.client.put(
+            f"/api/v1/reports/{self.report_card.id}/summary",
+            json={"ai_summary": "Sent report summary update."},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()
+        self.assertEqual(report["ai_summary"], "Sent report summary update.")
+        self.assertEqual(report["status"], "sent")
+        self.assertEqual(report["overall_average"], 92.5)
+        self.assertEqual(report["gpa"], 4.0)
+
+        parent_response = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_response.status_code, 200)
+        self.assertEqual(parent_response.json()["ai_summary"], "Sent report summary update.")
+
+    def test_admin_can_edit_draft_summary_without_changing_parent_visibility(self):
+        student = self._create_student_with_course_result_no_report()
+        generate_response = self.client.post(
+            f"/api/v1/reports/generate/{student.id}",
+            json={"term": "Spring", "school_year": "2026-2027"},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(generate_response.status_code, 201)
+        report_id = generate_response.json()["id"]
+
+        response = self.client.put(
+            f"/api/v1/reports/{report_id}/summary",
+            json={"ai_summary": "Draft parent summary."},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["ai_summary"], "Draft parent summary.")
+        self.assertEqual(response.json()["status"], "draft")
+
+        parent_list_response = self.client.get(
+            f"/api/v1/reports/student/{student.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_list_response.status_code, 200)
+        self.assertEqual(parent_list_response.json(), [])
+
+        parent_detail_response = self.client.get(
+            f"/api/v1/reports/{report_id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_detail_response.status_code, 403)
+
+    def test_summary_edit_does_not_clear_needs_review_or_staleness(self):
+        self.course_result.average = 84.0
+        self.course_result.letter_grade = "B"
+        self.course_result.calculated_at = self.base_time + timedelta(hours=2)
+        self.db.commit()
+
+        self.assertTrue(self._admin_report_list_item(self.report_card.id)["needs_review"])
+        before_staleness = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}/staleness",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(before_staleness.status_code, 200)
+        self.assertTrue(before_staleness.json()["is_stale"])
+
+        response = self.client.put(
+            f"/api/v1/reports/{self.report_card.id}/summary",
+            json={"ai_summary": "Summary changed while stale."},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()
+        self.assertEqual(report["ai_summary"], "Summary changed while stale.")
+        self.assertEqual(report["status"], "approved")
+        self.assertEqual(report["overall_average"], 92.5)
+        self.assertEqual(report["gpa"], 4.0)
+        self.assertTrue(self._admin_report_list_item(self.report_card.id)["needs_review"])
+
+        after_staleness = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}/staleness",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(after_staleness.status_code, 200)
+        self.assertTrue(after_staleness.json()["is_stale"])
+
+    def test_parent_cannot_edit_report_summary(self):
+        response = self.client.put(
+            f"/api/v1/reports/{self.report_card.id}/summary",
+            json={"ai_summary": "Parent edit attempt."},
+            headers=self._headers(self.parent_user.email),
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_generated_first_report_is_draft_until_admin_approves(self):
+        student = self._create_student_with_course_result_no_report()
+
+        generate_response = self.client.post(
+            f"/api/v1/reports/generate/{student.id}",
+            json={"term": "Spring", "school_year": "2026-2027"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(generate_response.status_code, 201)
+        report = generate_response.json()
+        self.assertEqual(report["student_id"], str(student.id))
+        self.assertEqual(report["term"], "Spring")
+        self.assertEqual(report["school_year"], "2026-2027")
+        self.assertEqual(report["overall_average"], 91.0)
+        self.assertEqual(report["status"], "draft")
+
+        parent_draft_list_response = self.client.get(
+            f"/api/v1/reports/student/{student.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_draft_list_response.status_code, 200)
+        self.assertEqual(parent_draft_list_response.json(), [])
+
+        parent_draft_detail_response = self.client.get(
+            f"/api/v1/reports/{report['id']}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_draft_detail_response.status_code, 403)
+
+        approve_response = self.client.post(
+            f"/api/v1/reports/{report['id']}/approve",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.json()["status"], "approved")
+
+        parent_approved_list_response = self.client.get(
+            f"/api/v1/reports/student/{student.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_approved_list_response.status_code, 200)
+        self.assertEqual(len(parent_approved_list_response.json()), 1)
+        self.assertEqual(parent_approved_list_response.json()[0]["id"], report["id"])
+
+        parent_approved_detail_response = self.client.get(
+            f"/api/v1/reports/{report['id']}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_approved_detail_response.status_code, 200)
 
 
 if __name__ == "__main__":

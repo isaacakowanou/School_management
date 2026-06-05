@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getStudent, getStudentParents, linkStudentParent, unlinkStudentParent, updateStudent } from '../api/students.js'
+import {
+  getStudent,
+  getStudentParents,
+  linkStudentParent,
+  unlinkStudentParent,
+  updateStudent,
+} from '../api/students.js'
 import { listParents } from '../api/parents.js'
-import { getStudentReports } from '../api/reports.js'
+import { getCourse } from '../api/courses.js'
+import { listStudentCourseResults } from '../api/courseResults.js'
+import { generateReport, getStudentReports } from '../api/reports.js'
 import { formatGpa, formatPercent } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -18,12 +26,21 @@ function studentToForm(student) {
   }
 }
 
+function reportPeriodKey(period) {
+  return `${period.term}__${period.schoolYear}`
+}
+
 export default function AdminStudentDetailPage() {
   const { studentId } = useParams()
   const [student, setStudent] = useState(null)
   const [parents, setParents] = useState([])
   const [allParents, setAllParents] = useState([])
   const [reports, setReports] = useState([])
+  const [reportPeriods, setReportPeriods] = useState([])
+  const [selectedReportPeriod, setSelectedReportPeriod] = useState('')
+  const [generatingReport, setGeneratingReport] = useState(false)
+  const [reportError, setReportError] = useState(null)
+  const [reportMessage, setReportMessage] = useState(null)
   const [error, setError] = useState(null)
   const [linkParentId, setLinkParentId] = useState('')
   const [relationship, setRelationship] = useState('')
@@ -45,6 +62,11 @@ export default function AdminStudentDetailPage() {
     setParents([])
     setAllParents([])
     setReports([])
+    setReportPeriods([])
+    setSelectedReportPeriod('')
+    setGeneratingReport(false)
+    setReportError(null)
+    setReportMessage(null)
     setLinkParentId('')
     setRelationship('')
     setLinkError(null)
@@ -68,15 +90,46 @@ export default function AdminStudentDetailPage() {
         return
       }
       // Related sections are best-effort; one failing won't blank the page.
-      const [linkedParents, studentReports, parentOptions] = await Promise.allSettled([
+      const [linkedParents, studentReports, parentOptions, courseResults] = await Promise.allSettled([
         getStudentParents(studentId),
         getStudentReports(studentId),
         listParents(),
+        listStudentCourseResults(studentId),
       ])
       if (cancelled) return
       if (linkedParents.status === 'fulfilled') setParents(linkedParents.value)
       if (studentReports.status === 'fulfilled') setReports(studentReports.value)
       if (parentOptions.status === 'fulfilled') setAllParents(parentOptions.value)
+      if (courseResults.status !== 'fulfilled') return
+
+      const uniqueCourseIds = Array.from(
+        new Set(courseResults.value.map((result) => result.course_id)),
+      )
+      const courseDetails = await Promise.allSettled(uniqueCourseIds.map((courseId) => getCourse(courseId)))
+      if (cancelled) return
+
+      const courseById = new Map()
+      courseDetails.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          courseById.set(result.value.id, result.value)
+        }
+      })
+
+      const periodsByKey = new Map()
+      for (const result of courseResults.value) {
+        const course = courseById.get(result.course_id)
+        if (!course?.school_year) continue
+        const period = {
+          term: result.term,
+          schoolYear: course.school_year,
+        }
+        periodsByKey.set(reportPeriodKey(period), period)
+      }
+      const periods = Array.from(periodsByKey.values()).sort((a, b) =>
+        `${b.schoolYear} ${b.term}`.localeCompare(`${a.schoolYear} ${a.term}`),
+      )
+      setReportPeriods(periods)
+      setSelectedReportPeriod(periods[0] ? reportPeriodKey(periods[0]) : '')
     }
 
     load()
@@ -100,6 +153,11 @@ export default function AdminStudentDetailPage() {
       setLinkParentId(availableParents[0].id)
     }
   }, [availableParents, linkParentId])
+
+  const selectedReportPeriodData = useMemo(
+    () => reportPeriods.find((period) => reportPeriodKey(period) === selectedReportPeriod) || null,
+    [reportPeriods, selectedReportPeriod],
+  )
 
   function updateEditField(field, value) {
     setEditForm((current) => ({ ...current, [field]: value }))
@@ -185,6 +243,27 @@ export default function AdminStudentDetailPage() {
       setLinkError(err.message)
     } finally {
       setUnlinkingParentId(null)
+    }
+  }
+
+  async function handleGenerateReport() {
+    if (!selectedReportPeriodData) {
+      setReportError('Choose a term and school year to generate.')
+      return
+    }
+
+    setGeneratingReport(true)
+    setReportError(null)
+    setReportMessage(null)
+    try {
+      await generateReport(studentId, selectedReportPeriodData)
+      const refreshed = await getStudentReports(studentId)
+      setReports(refreshed)
+      setReportMessage('Draft report generated.')
+    } catch (err) {
+      setReportError(err.message)
+    } finally {
+      setGeneratingReport(false)
     }
   }
 
@@ -414,8 +493,48 @@ export default function AdminStudentDetailPage() {
       )}
 
       <h3 className="section-title">Reports</h3>
+      {reportMessage && <p className="grade-summary">{reportMessage}</p>}
+      {reportError && <ErrorBanner message={reportError} />}
       {reports.length === 0 ? (
-        <Empty message="No reports for this student." />
+        <>
+          {reportPeriods.length > 0 && (
+            <div className="grade-actions">
+              {reportPeriods.length > 1 && (
+                <label className="field" style={{ marginBottom: 0 }}>
+                  <span>Report period</span>
+                  <select
+                    className="grade-input"
+                    value={selectedReportPeriod}
+                    onChange={(event) => setSelectedReportPeriod(event.target.value)}
+                    disabled={generatingReport}
+                    style={{ width: 'auto', textAlign: 'left' }}
+                  >
+                    {reportPeriods.map((period) => (
+                      <option key={reportPeriodKey(period)} value={reportPeriodKey(period)}>
+                        {period.term} · {period.schoolYear}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={generatingReport || !selectedReportPeriodData}
+                onClick={handleGenerateReport}
+              >
+                {generatingReport ? 'Generating...' : 'Generate report'}
+              </button>
+            </div>
+          )}
+          <Empty
+            message={
+              reportPeriods.length > 0
+                ? 'No reports for this student yet.'
+                : 'No reports for this student. Calculate course results before generating a report.'
+            }
+          />
+        </>
       ) : (
         <div className="table-scroll">
           <table className="table">

@@ -350,7 +350,6 @@ def update_report_summary_route(
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
-    ensure_report_is_draft(report_card)
     old_summary, new_summary = update_report_summary(report_card, payload)
     log_summary_edit_if_needed(db, current_user.id, report_card, payload, old_summary, new_summary)
 

@@ -70,6 +70,25 @@ def validate_grade_item_values(max_score: float | None = None, weight: float | N
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="weight must be greater than 0 and at most 1")
 
 
+def get_payload_fields(payload) -> set[str]:
+    fields = getattr(payload, "model_fields_set", None)
+    if fields is None:
+        fields = getattr(payload, "__fields_set__", set())
+    return fields
+
+
+def grade_item_audit_value(grade_item: GradeItem) -> dict:
+    return {
+        "course_id": grade_item.course_id,
+        "title": grade_item.title,
+        "category": grade_item.category,
+        "max_score": grade_item.max_score,
+        "weight": grade_item.weight,
+        "term": grade_item.term,
+        "due_date": grade_item.due_date,
+    }
+
+
 @router.get("/courses/{course_id}/grade-items", response_model=list[GradeItemResponse])
 def list_grade_items(
     course_id: UUID,
@@ -140,23 +159,38 @@ def update_grade_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GradeItemResponse:
+    updated_fields = get_payload_fields(payload)
     validate_grade_item_values(max_score=payload.max_score, weight=payload.weight)
     grade_item = get_grade_item_or_404(db, grade_item_id)
     if not can_manage_course_grade_items(db, current_user, grade_item.course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
+    old_value = grade_item_audit_value(grade_item)
+
     if payload.title is not None:
-        grade_item.title = payload.title
+        grade_item.title = clean_required_text(payload.title, "title")
     if payload.category is not None:
-        grade_item.category = payload.category
+        grade_item.category = clean_required_text(payload.category, "category")
     if payload.max_score is not None:
         grade_item.max_score = payload.max_score
     if payload.weight is not None:
         grade_item.weight = payload.weight
     if payload.term is not None:
-        grade_item.term = payload.term
-    if payload.due_date is not None:
+        grade_item.term = clean_required_text(payload.term, "term")
+    if "due_date" in updated_fields:
         grade_item.due_date = payload.due_date
+
+    new_value = grade_item_audit_value(grade_item)
+    if new_value != old_value:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="grade_item_updated",
+            entity_type="grade_item",
+            entity_id=grade_item.id,
+            old_value=old_value,
+            new_value=new_value,
+        )
 
     db.commit()
     db.refresh(grade_item)

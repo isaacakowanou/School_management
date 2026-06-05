@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -107,6 +108,20 @@ class GradeItemRouteTests(unittest.TestCase):
             "weight": 0.3,
             "term": "Fall",
         }
+
+    def _create_grade_item(self, title: str = "Existing Item") -> GradeItem:
+        grade_item = GradeItem(
+            course=self.course,
+            title=title,
+            category="Homework",
+            max_score=100,
+            weight=0.3,
+            term="Fall",
+        )
+        self.db.add(grade_item)
+        self.db.commit()
+        self.db.refresh(grade_item)
+        return grade_item
 
     def test_admin_can_create_grade_item(self):
         response = self.client.post(
@@ -277,6 +292,133 @@ class GradeItemRouteTests(unittest.TestCase):
         )
         self.assertIsNotNone(audit_log)
         self.assertEqual(audit_log.new_value["due_date"], "2026-10-15")
+
+    def test_admin_can_update_grade_item(self):
+        grade_item = self._create_grade_item("Editable Item")
+
+        response = self.client.put(
+            f"/api/v1/grade-items/{grade_item.id}",
+            json={
+                "title": "  Edited Homework  ",
+                "category": "  Practice  ",
+                "max_score": 50,
+                "weight": 0.2,
+                "term": "  Spring  ",
+                "due_date": "2026-11-20",
+            },
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["title"], "Edited Homework")
+        self.assertEqual(data["category"], "Practice")
+        self.assertEqual(data["max_score"], 50)
+        self.assertEqual(data["weight"], 0.2)
+        self.assertEqual(data["term"], "Spring")
+        self.assertEqual(data["due_date"], "2026-11-20")
+
+    def test_assigned_teacher_can_update_grade_item(self):
+        grade_item = self._create_grade_item("Teacher Editable")
+
+        response = self.client.put(
+            f"/api/v1/grade-items/{grade_item.id}",
+            json={"title": "Teacher Edited"},
+            headers=self._headers(self.teacher_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["title"], "Teacher Edited")
+
+    def test_unauthorized_user_cannot_update_grade_item(self):
+        grade_item = self._create_grade_item("Blocked Editable")
+
+        for user in [self.other_teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.put(
+                    f"/api/v1/grade-items/{grade_item.id}",
+                    json={"title": f"Blocked {user.role}"},
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_update_grade_item_rejects_empty_text_fields(self):
+        grade_item = self._create_grade_item("Empty Editable")
+
+        for field in ["title", "category", "term"]:
+            with self.subTest(field=field):
+                response = self.client.put(
+                    f"/api/v1/grade-items/{grade_item.id}",
+                    json={field: " "},
+                    headers=self._headers(self.admin_user.email),
+                )
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.json()["detail"], f"{field} cannot be empty")
+
+    def test_update_grade_item_rejects_invalid_max_score_or_weight(self):
+        grade_item = self._create_grade_item("Invalid Editable")
+
+        invalid_max_score = self.client.put(
+            f"/api/v1/grade-items/{grade_item.id}",
+            json={"max_score": 0},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(invalid_max_score.status_code, 400)
+        self.assertEqual(invalid_max_score.json()["detail"], "max_score must be greater than 0")
+
+        invalid_weight = self.client.put(
+            f"/api/v1/grade-items/{grade_item.id}",
+            json={"weight": 0},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(invalid_weight.status_code, 400)
+        self.assertEqual(invalid_weight.json()["detail"], "weight must be greater than 0 and at most 1")
+
+        too_large_weight = self.client.put(
+            f"/api/v1/grade-items/{grade_item.id}",
+            json={"weight": 1.1},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(too_large_weight.status_code, 400)
+        self.assertEqual(too_large_weight.json()["detail"], "weight must be greater than 0 and at most 1")
+
+    def test_update_grade_item_can_clear_due_date(self):
+        grade_item = self._create_grade_item("Due Date Editable")
+        grade_item.due_date = date(2026, 10, 15)
+        self.db.commit()
+
+        response = self.client.put(
+            f"/api/v1/grade-items/{grade_item.id}",
+            json={"due_date": None},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["due_date"])
+
+    def test_update_grade_item_writes_audit_log(self):
+        grade_item = self._create_grade_item("Audit Editable")
+
+        response = self.client.put(
+            f"/api/v1/grade-items/{grade_item.id}",
+            json={"title": "Audit Updated", "due_date": "2026-12-01"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "grade_item_updated",
+                AuditLog.entity_type == "grade_item",
+                AuditLog.entity_id == grade_item.id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertEqual(audit_log.old_value["title"], "Audit Editable")
+        self.assertIsNone(audit_log.old_value["due_date"])
+        self.assertEqual(audit_log.new_value["title"], "Audit Updated")
+        self.assertEqual(audit_log.new_value["due_date"], "2026-12-01")
 
 
 if __name__ == "__main__":

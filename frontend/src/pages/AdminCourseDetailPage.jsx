@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { enrollStudentInCourse, getCourse, listCourseStudents, updateCourse } from '../api/courses.js'
 import { listStudents } from '../api/students.js'
 import { getTeacher, listTeachers } from '../api/teachers.js'
-import { createGradeItem, listGradeItems } from '../api/gradeItems.js'
+import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
 import { formatPercent } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
@@ -65,6 +65,17 @@ function courseToForm(course) {
   }
 }
 
+function gradeItemToForm(gradeItem) {
+  return {
+    title: gradeItem?.title || '',
+    category: gradeItem?.category || '',
+    maxScore: gradeItem?.max_score != null ? String(gradeItem.max_score) : '',
+    weight: gradeItem?.weight != null ? String(gradeItem.weight) : '',
+    term: gradeItem?.term || '',
+    dueDate: gradeItem?.due_date || '',
+  }
+}
+
 export default function AdminCourseDetailPage() {
   const { courseId } = useParams()
   const [course, setCourse] = useState(null)
@@ -90,6 +101,10 @@ export default function AdminCourseDetailPage() {
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState(null)
   const [editMessage, setEditMessage] = useState(null)
+  const [editingGradeItemId, setEditingGradeItemId] = useState(null)
+  const [editGradeItemForm, setEditGradeItemForm] = useState(gradeItemToForm(null))
+  const [savingGradeItemEdit, setSavingGradeItemEdit] = useState(false)
+  const [gradeItemEditError, setGradeItemEditError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -114,6 +129,10 @@ export default function AdminCourseDetailPage() {
     setSavingEdit(false)
     setEditError(null)
     setEditMessage(null)
+    setEditingGradeItemId(null)
+    setEditGradeItemForm(gradeItemToForm(null))
+    setSavingGradeItemEdit(false)
+    setGradeItemEditError(null)
 
     async function load() {
       let courseData
@@ -254,6 +273,10 @@ export default function AdminCourseDetailPage() {
     setGradeItemForm((current) => ({ ...current, [field]: value }))
   }
 
+  function updateEditGradeItemField(field, value) {
+    setEditGradeItemForm((current) => ({ ...current, [field]: value }))
+  }
+
   async function handleAddGradeItem(event) {
     event.preventDefault()
     setGradeItemError(null)
@@ -295,6 +318,47 @@ export default function AdminCourseDetailPage() {
       setGradeItemError(err.message)
     } finally {
       setAddingGradeItem(false)
+    }
+  }
+
+  async function handleEditGradeItem(event, gradeItemId) {
+    event.preventDefault()
+    setGradeItemEditError(null)
+    setGradeItemMessage(null)
+
+    const maxScore = Number(editGradeItemForm.maxScore)
+    const weight = Number(editGradeItemForm.weight)
+    if (
+      !editGradeItemForm.title.trim() ||
+      !editGradeItemForm.category.trim() ||
+      !editGradeItemForm.term.trim() ||
+      !Number.isFinite(maxScore) ||
+      !Number.isFinite(weight)
+    ) {
+      setGradeItemEditError('Title, category, max score, weight, and term are required.')
+      return
+    }
+    if (maxScore <= 0) {
+      setGradeItemEditError('Max score must be greater than 0.')
+      return
+    }
+    if (weight <= 0 || weight > 1) {
+      setGradeItemEditError('Weight must be greater than 0 and at most 1.')
+      return
+    }
+
+    setSavingGradeItemEdit(true)
+    try {
+      await updateGradeItem(gradeItemId, editGradeItemForm)
+      const refreshed = await listGradeItems(courseId)
+      setGradeItems(refreshed)
+      setGradeItemMessage('Grade item updated.')
+      setEditingGradeItemId(null)
+      setEditGradeItemForm(gradeItemToForm(null))
+    } catch (err) {
+      setGradeItemEditError(err.message)
+    } finally {
+      setSavingGradeItemEdit(false)
     }
   }
 
@@ -577,6 +641,8 @@ export default function AdminCourseDetailPage() {
             onClick={() => {
               setGradeItemError(null)
               setGradeItemMessage(null)
+              setEditingGradeItemId(null)
+              setGradeItemEditError(null)
               setShowGradeItemForm(true)
             }}
           >
@@ -701,18 +767,151 @@ export default function AdminCourseDetailPage() {
                 <th className="num">Weight</th>
                 <th>Term</th>
                 <th>Due date</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {gradeItems.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.title}</td>
-                  <td className="nowrap">{item.category}</td>
-                  <td className="num">{item.max_score}</td>
-                  <td className="num">{item.weight}</td>
-                  <td className="nowrap">{item.term}</td>
-                  <td className="nowrap">{item.due_date || '—'}</td>
-                </tr>
+                <Fragment key={item.id}>
+                  <tr>
+                    <td>{item.title}</td>
+                    <td className="nowrap">{item.category}</td>
+                    <td className="num">{item.max_score}</td>
+                    <td className="num">{item.weight}</td>
+                    <td className="nowrap">{item.term}</td>
+                    <td className="nowrap">{item.due_date || '—'}</td>
+                    <td className="nowrap">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={savingGradeItemEdit}
+                        onClick={() => {
+                          setShowGradeItemForm(false)
+                          setGradeItemError(null)
+                          setGradeItemMessage(null)
+                          setGradeItemEditError(null)
+                          setEditGradeItemForm(gradeItemToForm(item))
+                          setEditingGradeItemId(item.id)
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                  {editingGradeItemId === item.id && (
+                    <tr>
+                      <td colSpan="7">
+                        <form className="card admin-form" onSubmit={(event) => handleEditGradeItem(event, item.id)}>
+                          <label className="field">
+                            <span>Title</span>
+                            <input
+                              value={editGradeItemForm.title}
+                              onChange={(event) => updateEditGradeItemField('title', event.target.value)}
+                              disabled={savingGradeItemEdit}
+                              list="grade-item-edit-title-options"
+                              required
+                            />
+                          </label>
+
+                          <label className="field">
+                            <span>Category</span>
+                            <input
+                              value={editGradeItemForm.category}
+                              onChange={(event) => updateEditGradeItemField('category', event.target.value)}
+                              disabled={savingGradeItemEdit}
+                              list="grade-item-edit-category-options"
+                              required
+                            />
+                          </label>
+
+                          <label className="field">
+                            <span>Max score</span>
+                            <input
+                              type="number"
+                              min="0.01"
+                              step="any"
+                              value={editGradeItemForm.maxScore}
+                              onChange={(event) => updateEditGradeItemField('maxScore', event.target.value)}
+                              disabled={savingGradeItemEdit}
+                              required
+                            />
+                          </label>
+
+                          <label className="field">
+                            <span>Weight</span>
+                            <input
+                              type="number"
+                              min="0.01"
+                              max="1"
+                              step="0.01"
+                              value={editGradeItemForm.weight}
+                              onChange={(event) => updateEditGradeItemField('weight', event.target.value)}
+                              disabled={savingGradeItemEdit}
+                              required
+                            />
+                            <p className="muted">0.30 = 30%</p>
+                          </label>
+
+                          <label className="field">
+                            <span>Term</span>
+                            <input
+                              value={editGradeItemForm.term}
+                              onChange={(event) => updateEditGradeItemField('term', event.target.value)}
+                              disabled={savingGradeItemEdit}
+                              list="grade-item-edit-term-options"
+                              required
+                            />
+                          </label>
+
+                          <label className="field">
+                            <span>Due date</span>
+                            <input
+                              type="date"
+                              value={editGradeItemForm.dueDate}
+                              onChange={(event) => updateEditGradeItemField('dueDate', event.target.value)}
+                              disabled={savingGradeItemEdit}
+                            />
+                          </label>
+
+                          <datalist id="grade-item-edit-title-options">
+                            {GRADE_ITEM_SUGGESTIONS.map((value) => (
+                              <option key={value} value={value} />
+                            ))}
+                          </datalist>
+                          <datalist id="grade-item-edit-category-options">
+                            {GRADE_ITEM_SUGGESTIONS.map((value) => (
+                              <option key={value} value={value} />
+                            ))}
+                          </datalist>
+                          <datalist id="grade-item-edit-term-options">
+                            {TERM_SUGGESTIONS.map((value) => (
+                              <option key={value} value={value} />
+                            ))}
+                          </datalist>
+
+                          <div className="grade-actions">
+                            <button type="submit" className="btn btn-primary" disabled={savingGradeItemEdit}>
+                              {savingGradeItemEdit ? 'Saving...' : 'Save changes'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              disabled={savingGradeItemEdit}
+                              onClick={() => {
+                                setEditingGradeItemId(null)
+                                setEditGradeItemForm(gradeItemToForm(null))
+                                setGradeItemEditError(null)
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                          {gradeItemEditError && <ErrorBanner message={gradeItemEditError} />}
+                        </form>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

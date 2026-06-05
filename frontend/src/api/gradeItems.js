@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './client.js'
+import { apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/courses/{course_id}/grade-items
 // Read-only for the teacher portal in this pass.
@@ -15,5 +15,17 @@ export function createGradeItem(courseId, { title, category, maxScore, weight, t
     max_score: Number(maxScore),
     weight: Number(weight),
     term: term.trim(),
+  })
+}
+
+// PUT /api/v1/grade-items/{grade_item_id} (admin or assigned teacher)
+export function updateGradeItem(gradeItemId, { title, category, maxScore, weight, term, dueDate }) {
+  return apiPut(`/grade-items/${gradeItemId}`, {
+    title: title.trim(),
+    category: category.trim(),
+    max_score: Number(maxScore),
+    weight: Number(weight),
+    term: term.trim(),
+    due_date: dueDate ? dueDate : null,
   })
 }

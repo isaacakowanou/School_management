@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getStudent, getStudentParents, linkStudentParent } from '../api/students.js'
+import { getStudent, getStudentParents, linkStudentParent, updateStudent } from '../api/students.js'
 import { listParents } from '../api/parents.js'
 import { getStudentReports } from '../api/reports.js'
 import { formatGpa, formatPercent } from '../utils/format.js'
@@ -8,6 +8,15 @@ import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+
+function studentToForm(student) {
+  return {
+    firstName: student?.first_name || '',
+    lastName: student?.last_name || '',
+    studentNumber: student?.student_number || '',
+    gradeLevel: student?.grade_level || '',
+  }
+}
 
 export default function AdminStudentDetailPage() {
   const { studentId } = useParams()
@@ -22,6 +31,11 @@ export default function AdminStudentDetailPage() {
   const [linkError, setLinkError] = useState(null)
   const [linkMessage, setLinkMessage] = useState(null)
   const [showLinkParentForm, setShowLinkParentForm] = useState(false)
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [editForm, setEditForm] = useState(studentToForm(null))
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState(null)
+  const [editMessage, setEditMessage] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -35,12 +49,18 @@ export default function AdminStudentDetailPage() {
     setLinkError(null)
     setLinkMessage(null)
     setShowLinkParentForm(false)
+    setShowEditForm(false)
+    setEditForm(studentToForm(null))
+    setSavingEdit(false)
+    setEditError(null)
+    setEditMessage(null)
 
     async function load() {
       try {
         const data = await getStudent(studentId)
         if (cancelled) return
         setStudent(data)
+        setEditForm(studentToForm(data))
       } catch (err) {
         if (!cancelled) setError(err.message)
         return
@@ -78,6 +98,46 @@ export default function AdminStudentDetailPage() {
       setLinkParentId(availableParents[0].id)
     }
   }, [availableParents, linkParentId])
+
+  function updateEditField(field, value) {
+    setEditForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function cancelEdit() {
+    setEditForm(studentToForm(student))
+    setEditError(null)
+    setShowEditForm(false)
+  }
+
+  async function handleEditStudent(event) {
+    event.preventDefault()
+    setEditError(null)
+    setEditMessage(null)
+
+    if (
+      !editForm.firstName.trim() ||
+      !editForm.lastName.trim() ||
+      !editForm.studentNumber.trim() ||
+      !editForm.gradeLevel.trim()
+    ) {
+      setEditError('First name, last name, student number, and grade level are required.')
+      return
+    }
+
+    setSavingEdit(true)
+    try {
+      await updateStudent(studentId, editForm)
+      const refreshed = await getStudent(studentId)
+      setStudent(refreshed)
+      setEditForm(studentToForm(refreshed))
+      setEditMessage('Student updated.')
+      setShowEditForm(false)
+    } catch (err) {
+      setEditError(err.message)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
 
   async function handleLinkParent(event) {
     event.preventDefault()
@@ -137,6 +197,76 @@ export default function AdminStudentDetailPage() {
       <p className="muted">
         {student.grade_level} · #{student.student_number}
       </p>
+      {!showEditForm && (
+        <div className="grade-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setEditError(null)
+              setEditMessage(null)
+              setEditForm(studentToForm(student))
+              setShowEditForm(true)
+            }}
+          >
+            Edit
+          </button>
+        </div>
+      )}
+      {editMessage && <p className="grade-summary">{editMessage}</p>}
+      {showEditForm && (
+        <form className="card admin-form" onSubmit={handleEditStudent}>
+          <label className="field">
+            <span>First name</span>
+            <input
+              value={editForm.firstName}
+              onChange={(event) => updateEditField('firstName', event.target.value)}
+              disabled={savingEdit}
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Last name</span>
+            <input
+              value={editForm.lastName}
+              onChange={(event) => updateEditField('lastName', event.target.value)}
+              disabled={savingEdit}
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Student number</span>
+            <input
+              value={editForm.studentNumber}
+              onChange={(event) => updateEditField('studentNumber', event.target.value)}
+              disabled={savingEdit}
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Grade level</span>
+            <input
+              value={editForm.gradeLevel}
+              onChange={(event) => updateEditField('gradeLevel', event.target.value)}
+              disabled={savingEdit}
+              required
+            />
+          </label>
+
+          <div className="grade-actions">
+            <button type="submit" className="btn btn-primary" disabled={savingEdit}>
+              {savingEdit ? 'Saving...' : 'Save changes'}
+            </button>
+            <button type="button" className="btn btn-ghost" disabled={savingEdit} onClick={cancelEdit}>
+              Cancel
+            </button>
+          </div>
+          {editError && <ErrorBanner message={editError} />}
+        </form>
+      )}
 
       <h3 className="section-title">Parents</h3>
       {!showLinkParentForm && (

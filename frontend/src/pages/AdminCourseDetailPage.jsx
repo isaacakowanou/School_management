@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { enrollStudentInCourse, getCourse, listCourseStudents } from '../api/courses.js'
+import { enrollStudentInCourse, getCourse, listCourseStudents, updateCourse } from '../api/courses.js'
 import { listStudents } from '../api/students.js'
-import { getTeacher } from '../api/teachers.js'
+import { getTeacher, listTeachers } from '../api/teachers.js'
 import { createGradeItem, listGradeItems } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
 import { formatPercent } from '../utils/format.js'
@@ -18,6 +18,15 @@ const EMPTY_GRADE_ITEM_FORM = {
   term: '',
 }
 
+const EMPTY_COURSE_EDIT_FORM = {
+  name: '',
+  code: '',
+  teacherId: '',
+  gradeLevel: '',
+  term: '',
+  schoolYear: '',
+}
+
 const GRADE_ITEM_SUGGESTIONS = [
   'Homework',
   'Quiz',
@@ -28,17 +37,39 @@ const GRADE_ITEM_SUGGESTIONS = [
   'Participation',
 ]
 
+const GRADE_LEVEL_SUGGESTIONS = [
+  'Grade 6',
+  'Grade 7',
+  'Grade 8',
+  'Grade 9',
+  'Grade 10',
+  'Grade 11',
+  'Grade 12',
+]
 const TERM_SUGGESTIONS = ['Fall', 'Spring', 'Summer', 'Trimester 1', 'Trimester 2', 'Trimester 3']
+const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
 const WEIGHT_TOLERANCE = 0.005
 
 function formatWeight(value) {
   return value.toFixed(2)
 }
 
+function courseToForm(course) {
+  return {
+    name: course?.name || '',
+    code: course?.code || '',
+    teacherId: course?.teacher_id || '',
+    gradeLevel: course?.grade_level || '',
+    term: course?.term || '',
+    schoolYear: course?.school_year || '',
+  }
+}
+
 export default function AdminCourseDetailPage() {
   const { courseId } = useParams()
   const [course, setCourse] = useState(null)
   const [teacher, setTeacher] = useState(null)
+  const [allTeachers, setAllTeachers] = useState([])
   const [students, setStudents] = useState([])
   const [allStudents, setAllStudents] = useState([])
   const [gradeItems, setGradeItems] = useState([])
@@ -54,12 +85,18 @@ export default function AdminCourseDetailPage() {
   const [gradeItemError, setGradeItemError] = useState(null)
   const [gradeItemMessage, setGradeItemMessage] = useState(null)
   const [showGradeItemForm, setShowGradeItemForm] = useState(false)
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [editForm, setEditForm] = useState(EMPTY_COURSE_EDIT_FORM)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState(null)
+  const [editMessage, setEditMessage] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     setError(null)
     setCourse(null)
     setTeacher(null)
+    setAllTeachers([])
     setStudents([])
     setAllStudents([])
     setGradeItems([])
@@ -72,6 +109,11 @@ export default function AdminCourseDetailPage() {
     setGradeItemError(null)
     setGradeItemMessage(null)
     setShowGradeItemForm(false)
+    setShowEditForm(false)
+    setEditForm(EMPTY_COURSE_EDIT_FORM)
+    setSavingEdit(false)
+    setEditError(null)
+    setEditMessage(null)
 
     async function load() {
       let courseData
@@ -79,6 +121,7 @@ export default function AdminCourseDetailPage() {
         courseData = await getCourse(courseId)
         if (cancelled) return
         setCourse(courseData)
+        setEditForm(courseToForm(courseData))
         setGradeItemForm((current) => ({
           ...current,
           term: current.term || courseData.term || '',
@@ -88,12 +131,13 @@ export default function AdminCourseDetailPage() {
         return
       }
       // Related data is best-effort; each section degrades independently.
-      const [teacherRes, studentsRes, gradeItemsRes, resultsRes, allStudentsRes] = await Promise.allSettled([
+      const [teacherRes, studentsRes, gradeItemsRes, resultsRes, allStudentsRes, allTeachersRes] = await Promise.allSettled([
         getTeacher(courseData.teacher_id),
         listCourseStudents(courseId),
         listGradeItems(courseId),
         listCourseResults(courseId),
         listStudents(),
+        listTeachers(),
       ])
       if (cancelled) return
       if (teacherRes.status === 'fulfilled') setTeacher(teacherRes.value)
@@ -101,6 +145,7 @@ export default function AdminCourseDetailPage() {
       if (gradeItemsRes.status === 'fulfilled') setGradeItems(gradeItemsRes.value)
       if (resultsRes.status === 'fulfilled') setResults(resultsRes.value)
       if (allStudentsRes.status === 'fulfilled') setAllStudents(allStudentsRes.value)
+      if (allTeachersRes.status === 'fulfilled') setAllTeachers(allTeachersRes.value)
     }
 
     load()
@@ -132,6 +177,54 @@ export default function AdminCourseDetailPage() {
       setEnrollStudentId(availableStudents[0].id)
     }
   }, [availableStudents, enrollStudentId])
+
+  function updateEditField(field, value) {
+    setEditForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function cancelEdit() {
+    setEditForm(courseToForm(course))
+    setEditError(null)
+    setShowEditForm(false)
+  }
+
+  async function handleEditCourse(event) {
+    event.preventDefault()
+    setEditError(null)
+    setEditMessage(null)
+
+    if (
+      !editForm.name.trim() ||
+      !editForm.code.trim() ||
+      !editForm.teacherId ||
+      !editForm.gradeLevel.trim() ||
+      !editForm.term.trim() ||
+      !editForm.schoolYear.trim()
+    ) {
+      setEditError('Course name, code, teacher, grade level, term, and school year are required.')
+      return
+    }
+
+    setSavingEdit(true)
+    try {
+      await updateCourse(courseId, editForm)
+      const refreshed = await getCourse(courseId)
+      setCourse(refreshed)
+      setEditForm(courseToForm(refreshed))
+      setEditMessage('Course updated.')
+      setShowEditForm(false)
+      try {
+        const refreshedTeacher = await getTeacher(refreshed.teacher_id)
+        setTeacher(refreshedTeacher)
+      } catch {
+        setTeacher(allTeachers.find((item) => item.id === refreshed.teacher_id) || null)
+      }
+    } catch (err) {
+      setEditError(err.message)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
 
   async function handleEnrollStudent(event) {
     event.preventDefault()
@@ -253,6 +346,129 @@ export default function AdminCourseDetailPage() {
           </span>
         )}
       </p>
+      {!showEditForm && (
+        <div className="grade-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setEditError(null)
+              setEditMessage(null)
+              setEditForm(courseToForm(course))
+              setShowEditForm(true)
+            }}
+          >
+            Edit
+          </button>
+        </div>
+      )}
+      {editMessage && <p className="grade-summary">{editMessage}</p>}
+      {showEditForm && (
+        <form className="card admin-form" onSubmit={handleEditCourse}>
+          <label className="field">
+            <span>Course name</span>
+            <input
+              value={editForm.name}
+              onChange={(event) => updateEditField('name', event.target.value)}
+              disabled={savingEdit}
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Course code</span>
+            <input
+              value={editForm.code}
+              onChange={(event) => updateEditField('code', event.target.value)}
+              disabled={savingEdit}
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Teacher</span>
+            <select
+              className="grade-input"
+              value={editForm.teacherId}
+              onChange={(event) => updateEditField('teacherId', event.target.value)}
+              disabled={savingEdit}
+              required
+              style={{ width: '100%', textAlign: 'left' }}
+            >
+              {allTeachers.length === 0 ? (
+                <option value={editForm.teacherId}>
+                  {teacher ? `${teacher.name} — ${teacher.email}` : 'Current teacher'}
+                </option>
+              ) : (
+                allTeachers.map((teacherOption) => (
+                  <option key={teacherOption.id} value={teacherOption.id}>
+                    {teacherOption.name} — {teacherOption.email} — #{teacherOption.employee_number}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Grade level</span>
+            <input
+              value={editForm.gradeLevel}
+              onChange={(event) => updateEditField('gradeLevel', event.target.value)}
+              disabled={savingEdit}
+              list="course-edit-grade-level-options"
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Term</span>
+            <input
+              value={editForm.term}
+              onChange={(event) => updateEditField('term', event.target.value)}
+              disabled={savingEdit}
+              list="course-edit-term-options"
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>School year</span>
+            <input
+              value={editForm.schoolYear}
+              onChange={(event) => updateEditField('schoolYear', event.target.value)}
+              disabled={savingEdit}
+              list="course-edit-school-year-options"
+              required
+            />
+          </label>
+
+          <datalist id="course-edit-grade-level-options">
+            {GRADE_LEVEL_SUGGESTIONS.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+          <datalist id="course-edit-term-options">
+            {TERM_SUGGESTIONS.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+          <datalist id="course-edit-school-year-options">
+            {SCHOOL_YEAR_SUGGESTIONS.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+
+          <div className="grade-actions">
+            <button type="submit" className="btn btn-primary" disabled={savingEdit}>
+              {savingEdit ? 'Saving...' : 'Save changes'}
+            </button>
+            <button type="button" className="btn btn-ghost" disabled={savingEdit} onClick={cancelEdit}>
+              Cancel
+            </button>
+          </div>
+          {editError && <ErrorBanner message={editError} />}
+        </form>
+      )}
 
       <h3 className="section-title">Enrolled students</h3>
       {!showEnrollForm && (

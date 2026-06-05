@@ -142,24 +142,52 @@ def update_course(
     course_id: UUID,
     payload: CourseUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> CourseResponse:
     course = get_course_or_404(db, course_id)
+    old_value = {
+        "name": course.name,
+        "code": course.code,
+        "teacher_id": course.teacher_id,
+        "grade_level": course.grade_level,
+        "term": course.term,
+        "school_year": course.school_year,
+    }
 
     if payload.code is not None:
-        ensure_unique_course_code(db, payload.code, course_id=course_id)
-        course.code = payload.code
+        code = clean_required_text(payload.code, "code")
+        ensure_unique_course_code(db, code, course_id=course_id)
+        course.code = code
     if payload.teacher_id is not None:
         get_teacher_or_404(db, payload.teacher_id)
         course.teacher_id = payload.teacher_id
     if payload.name is not None:
-        course.name = payload.name
+        course.name = clean_required_text(payload.name, "name")
     if payload.grade_level is not None:
-        course.grade_level = payload.grade_level
+        course.grade_level = clean_required_text(payload.grade_level, "grade_level")
     if payload.term is not None:
-        course.term = payload.term
+        course.term = clean_required_text(payload.term, "term")
     if payload.school_year is not None:
-        course.school_year = payload.school_year
+        course.school_year = clean_required_text(payload.school_year, "school_year")
+
+    new_value = {
+        "name": course.name,
+        "code": course.code,
+        "teacher_id": course.teacher_id,
+        "grade_level": course.grade_level,
+        "term": course.term,
+        "school_year": course.school_year,
+    }
+    if new_value != old_value:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="course_updated",
+            entity_type="course",
+            entity_id=course.id,
+            old_value=old_value,
+            new_value=new_value,
+        )
 
     db.commit()
     db.refresh(course)

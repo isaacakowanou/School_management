@@ -75,6 +75,8 @@ class ParentCreate(BaseModel):
 
 
 class ParentUpdate(BaseModel):
+    name: str | None = None
+    email: str | None = None
     phone: str | None = None
 
 
@@ -94,7 +96,9 @@ class TeacherCreate(BaseModel):
 
 
 class TeacherUpdate(BaseModel):
-    employee_number: str
+    name: str | None = None
+    email: str | None = None
+    employee_number: str | None = None
 
 
 class TeacherResponse(BaseModel):

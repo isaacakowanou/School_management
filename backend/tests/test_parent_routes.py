@@ -249,6 +249,73 @@ class CurrentParentRouteTests(unittest.TestCase):
             },
         )
 
+    def test_admin_can_update_parent(self):
+        response = self.client.put(
+            f"/api/v1/parents/{self.parent.id}",
+            json={
+                "name": "  Edited Parent  ",
+                "email": "  edited-parent@example.test  ",
+                "phone": "   ",
+            },
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["name"], "Edited Parent")
+        self.assertEqual(data["email"], "edited-parent@example.test")
+        self.assertIsNone(data["phone"])
+
+    def test_non_admin_cannot_update_parent(self):
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.put(
+                    f"/api/v1/parents/{self.parent.id}",
+                    json={"name": "Blocked"},
+                    headers=self._auth_headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_update_parent_duplicate_email_is_rejected(self):
+        response = self.client.put(
+            f"/api/v1/parents/{self.parent.id}",
+            json={"email": self.admin_user.email},
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "Email already exists")
+
+    def test_update_parent_empty_required_field_is_rejected(self):
+        response = self.client.put(
+            f"/api/v1/parents/{self.parent.id}",
+            json={"name": " "},
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "name cannot be empty")
+
+    def test_update_parent_writes_audit_log(self):
+        response = self.client.put(
+            f"/api/v1/parents/{self.parent.id}",
+            json={"name": "Audit Parent"},
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "parent_updated",
+                AuditLog.entity_type == "parent",
+                AuditLog.entity_id == self.parent.id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertEqual(audit_log.old_value["name"], "Pat Parent")
+        self.assertEqual(audit_log.new_value["name"], "Audit Parent")
+
 
 if __name__ == "__main__":
     unittest.main()

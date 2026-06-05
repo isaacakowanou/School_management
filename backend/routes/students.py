@@ -142,23 +142,47 @@ def update_student(
     student_id: UUID,
     payload: StudentUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> StudentResponse:
     student = get_student_or_404(db, student_id)
+    old_value = {
+        "first_name": student.first_name,
+        "last_name": student.last_name,
+        "grade_level": student.grade_level,
+        "student_number": student.student_number,
+    }
 
     if payload.student_number is not None:
+        student_number = clean_required_text(payload.student_number, "student_number")
         existing_student = db.scalar(
-            select(Student).where(Student.student_number == payload.student_number, Student.id != student_id)
+            select(Student).where(Student.student_number == student_number, Student.id != student_id)
         )
         if existing_student is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Student number already exists")
-        student.student_number = payload.student_number
+        student.student_number = student_number
     if payload.first_name is not None:
-        student.first_name = payload.first_name
+        student.first_name = clean_required_text(payload.first_name, "first_name")
     if payload.last_name is not None:
-        student.last_name = payload.last_name
+        student.last_name = clean_required_text(payload.last_name, "last_name")
     if payload.grade_level is not None:
-        student.grade_level = payload.grade_level
+        student.grade_level = clean_required_text(payload.grade_level, "grade_level")
+
+    new_value = {
+        "first_name": student.first_name,
+        "last_name": student.last_name,
+        "grade_level": student.grade_level,
+        "student_number": student.student_number,
+    }
+    if new_value != old_value:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="student_updated",
+            entity_type="student",
+            entity_id=student.id,
+            old_value=old_value,
+            new_value=new_value,
+        )
 
     db.commit()
     db.refresh(student)

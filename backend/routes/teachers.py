@@ -127,20 +127,53 @@ def update_teacher(
     teacher_id: UUID,
     payload: TeacherUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> TeacherResponse:
     teacher = get_teacher_or_404(db, teacher_id)
+    old_value = {
+        "user_id": teacher.user_id,
+        "name": teacher.user.name,
+        "email": teacher.user.email,
+        "employee_number": teacher.employee_number,
+    }
 
-    existing_teacher = db.scalar(
-        select(Teacher).where(
-            Teacher.employee_number == payload.employee_number,
-            Teacher.id != teacher_id,
+    if payload.name is not None:
+        teacher.user.name = clean_required_text(payload.name, "name")
+    if payload.email is not None:
+        email = clean_required_text(payload.email, "email")
+        existing_user = db.scalar(select(User).where(User.email == email, User.id != teacher.user_id))
+        if existing_user is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+        teacher.user.email = email
+    if payload.employee_number is not None:
+        employee_number = clean_required_text(payload.employee_number, "employee_number")
+        existing_teacher = db.scalar(
+            select(Teacher).where(
+                Teacher.employee_number == employee_number,
+                Teacher.id != teacher_id,
+            )
         )
-    )
-    if existing_teacher is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee number already exists")
+        if existing_teacher is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee number already exists")
+        teacher.employee_number = employee_number
 
-    teacher.employee_number = payload.employee_number
+    new_value = {
+        "user_id": teacher.user_id,
+        "name": teacher.user.name,
+        "email": teacher.user.email,
+        "employee_number": teacher.employee_number,
+    }
+    if new_value != old_value:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="teacher_updated",
+            entity_type="teacher",
+            entity_id=teacher.id,
+            old_value=old_value,
+            new_value=new_value,
+        )
+
     db.commit()
     db.refresh(teacher)
     return to_teacher_response(teacher)

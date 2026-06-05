@@ -228,6 +228,92 @@ class TeacherRouteTests(unittest.TestCase):
             },
         )
 
+    def test_admin_can_update_teacher(self):
+        response = self.client.put(
+            f"/api/v1/teachers/{self.existing_teacher.id}",
+            json={
+                "name": "  Edited Teacher  ",
+                "email": "  edited-teacher@example.test  ",
+                "employee_number": "  TCH-EDITED  ",
+            },
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["name"], "Edited Teacher")
+        self.assertEqual(data["email"], "edited-teacher@example.test")
+        self.assertEqual(data["employee_number"], "TCH-EDITED")
+
+    def test_non_admin_cannot_update_teacher(self):
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.put(
+                    f"/api/v1/teachers/{self.existing_teacher.id}",
+                    json={"name": "Blocked"},
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_update_teacher_duplicate_email_is_rejected(self):
+        response = self.client.put(
+            f"/api/v1/teachers/{self.existing_teacher.id}",
+            json={"email": self.parent_user.email},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "Email already exists")
+
+    def test_update_teacher_duplicate_employee_number_is_rejected(self):
+        other_user = self._create_user(
+            name="Other Teacher",
+            email="other-teacher@example.test",
+            role="teacher",
+        )
+        other_teacher = Teacher(user=other_user, employee_number="TCH-OTHER")
+        self.db.add(other_teacher)
+        self.db.commit()
+
+        response = self.client.put(
+            f"/api/v1/teachers/{self.existing_teacher.id}",
+            json={"employee_number": "TCH-OTHER"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "Employee number already exists")
+
+    def test_update_teacher_empty_required_field_is_rejected(self):
+        response = self.client.put(
+            f"/api/v1/teachers/{self.existing_teacher.id}",
+            json={"employee_number": " "},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "employee_number cannot be empty")
+
+    def test_update_teacher_writes_audit_log(self):
+        response = self.client.put(
+            f"/api/v1/teachers/{self.existing_teacher.id}",
+            json={"name": "Audit Teacher"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "teacher_updated",
+                AuditLog.entity_type == "teacher",
+                AuditLog.entity_id == self.existing_teacher.id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertEqual(audit_log.old_value["name"], "Taylor Teacher")
+        self.assertEqual(audit_log.new_value["name"], "Audit Teacher")
+
 
 if __name__ == "__main__":
     unittest.main()

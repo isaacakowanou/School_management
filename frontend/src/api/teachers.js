@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './client.js'
+import { apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/teachers (admin) -> [{ id, user_id, name, email, employee_number }]
 export function listTeachers() {
@@ -18,6 +18,15 @@ export function createTeacher({ name, email, password, employeeNumber }) {
 // GET /api/v1/teachers/{teacher_id}
 export function getTeacher(teacherId) {
   return apiGet(`/teachers/${teacherId}`)
+}
+
+// PUT /api/v1/teachers/{teacher_id} (admin)
+export function updateTeacher(teacherId, { name, email, employeeNumber }) {
+  return apiPut(`/teachers/${teacherId}`, {
+    name: name.trim(),
+    email: email.trim(),
+    employee_number: employeeNumber.trim(),
+  })
 }
 
 // GET /api/v1/teachers/{teacher_id}/courses -> CourseResponse[]

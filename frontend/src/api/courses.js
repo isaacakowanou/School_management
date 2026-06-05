@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './client.js'
+import { apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/courses
 // For teachers the backend returns ONLY the courses assigned to them.
@@ -25,6 +25,18 @@ export function listCourses() {
 // POST /api/v1/courses (admin)
 export function createCourse({ name, code, teacherId, gradeLevel, term, schoolYear }) {
   return apiPost('/courses', {
+    name: name.trim(),
+    code: code.trim(),
+    teacher_id: teacherId,
+    grade_level: gradeLevel.trim(),
+    term: term.trim(),
+    school_year: schoolYear.trim(),
+  })
+}
+
+// PUT /api/v1/courses/{course_id} (admin)
+export function updateCourse(courseId, { name, code, teacherId, gradeLevel, term, schoolYear }) {
+  return apiPut(`/courses/${courseId}`, {
     name: name.trim(),
     code: code.trim(),
     teacher_id: teacherId,

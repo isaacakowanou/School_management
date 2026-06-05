@@ -135,10 +135,48 @@ def update_parent(
     parent_id: UUID,
     payload: ParentUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> ParentResponse:
     parent = get_parent_or_404(db, parent_id)
-    parent.phone = payload.phone
+    updated_fields = getattr(payload, "model_fields_set", None)
+    if updated_fields is None:
+        updated_fields = getattr(payload, "__fields_set__", set())
+    old_value = {
+        "user_id": parent.user_id,
+        "name": parent.user.name,
+        "email": parent.user.email,
+        "phone": parent.phone,
+    }
+
+    if payload.name is not None:
+        parent.user.name = clean_required_text(payload.name, "name")
+    if payload.email is not None:
+        email = clean_required_text(payload.email, "email")
+        existing_user = db.scalar(select(User).where(User.email == email, User.id != parent.user_id))
+        if existing_user is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+        parent.user.email = email
+    if "phone" in updated_fields:
+        phone = payload.phone.strip() if payload.phone is not None else ""
+        parent.phone = phone or None
+
+    new_value = {
+        "user_id": parent.user_id,
+        "name": parent.user.name,
+        "email": parent.user.email,
+        "phone": parent.phone,
+    }
+    if new_value != old_value:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="parent_updated",
+            entity_type="parent",
+            entity_id=parent.id,
+            old_value=old_value,
+            new_value=new_value,
+        )
+
     db.commit()
     db.refresh(parent)
     return to_parent_response(parent)

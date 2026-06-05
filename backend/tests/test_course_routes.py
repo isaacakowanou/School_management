@@ -220,6 +220,100 @@ class CourseRouteTests(unittest.TestCase):
             },
         )
 
+    def test_admin_can_update_course(self):
+        response = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={
+                "name": "  Edited Course  ",
+                "code": "  EDIT-101  ",
+                "teacher_id": str(self.teacher.id),
+                "grade_level": "  11  ",
+                "term": "  Spring  ",
+                "school_year": "  2027-2028  ",
+            },
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["name"], "Edited Course")
+        self.assertEqual(data["code"], "EDIT-101")
+        self.assertEqual(data["teacher_id"], str(self.teacher.id))
+        self.assertEqual(data["grade_level"], "11")
+        self.assertEqual(data["term"], "Spring")
+        self.assertEqual(data["school_year"], "2027-2028")
+
+    def test_non_admin_cannot_update_course(self):
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.put(
+                    f"/api/v1/courses/{self.existing_course.id}",
+                    json={"name": "Blocked"},
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_update_course_duplicate_code_is_rejected(self):
+        other_course = Course(
+            name="Other Course",
+            code="OTHER-101",
+            teacher=self.teacher,
+            grade_level="12",
+            term="Fall",
+            school_year="2026-2027",
+        )
+        self.db.add(other_course)
+        self.db.commit()
+
+        response = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={"code": "OTHER-101"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "Course code already exists")
+
+    def test_update_course_missing_teacher_is_rejected(self):
+        response = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={"teacher_id": str(uuid4())},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "Teacher not found")
+
+    def test_update_course_empty_required_field_is_rejected(self):
+        response = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={"name": " "},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "name cannot be empty")
+
+    def test_update_course_writes_audit_log(self):
+        response = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={"name": "Audit Course"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "course_updated",
+                AuditLog.entity_type == "course",
+                AuditLog.entity_id == self.existing_course.id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertEqual(audit_log.old_value["name"], "Existing Course")
+        self.assertEqual(audit_log.new_value["name"], "Audit Course")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -211,6 +211,86 @@ class StudentRouteTests(unittest.TestCase):
             },
         )
 
+    def test_admin_can_update_student(self):
+        student = self._create_student("EDIT-STU-001")
+
+        response = self.client.put(
+            f"/api/v1/students/{student.id}",
+            json={
+                "first_name": "  Edited  ",
+                "last_name": "  Student  ",
+                "student_number": "  EDIT-STU-002  ",
+                "grade_level": "  11  ",
+            },
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["first_name"], "Edited")
+        self.assertEqual(data["last_name"], "Student")
+        self.assertEqual(data["student_number"], "EDIT-STU-002")
+        self.assertEqual(data["grade_level"], "11")
+
+    def test_non_admin_cannot_update_student(self):
+        student = self._create_student("EDIT-STU-NONADMIN")
+
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.put(
+                    f"/api/v1/students/{student.id}",
+                    json={"first_name": "Blocked"},
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_update_student_duplicate_number_is_rejected(self):
+        student = self._create_student("EDIT-STU-DUP-001")
+        self._create_student("EDIT-STU-DUP-002")
+
+        response = self.client.put(
+            f"/api/v1/students/{student.id}",
+            json={"student_number": "EDIT-STU-DUP-002"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "Student number already exists")
+
+    def test_update_student_empty_required_field_is_rejected(self):
+        student = self._create_student("EDIT-STU-EMPTY")
+
+        response = self.client.put(
+            f"/api/v1/students/{student.id}",
+            json={"first_name": " "},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "first_name cannot be empty")
+
+    def test_update_student_writes_audit_log(self):
+        student = self._create_student("EDIT-STU-AUDIT")
+
+        response = self.client.put(
+            f"/api/v1/students/{student.id}",
+            json={"first_name": "Updated"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "student_updated",
+                AuditLog.entity_type == "student",
+                AuditLog.entity_id == student.id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertEqual(audit_log.old_value["first_name"], "Link")
+        self.assertEqual(audit_log.new_value["first_name"], "Updated")
+
     def test_admin_can_link_parent_to_student(self):
         student = self._create_student()
 

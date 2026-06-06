@@ -107,6 +107,7 @@ def _get_email_config() -> dict:
 def _config_secrets(config: dict) -> list[str]:
     return [
         config.get("resend_api_key", ""),
+        config.get("smtp_username", ""),
         config.get("smtp_password", ""),
     ]
 
@@ -115,12 +116,12 @@ def _build_report_link(app_base_url: str, report_card_id: UUID) -> str:
     return f"{app_base_url.rstrip('/')}/reports/{report_card_id}"
 
 
-def _build_email_body(parent_name: str, student_name: str, report_link: str) -> str:
+def _build_email_body(parent_name: str, report_link: str) -> str:
     return "\n".join(
         [
             f"Dear {parent_name},",
             "",
-            f"A report card is available for {student_name}. Please log in to view it.",
+            "A report card is available. Please log in to view it.",
             "",
             report_link,
             "",
@@ -173,30 +174,40 @@ def _send_smtp_email(config: dict, *, to_email: str, subject: str, body: str) ->
 def send_report_available_email(
     to_email: str,
     parent_name: str,
-    student_name: str,
     report_link: str,
     config: dict | None = None,
 ) -> dict:
     config = config or _get_email_config()
     provider = config["provider"]
     subject = "Report card available"
-    body = _build_email_body(parent_name, student_name, report_link)
+    body = _build_email_body(parent_name, report_link)
     secrets = _config_secrets(config)
+    clean_to_email = (to_email or "").strip()
+
+    if not clean_to_email:
+        return {
+            "email": clean_to_email or None,
+            "sent": False,
+            "success": False,
+            "provider": provider,
+            "provider_message_id": None,
+            "error": "Parent email is missing",
+        }
 
     try:
         if provider == "resend":
             provider_message_id = _send_resend_email(
                 config,
-                to_email=to_email,
+                to_email=clean_to_email,
                 subject=subject,
                 body=body,
             )
         else:
-            _send_smtp_email(config, to_email=to_email, subject=subject, body=body)
+            _send_smtp_email(config, to_email=clean_to_email, subject=subject, body=body)
             provider_message_id = None
     except Exception as exc:
         return {
-            "email": to_email,
+            "email": clean_to_email,
             "sent": False,
             "success": False,
             "provider": provider,
@@ -205,7 +216,7 @@ def send_report_available_email(
         }
 
     return {
-        "email": to_email,
+        "email": clean_to_email,
         "sent": True,
         "success": True,
         "provider": provider,
@@ -220,8 +231,6 @@ def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> li
     if report_card is None:
         raise ValueError("Report card not found")
 
-    student = report_card.student
-    student_name = f"{student.first_name} {student.last_name}"
     report_link = _build_report_link(config["app_base_url"], report_card.id)
     parents = db.scalars(
         select(Parent)
@@ -236,7 +245,6 @@ def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> li
             send_report_available_email(
                 parent.user.email,
                 parent_name,
-                student_name,
                 report_link,
                 config=config,
             )

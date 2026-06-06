@@ -101,8 +101,11 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(payload["from"], "school@example.test")
         self.assertEqual(payload["to"], ["parent@example.test"])
         self.assertEqual(payload["subject"], "Report card available")
-        self.assertIn("A report card is available for Isaac Akowanou.", payload["text"])
+        self.assertIn("A report card is available. Please log in to view it.", payload["text"])
         self.assertIn(f"https://portal.example.test/reports/{self.report_card.id}", payload["text"])
+        self.assertNotIn("Isaac Akowanou", payload["text"])
+        self.assertNotIn("91.7", payload["text"])
+        self.assertNotIn("4.0", payload["text"])
         self.assertNotIn("attachments", payload)
         self.assertNotIn("pdf", payload["text"].lower())
 
@@ -131,9 +134,11 @@ class EmailServiceTests(unittest.TestCase):
         body = message.get_content()
         self.assertEqual(message["To"], "parent@example.test")
         self.assertEqual(message["From"], "school@example.test")
-        self.assertIn("Isaac Akowanou", body)
-        self.assertIn("Please log in to view it.", body)
+        self.assertIn("A report card is available. Please log in to view it.", body)
         self.assertIn(f"https://portal.example.test/reports/{self.report_card.id}", body)
+        self.assertNotIn("Isaac Akowanou", body)
+        self.assertNotIn("91.7", body)
+        self.assertNotIn("4.0", body)
         self.assertNotIn("pdf", body.lower())
         self.assertFalse(message.is_multipart())
 
@@ -152,7 +157,6 @@ class EmailServiceTests(unittest.TestCase):
             result = send_report_available_email(
                 "parent@example.test",
                 "Parent One",
-                "Isaac Akowanou",
                 "https://portal.example.test/reports/report-id",
                 config=config,
             )
@@ -161,6 +165,63 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(result["provider"], "resend")
         self.assertIn("[redacted]", result["error"])
         self.assertNotIn("secret-resend-key", result["error"])
+
+    def test_smtp_username_and_password_are_sanitized(self):
+        config = {
+            "provider": "smtp",
+            "smtp_host": "smtp.example.test",
+            "smtp_port": 587,
+            "smtp_username": "secret-smtp-user",
+            "smtp_password": "secret-smtp-password",
+            "smtp_from_email": "school@example.test",
+            "app_base_url": "https://portal.example.test",
+        }
+
+        with patch(
+            "services.email_service._send_smtp_email",
+            side_effect=RuntimeError("Login failed for secret-smtp-user with secret-smtp-password"),
+        ):
+            result = send_report_available_email(
+                "parent@example.test",
+                "Parent One",
+                "https://portal.example.test/reports/report-id",
+                config=config,
+            )
+
+        self.assertFalse(result["sent"])
+        self.assertEqual(result["provider"], "smtp")
+        self.assertIn("[redacted]", result["error"])
+        self.assertNotIn("secret-smtp-user", result["error"])
+        self.assertNotIn("secret-smtp-password", result["error"])
+
+    def test_blank_recipient_email_fails_without_provider_call(self):
+        config = {
+            "provider": "resend",
+            "resend_api_key": "secret-resend-key",
+            "email_from": "school@example.test",
+            "app_base_url": "https://portal.example.test",
+        }
+
+        with patch("services.email_service._send_resend_email") as send_mock:
+            result = send_report_available_email(
+                "   ",
+                "Parent One",
+                "https://portal.example.test/reports/report-id",
+                config=config,
+            )
+
+        send_mock.assert_not_called()
+        self.assertEqual(
+            result,
+            {
+                "email": None,
+                "sent": False,
+                "success": False,
+                "provider": "resend",
+                "provider_message_id": None,
+                "error": "Parent email is missing",
+            },
+        )
 
     def test_continues_after_individual_email_failure(self):
         second_parent_user = User(

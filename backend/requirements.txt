@@ -10,4 +10,4 @@ bcrypt<4.1
 jinja2
 reportlab
 openai>=2,<3
-resend
+resend>=2,<3

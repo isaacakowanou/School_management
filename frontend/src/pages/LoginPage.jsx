@@ -10,6 +10,7 @@ export default function LoginPage() {
   const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -58,13 +59,21 @@ export default function LoginPage() {
         <label className="field">
           <span>Password</span>
           <input
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
             required
           />
         </label>
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          onClick={() => setShowPassword((current) => !current)}
+          aria-pressed={showPassword}
+        >
+          {showPassword ? 'Hide' : 'Show'}
+        </button>
 
         <button type="submit" className="btn btn-primary" disabled={submitting}>
           {submitting ? 'Signing in…' : 'Sign in'}

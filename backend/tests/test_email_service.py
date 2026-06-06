@@ -1,21 +1,31 @@
 import os
+import sys
 import unittest
 import uuid
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from models import Base, Parent, ReportCard, Student, StudentParent, User
-from services.email_service import send_report_notification_to_parents
+from services.email_service import send_report_available_email, send_report_notification_to_parents
 
 
 EMAIL_ENV = {
+    "EMAIL_PROVIDER": "smtp",
     "SMTP_HOST": "smtp.example.test",
     "SMTP_PORT": "587",
     "SMTP_USERNAME": "smtp-user",
     "SMTP_PASSWORD": "smtp-password",
     "SMTP_FROM_EMAIL": "school@example.test",
+    "APP_BASE_URL": "https://portal.example.test",
+}
+
+RESEND_ENV = {
+    "EMAIL_PROVIDER": "resend",
+    "RESEND_API_KEY": "resend-api-key",
+    "EMAIL_FROM": "school@example.test",
     "APP_BASE_URL": "https://portal.example.test",
 }
 
@@ -66,16 +76,52 @@ class EmailServiceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Missing email configuration"):
                 send_report_notification_to_parents(self.db, self.report_card.id)
 
-    def test_sends_email_to_linked_parent_and_returns_results(self):
+    def test_sends_resend_email_to_linked_parent_and_returns_structured_results(self):
+        send_mock = MagicMock(return_value={"id": "resend-message-123"})
+        fake_resend = SimpleNamespace(api_key=None, Emails=SimpleNamespace(send=send_mock))
+
+        with patch.dict(os.environ, RESEND_ENV, clear=True):
+            with patch.dict(sys.modules, {"resend": fake_resend}):
+                results = send_report_notification_to_parents(self.db, self.report_card.id)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(
+            results[0],
+            {
+                "email": "parent@example.test",
+                "sent": True,
+                "success": True,
+                "provider": "resend",
+                "provider_message_id": "resend-message-123",
+                "error": None,
+            },
+        )
+        self.assertEqual(fake_resend.api_key, "resend-api-key")
+        payload = send_mock.call_args.args[0]
+        self.assertEqual(payload["from"], "school@example.test")
+        self.assertEqual(payload["to"], ["parent@example.test"])
+        self.assertEqual(payload["subject"], "Report card available")
+        self.assertIn("A report card is available for Isaac Akowanou.", payload["text"])
+        self.assertIn(f"https://portal.example.test/reports/{self.report_card.id}", payload["text"])
+        self.assertNotIn("attachments", payload)
+        self.assertNotIn("pdf", payload["text"].lower())
+
+    def test_sends_smtp_email_to_linked_parent_and_returns_results(self):
         smtp_instance = MagicMock()
         smtp_context = MagicMock()
         smtp_context.__enter__.return_value = smtp_instance
 
-        with patch.dict(os.environ, EMAIL_ENV, clear=False):
+        with patch.dict(os.environ, EMAIL_ENV, clear=True):
             with patch("services.email_service.smtplib.SMTP", return_value=smtp_context) as smtp_class:
                 results = send_report_notification_to_parents(self.db, self.report_card.id)
 
-        self.assertEqual(results, [{"email": "parent@example.test", "sent": True, "error": None}])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["email"], "parent@example.test")
+        self.assertTrue(results[0]["sent"])
+        self.assertTrue(results[0]["success"])
+        self.assertEqual(results[0]["provider"], "smtp")
+        self.assertIsNone(results[0]["provider_message_id"])
+        self.assertIsNone(results[0]["error"])
         smtp_class.assert_called_once_with("smtp.example.test", 587)
         smtp_instance.starttls.assert_called_once()
         smtp_instance.login.assert_called_once_with("smtp-user", "smtp-password")
@@ -86,10 +132,35 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(message["To"], "parent@example.test")
         self.assertEqual(message["From"], "school@example.test")
         self.assertIn("Isaac Akowanou", body)
-        self.assertIn("Fall", body)
-        self.assertIn("2026-2027", body)
+        self.assertIn("Please log in to view it.", body)
         self.assertIn(f"https://portal.example.test/reports/{self.report_card.id}", body)
+        self.assertNotIn("pdf", body.lower())
         self.assertFalse(message.is_multipart())
+
+    def test_provider_errors_are_sanitized(self):
+        config = {
+            "provider": "resend",
+            "resend_api_key": "secret-resend-key",
+            "email_from": "school@example.test",
+            "app_base_url": "https://portal.example.test",
+        }
+
+        with patch(
+            "services.email_service._send_resend_email",
+            side_effect=RuntimeError("Provider rejected secret-resend-key"),
+        ):
+            result = send_report_available_email(
+                "parent@example.test",
+                "Parent One",
+                "Isaac Akowanou",
+                "https://portal.example.test/reports/report-id",
+                config=config,
+            )
+
+        self.assertFalse(result["sent"])
+        self.assertEqual(result["provider"], "resend")
+        self.assertIn("[redacted]", result["error"])
+        self.assertNotIn("secret-resend-key", result["error"])
 
     def test_continues_after_individual_email_failure(self):
         second_parent_user = User(
@@ -109,7 +180,7 @@ class EmailServiceTests(unittest.TestCase):
         smtp_context = MagicMock()
         smtp_context.__enter__.return_value = smtp_instance
 
-        with patch.dict(os.environ, EMAIL_ENV, clear=False):
+        with patch.dict(os.environ, EMAIL_ENV, clear=True):
             with patch("services.email_service.smtplib.SMTP", return_value=smtp_context):
                 results = send_report_notification_to_parents(self.db, self.report_card.id)
 
@@ -120,6 +191,7 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(len(failed_results), 1)
         self.assertEqual(len(successful_results), 1)
         self.assertIn("SMTP failure", failed_results[0]["error"])
+        self.assertEqual(failed_results[0]["provider"], "smtp")
         self.assertIsNone(successful_results[0]["error"])
         self.assertEqual(smtp_instance.send_message.call_count, 2)
 
@@ -129,7 +201,7 @@ class EmailServiceTests(unittest.TestCase):
         smtp_context.__enter__.return_value = smtp_instance
         env = {**EMAIL_ENV, "SMTP_PORT": "465"}
 
-        with patch.dict(os.environ, env, clear=False):
+        with patch.dict(os.environ, env, clear=True):
             with patch("services.email_service.smtplib.SMTP_SSL", return_value=smtp_context) as smtp_ssl_class:
                 send_report_notification_to_parents(self.db, self.report_card.id)
 
@@ -139,7 +211,7 @@ class EmailServiceTests(unittest.TestCase):
         smtp_instance.send_message.assert_called_once()
 
     def test_missing_report_card_raises_value_error(self):
-        with patch.dict(os.environ, EMAIL_ENV, clear=False):
+        with patch.dict(os.environ, EMAIL_ENV, clear=True):
             with self.assertRaisesRegex(ValueError, "Report card not found"):
                 send_report_notification_to_parents(self.db, uuid.uuid4())
 

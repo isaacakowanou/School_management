@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -596,6 +597,165 @@ class ReportListRouteTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_draft_report_cannot_be_sent(self):
+        self.report_card.status = "draft"
+        self.report_card.approved_at = None
+        self.report_card.approved_by_admin_id = None
+        self.db.commit()
+
+        with patch("routes.reports.send_report_notification_to_parents") as send_mock:
+            response = self.client.post(
+                f"/api/v1/reports/{self.report_card.id}/send",
+                headers=self._headers(self.admin_user.email),
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "Only approved reports can be sent")
+        send_mock.assert_not_called()
+
+        parent_response = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_response.status_code, 403)
+
+    def test_approved_report_send_marks_sent_and_audits_provider_results(self):
+        send_results = [
+            {
+                "email": self.parent_user.email,
+                "sent": True,
+                "success": True,
+                "provider": "resend",
+                "provider_message_id": "resend-message-1",
+                "error": None,
+            }
+        ]
+
+        with patch("routes.reports.send_report_notification_to_parents", return_value=send_results):
+            response = self.client.post(
+                f"/api/v1/reports/{self.report_card.id}/send",
+                headers=self._headers(self.admin_user.email),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["report_card_id"], str(self.report_card.id))
+        self.assertEqual(data["status"], "sent")
+        self.assertEqual(data["sent_count"], 1)
+        self.assertEqual(data["failed_count"], 0)
+        self.assertEqual(data["results"], send_results)
+
+        self.db.expire_all()
+        report_card = self.db.get(ReportCard, self.report_card.id)
+        self.assertEqual(report_card.status, "sent")
+        self.assertIsNotNone(report_card.sent_at)
+        audit_log = (
+            self.db.query(AuditLog)
+            .filter(AuditLog.action == "report_sent", AuditLog.entity_id == self.report_card.id)
+            .one()
+        )
+        self.assertEqual(audit_log.old_value, {"status": "approved"})
+        self.assertEqual(audit_log.new_value["status"], "sent")
+        self.assertEqual(audit_log.new_value["recipient_count"], 1)
+        self.assertEqual(audit_log.new_value["success_count"], 1)
+        self.assertEqual(audit_log.new_value["failed_count"], 0)
+        self.assertEqual(audit_log.new_value["provider"], "resend")
+        self.assertEqual(audit_log.new_value["provider_message_ids"], ["resend-message-1"])
+
+        parent_response = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_response.status_code, 200)
+        self.assertEqual(parent_response.json()["status"], "sent")
+
+    def test_partial_send_marks_sent_and_tracks_failures(self):
+        send_results = [
+            {
+                "email": self.parent_user.email,
+                "sent": True,
+                "success": True,
+                "provider": "resend",
+                "provider_message_id": "resend-message-1",
+                "error": None,
+            },
+            {
+                "email": "other-parent@example.test",
+                "sent": False,
+                "success": False,
+                "provider": "resend",
+                "provider_message_id": None,
+                "error": "Mailbox unavailable",
+            },
+        ]
+
+        with patch("routes.reports.send_report_notification_to_parents", return_value=send_results):
+            response = self.client.post(
+                f"/api/v1/reports/{self.report_card.id}/send",
+                headers=self._headers(self.admin_user.email),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "sent")
+        self.assertEqual(response.json()["sent_count"], 1)
+        self.assertEqual(response.json()["failed_count"], 1)
+
+        self.db.expire_all()
+        report_card = self.db.get(ReportCard, self.report_card.id)
+        self.assertEqual(report_card.status, "sent")
+        audit_log = (
+            self.db.query(AuditLog)
+            .filter(AuditLog.action == "report_sent", AuditLog.entity_id == self.report_card.id)
+            .one()
+        )
+        self.assertEqual(audit_log.new_value["recipient_count"], 2)
+        self.assertEqual(audit_log.new_value["success_count"], 1)
+        self.assertEqual(audit_log.new_value["failed_count"], 1)
+
+    def test_all_send_failures_do_not_mark_sent_and_create_failed_audit(self):
+        send_results = [
+            {
+                "email": self.parent_user.email,
+                "sent": False,
+                "success": False,
+                "provider": "resend",
+                "provider_message_id": None,
+                "error": "Provider rejected request",
+            }
+        ]
+
+        with patch("routes.reports.send_report_notification_to_parents", return_value=send_results):
+            response = self.client.post(
+                f"/api/v1/reports/{self.report_card.id}/send",
+                headers=self._headers(self.admin_user.email),
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()["detail"]["message"], "No report notifications were sent")
+        self.assertEqual(response.json()["detail"]["results"], send_results)
+
+        self.db.expire_all()
+        report_card = self.db.get(ReportCard, self.report_card.id)
+        self.assertEqual(report_card.status, "approved")
+        self.assertIsNone(report_card.sent_at)
+        audit_log = (
+            self.db.query(AuditLog)
+            .filter(AuditLog.action == "report_email_failed", AuditLog.entity_id == self.report_card.id)
+            .one()
+        )
+        self.assertEqual(audit_log.old_value, {"status": "approved"})
+        self.assertEqual(audit_log.new_value["recipient_count"], 1)
+        self.assertEqual(audit_log.new_value["failed_count"], 1)
+        self.assertEqual(audit_log.new_value["provider"], "resend")
+        self.assertEqual(audit_log.new_value["errors"], ["Provider rejected request"])
+
+        parent_response = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_response.status_code, 200)
+        self.assertEqual(parent_response.json()["status"], "approved")
 
     def test_generated_first_report_is_draft_until_admin_approves(self):
         student = self._create_student_with_course_result_no_report()

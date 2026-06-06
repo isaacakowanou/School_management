@@ -193,6 +193,32 @@ def log_summary_edit_if_needed(
     )
 
 
+def _email_result_provider(send_results: list[dict]) -> str | None:
+    providers = sorted({result.get("provider") for result in send_results if result.get("provider")})
+    if not providers:
+        return None
+    if len(providers) == 1:
+        return providers[0]
+    return "mixed"
+
+
+def _email_message_ids(send_results: list[dict]) -> list[str]:
+    return [
+        str(result["provider_message_id"])
+        for result in send_results
+        if result.get("provider_message_id")
+    ]
+
+
+def _email_error_summary(send_results: list[dict]) -> list[str]:
+    errors = []
+    for result in send_results:
+        error = result.get("error")
+        if error and error not in errors:
+            errors.append(error)
+    return errors[:3]
+
+
 @router.post("/generate/{student_id}", response_model=ReportCardResponse, status_code=status.HTTP_201_CREATED)
 def generate_report_card(
     student_id: UUID,
@@ -406,7 +432,23 @@ def send_report_card(
 
     sent_count = sum(1 for result in send_results if result.get("sent"))
     failed_count = len(send_results) - sent_count
+    provider = _email_result_provider(send_results)
     if sent_count == 0:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="report_email_failed",
+            entity_type="report_card",
+            entity_id=report_card.id,
+            old_value={"status": report_card.status},
+            new_value={
+                "recipient_count": len(send_results),
+                "failed_count": failed_count,
+                "provider": provider,
+                "errors": _email_error_summary(send_results),
+            },
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": "No report notifications were sent", "results": send_results},
@@ -421,7 +463,14 @@ def send_report_card(
         entity_type="report_card",
         entity_id=report_card.id,
         old_value={"status": "approved"},
-        new_value={"status": "sent", "sent_count": sent_count, "failed_count": failed_count},
+        new_value={
+            "status": "sent",
+            "recipient_count": len(send_results),
+            "success_count": sent_count,
+            "failed_count": failed_count,
+            "provider": provider,
+            "provider_message_ids": _email_message_ids(send_results),
+        },
     )
     db.commit()
 

@@ -360,6 +360,46 @@ a.card:active {
   border-color: var(--accent);
 }
 
+.password-input-wrap {
+  position: relative;
+}
+
+.password-input-wrap input {
+  padding-right: 46px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover {
+  background: #f0f2f5;
+  color: var(--text);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid #c7d4f5;
+}
+
+.password-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
 .login-card .btn-primary {
   width: 100%;
   margin-top: 4px;

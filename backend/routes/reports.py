@@ -159,9 +159,9 @@ def ensure_report_is_draft(report_card: ReportCard) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft reports can be reviewed")
 
 
-def ensure_report_is_approved(report_card: ReportCard) -> None:
-    if report_card.status != "approved":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved reports can be sent")
+def ensure_report_can_be_sent(report_card: ReportCard) -> None:
+    if report_card.status not in {"approved", "sent"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved or sent reports can be sent")
 
 
 def update_report_summary(report_card: ReportCard, payload: ReportReviewUpdate) -> tuple[str | None, str | None]:
@@ -423,7 +423,10 @@ def send_report_card(
     current_user: User = Depends(require_admin),
 ) -> ReportSendResponse:
     report_card = get_report_card_or_404(db, report_id)
-    ensure_report_is_approved(report_card)
+    ensure_report_can_be_sent(report_card)
+    was_already_sent = report_card.status == "sent"
+    old_status = report_card.status
+    old_sent_at = report_card.sent_at
 
     try:
         send_results = send_report_notification_to_parents(db, report_card.id)
@@ -440,12 +443,13 @@ def send_report_card(
             action="report_email_failed",
             entity_type="report_card",
             entity_id=report_card.id,
-            old_value={"status": report_card.status},
+            old_value={"status": old_status, "sent_at": old_sent_at},
             new_value={
                 "recipient_count": len(send_results),
                 "failed_count": failed_count,
                 "provider": provider,
                 "errors": _email_error_summary(send_results),
+                "was_already_sent": was_already_sent,
             },
         )
         db.commit()
@@ -455,21 +459,24 @@ def send_report_card(
         )
 
     report_card.status = "sent"
-    report_card.sent_at = datetime.now(timezone.utc)
+    sent_at = datetime.now(timezone.utc)
+    report_card.sent_at = sent_at
     create_audit_log(
         db=db,
         actor_user_id=current_user.id,
-        action="report_sent",
+        action="report_resent" if was_already_sent else "report_sent",
         entity_type="report_card",
         entity_id=report_card.id,
-        old_value={"status": "approved"},
+        old_value={"status": old_status, "sent_at": old_sent_at},
         new_value={
             "status": "sent",
+            "sent_at": sent_at,
             "recipient_count": len(send_results),
             "success_count": sent_count,
             "failed_count": failed_count,
             "provider": provider,
             "provider_message_ids": _email_message_ids(send_results),
+            "was_already_sent": was_already_sent,
         },
     )
     db.commit()

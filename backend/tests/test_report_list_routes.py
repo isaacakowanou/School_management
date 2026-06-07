@@ -608,10 +608,10 @@ class ReportListRouteTests(unittest.TestCase):
             response = self.client.post(
                 f"/api/v1/reports/{self.report_card.id}/send",
                 headers=self._headers(self.admin_user.email),
-            )
+        )
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["detail"], "Only approved reports can be sent")
+        self.assertEqual(response.json()["detail"], "Only approved or sent reports can be sent")
         send_mock.assert_not_called()
 
         parent_response = self.client.get(
@@ -655,13 +655,15 @@ class ReportListRouteTests(unittest.TestCase):
             .filter(AuditLog.action == "report_sent", AuditLog.entity_id == self.report_card.id)
             .one()
         )
-        self.assertEqual(audit_log.old_value, {"status": "approved"})
+        self.assertEqual(audit_log.old_value, {"status": "approved", "sent_at": None})
         self.assertEqual(audit_log.new_value["status"], "sent")
+        self.assertIsNotNone(audit_log.new_value["sent_at"])
         self.assertEqual(audit_log.new_value["recipient_count"], 1)
         self.assertEqual(audit_log.new_value["success_count"], 1)
         self.assertEqual(audit_log.new_value["failed_count"], 0)
         self.assertEqual(audit_log.new_value["provider"], "resend")
         self.assertEqual(audit_log.new_value["provider_message_ids"], ["resend-message-1"])
+        self.assertFalse(audit_log.new_value["was_already_sent"])
 
         parent_response = self.client.get(
             f"/api/v1/reports/{self.report_card.id}",
@@ -712,6 +714,55 @@ class ReportListRouteTests(unittest.TestCase):
         self.assertEqual(audit_log.new_value["recipient_count"], 2)
         self.assertEqual(audit_log.new_value["success_count"], 1)
         self.assertEqual(audit_log.new_value["failed_count"], 1)
+        self.assertFalse(audit_log.new_value["was_already_sent"])
+
+    def test_sent_report_can_be_resent_and_updates_sent_at_and_audits(self):
+        old_sent_at = self.base_time + timedelta(hours=2)
+        self.report_card.status = "sent"
+        self.report_card.sent_at = old_sent_at
+        self.db.commit()
+        send_results = [
+            {
+                "email": self.parent_user.email,
+                "sent": True,
+                "success": True,
+                "provider": "resend",
+                "provider_message_id": "resend-message-2",
+                "error": None,
+            }
+        ]
+
+        with patch("routes.reports.send_report_notification_to_parents", return_value=send_results):
+            response = self.client.post(
+                f"/api/v1/reports/{self.report_card.id}/send",
+                headers=self._headers(self.admin_user.email),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "sent")
+        self.assertEqual(data["sent_count"], 1)
+        self.assertEqual(data["failed_count"], 0)
+
+        self.db.expire_all()
+        report_card = self.db.get(ReportCard, self.report_card.id)
+        self.assertEqual(report_card.status, "sent")
+        self.assertIsNotNone(report_card.sent_at)
+        self.assertNotEqual(report_card.sent_at, old_sent_at)
+        audit_log = (
+            self.db.query(AuditLog)
+            .filter(AuditLog.action == "report_resent", AuditLog.entity_id == self.report_card.id)
+            .one()
+        )
+        self.assertEqual(audit_log.old_value, {"status": "sent", "sent_at": old_sent_at.isoformat()})
+        self.assertEqual(audit_log.new_value["status"], "sent")
+        self.assertIsNotNone(audit_log.new_value["sent_at"])
+        self.assertEqual(audit_log.new_value["recipient_count"], 1)
+        self.assertEqual(audit_log.new_value["success_count"], 1)
+        self.assertEqual(audit_log.new_value["failed_count"], 0)
+        self.assertEqual(audit_log.new_value["provider"], "resend")
+        self.assertEqual(audit_log.new_value["provider_message_ids"], ["resend-message-2"])
+        self.assertTrue(audit_log.new_value["was_already_sent"])
 
     def test_all_send_failures_do_not_mark_sent_and_create_failed_audit(self):
         send_results = [
@@ -744,11 +795,12 @@ class ReportListRouteTests(unittest.TestCase):
             .filter(AuditLog.action == "report_email_failed", AuditLog.entity_id == self.report_card.id)
             .one()
         )
-        self.assertEqual(audit_log.old_value, {"status": "approved"})
+        self.assertEqual(audit_log.old_value, {"status": "approved", "sent_at": None})
         self.assertEqual(audit_log.new_value["recipient_count"], 1)
         self.assertEqual(audit_log.new_value["failed_count"], 1)
         self.assertEqual(audit_log.new_value["provider"], "resend")
         self.assertEqual(audit_log.new_value["errors"], ["Provider rejected request"])
+        self.assertFalse(audit_log.new_value["was_already_sent"])
 
         parent_response = self.client.get(
             f"/api/v1/reports/{self.report_card.id}",
@@ -756,6 +808,47 @@ class ReportListRouteTests(unittest.TestCase):
         )
         self.assertEqual(parent_response.status_code, 200)
         self.assertEqual(parent_response.json()["status"], "approved")
+
+    def test_all_resend_failures_do_not_update_sent_at(self):
+        old_sent_at = self.base_time + timedelta(hours=2)
+        self.report_card.status = "sent"
+        self.report_card.sent_at = old_sent_at
+        self.db.commit()
+        send_results = [
+            {
+                "email": self.parent_user.email,
+                "sent": False,
+                "success": False,
+                "provider": "resend",
+                "provider_message_id": None,
+                "error": "Provider rejected request",
+            }
+        ]
+
+        with patch("routes.reports.send_report_notification_to_parents", return_value=send_results):
+            response = self.client.post(
+                f"/api/v1/reports/{self.report_card.id}/send",
+                headers=self._headers(self.admin_user.email),
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()["detail"]["message"], "No report notifications were sent")
+
+        self.db.expire_all()
+        report_card = self.db.get(ReportCard, self.report_card.id)
+        self.assertEqual(report_card.status, "sent")
+        self.assertEqual(report_card.sent_at, old_sent_at)
+        audit_log = (
+            self.db.query(AuditLog)
+            .filter(AuditLog.action == "report_email_failed", AuditLog.entity_id == self.report_card.id)
+            .one()
+        )
+        self.assertEqual(audit_log.old_value, {"status": "sent", "sent_at": old_sent_at.isoformat()})
+        self.assertEqual(audit_log.new_value["recipient_count"], 1)
+        self.assertEqual(audit_log.new_value["failed_count"], 1)
+        self.assertEqual(audit_log.new_value["provider"], "resend")
+        self.assertEqual(audit_log.new_value["errors"], ["Provider rejected request"])
+        self.assertTrue(audit_log.new_value["was_already_sent"])
 
     def test_generated_first_report_is_draft_until_admin_approves(self):
         student = self._create_student_with_course_result_no_report()

@@ -179,12 +179,17 @@ export default function AdminReportDetailPage() {
   }
 
   async function handleSend() {
+    const isResend = report?.status === 'sent'
+    if (isResend && !window.confirm('This report was already sent. Send it again?')) {
+      return
+    }
+
     const result = await runAction('send', () => sendReport(reportId), {
-      successMessage: 'Report sent to parents.',
+      successMessage: isResend ? 'Report resent to parents.' : 'Report sent to parents.',
     })
     if (result) {
       setActionMessage(
-        `Report sent · ${result.sent_count} delivered${
+        `${isResend ? 'Report resent' : 'Report sent'} · ${result.sent_count} delivered${
           result.failed_count ? ` · ${result.failed_count} failed` : ''
         }.`,
       )
@@ -365,9 +370,15 @@ export default function AdminReportDetailPage() {
           </>
         )}
 
-        {isApproved && (
+        {(isApproved || isSent) && (
           <button type="button" className="btn btn-primary" onClick={handleSend} disabled={busy}>
-            {pending === 'send' ? 'Sending…' : 'Send report'}
+            {pending === 'send'
+              ? isSent
+                ? 'Resending…'
+                : 'Sending…'
+              : isSent
+                ? 'Resend report'
+                : 'Send report'}
           </button>
         )}
 

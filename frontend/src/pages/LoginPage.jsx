@@ -4,6 +4,8 @@ import { useAuth } from '../auth/AuthContext.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import { homePathForRole, isPathForRole } from '../utils/roles.js'
 
+const BACKEND_WAKEUP_MESSAGE = 'Backend is waking up. Please wait 30 seconds and try again.'
+
 export default function LoginPage() {
   const { login, isAuthenticated, bootstrapping, role, homePath } = useAuth()
   const navigate = useNavigate()
@@ -32,7 +34,7 @@ export default function LoginPage() {
       const dest = from && isPathForRole(from, me.role) ? from : homePathForRole(me.role)
       navigate(dest, { replace: true })
     } catch (err) {
-      setError(err.message || 'Sign in failed. Please try again.')
+      setError(err.status === 504 ? BACKEND_WAKEUP_MESSAGE : err.message || 'Sign in failed. Please try again.')
     } finally {
       setSubmitting(false)
     }

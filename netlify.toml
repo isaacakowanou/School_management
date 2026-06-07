@@ -3,13 +3,11 @@
   command = "npm run build"
   publish = "dist"
 
-[[redirects]]
-  from = "/api/*"
-  to = "https://school-management-backend-m8n8.onrender.com/api/:splat"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Routing/redirects are defined in a single source of truth:
+#   frontend/public/_redirects  ->  copied to dist/_redirects at build time.
+# That file ships inside the published directory, so it is honored regardless
+# of base-directory resolution. Order there is:
+#   1. /api/*  -> Render backend (proxy, 200!) so login/API keep working
+#   2. /*      -> /index.html (SPA fallback) so deep links like /reports/{id} load React
+# Do NOT also add [[redirects]] here: when both exist, netlify.toml wins and
+# _redirects is ignored, which reintroduces drift.

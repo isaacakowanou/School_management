@@ -95,6 +95,9 @@ export function AuthProvider({ children }) {
         if (err?.status === 404) {
           throw new Error('No parent profile is linked to this account. Please contact the school.')
         }
+        if (err?.status === 0 || err?.status === 504) {
+          throw err
+        }
         throw new Error('Could not sign you in. Please try again.')
       }
     },

@@ -6,6 +6,10 @@ import { homePathForRole, isPathForRole } from '../utils/roles.js'
 
 const BACKEND_WAKEUP_MESSAGE = 'Backend is waking up. Please wait 30 seconds and try again.'
 
+function isBackendWakeupError(error) {
+  return error?.status === 504 || error?.status === 0
+}
+
 export default function LoginPage() {
   const { login, isAuthenticated, bootstrapping, role, homePath } = useAuth()
   const navigate = useNavigate()
@@ -34,7 +38,7 @@ export default function LoginPage() {
       const dest = from && isPathForRole(from, me.role) ? from : homePathForRole(me.role)
       navigate(dest, { replace: true })
     } catch (err) {
-      setError(err.status === 504 ? BACKEND_WAKEUP_MESSAGE : err.message || 'Sign in failed. Please try again.')
+      setError(isBackendWakeupError(err) ? BACKEND_WAKEUP_MESSAGE : err.message || 'Sign in failed. Please try again.')
     } finally {
       setSubmitting(false)
     }

@@ -153,8 +153,8 @@ export default function AdminReportsPage() {
           {filtered.length === 0 ? (
             <Empty message="No reports match this filter." />
           ) : (
-            <div className="table-scroll">
-              <table className="table">
+            <div className="table-scroll reports-table-scroll">
+              <table className="table reports-table">
                 <thead>
                   <tr>
                     <th>Student</th>

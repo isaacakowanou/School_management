@@ -531,6 +531,15 @@ a.card:active {
   border-radius: 0;
 }
 
+.reports-table-scroll {
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.reports-table {
+  min-width: 760px;
+}
+
 .audit-table {
   min-width: 720px;
 }
@@ -819,6 +828,15 @@ a.card:active {
   .admin-main {
     width: 100%;
     padding: 20px 16px 48px;
+  }
+
+  .reports-table {
+    min-width: 680px;
+  }
+
+  .reports-table th,
+  .reports-table td {
+    padding: 10px 12px;
   }
 
   .audit-details-grid {

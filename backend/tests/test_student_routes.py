@@ -240,7 +240,7 @@ class StudentRouteTests(unittest.TestCase):
         self.assertEqual(student.school_level, "college")
 
     def test_create_student_with_invalid_school_level_is_rejected(self):
-        for bad_value in ["highschool", "primary", "PRIMAIRE", "lycée", "random"]:
+        for bad_value in ["highschool", "primary", "PRIMAIRE", "lycée", "lycee", "random"]:
             with self.subTest(value=bad_value):
                 payload = self._student_payload(f"BAD-{bad_value}")
                 payload["school_level"] = bad_value
@@ -256,14 +256,14 @@ class StudentRouteTests(unittest.TestCase):
 
         response = self.client.put(
             f"/api/v1/students/{student.id}",
-            json={"school_level": "lycee"},
+            json={"school_level": "primaire"},
             headers=self._headers(self.admin_user.email),
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["school_level"], "lycee")
+        self.assertEqual(response.json()["school_level"], "primaire")
         self.db.expire_all()
-        self.assertEqual(self.db.get(Student, student.id).school_level, "lycee")
+        self.assertEqual(self.db.get(Student, student.id).school_level, "primaire")
 
     def test_update_student_with_invalid_school_level_is_rejected(self):
         student = self._create_student("UPD-BAD-LEVEL")

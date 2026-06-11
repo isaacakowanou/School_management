@@ -10,7 +10,6 @@ class SchoolLevel(str, Enum):
     maternelle = "maternelle"
     primaire = "primaire"
     college = "college"
-    lycee = "lycee"
 
 
 class UserCreate(BaseModel):

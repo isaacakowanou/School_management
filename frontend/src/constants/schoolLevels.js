@@ -4,7 +4,6 @@ export const SCHOOL_LEVELS = [
   { value: 'maternelle', label: 'Maternelle' },
   { value: 'primaire', label: 'Primaire' },
   { value: 'college', label: 'Collège' },
-  { value: 'lycee', label: 'Lycée' },
 ]
 
 export function schoolLevelLabel(value) {

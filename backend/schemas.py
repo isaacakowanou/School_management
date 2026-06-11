@@ -1,8 +1,16 @@
 from datetime import date, datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
+
+
+class SchoolLevel(str, Enum):
+    maternelle = "maternelle"
+    primaire = "primaire"
+    college = "college"
+    lycee = "lycee"
 
 
 class UserCreate(BaseModel):
@@ -35,6 +43,7 @@ class StudentCreate(BaseModel):
     first_name: str
     last_name: str
     grade_level: str
+    school_level: SchoolLevel | None = None
     student_number: str
 
 
@@ -42,6 +51,7 @@ class StudentUpdate(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     grade_level: str | None = None
+    school_level: SchoolLevel | None = None
     student_number: str | None = None
 
 
@@ -50,6 +60,7 @@ class StudentResponse(BaseModel):
     first_name: str
     last_name: str
     grade_level: str
+    school_level: SchoolLevel | None = None
     student_number: str
 
 

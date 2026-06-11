@@ -23,6 +23,7 @@ def to_student_response(student: Student) -> StudentResponse:
         first_name=student.first_name,
         last_name=student.last_name,
         grade_level=student.grade_level,
+        school_level=student.school_level,
         student_number=student.student_number,
     )
 

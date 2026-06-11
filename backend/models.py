@@ -36,6 +36,7 @@ class Student(Base):
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     grade_level: Mapped[str] = mapped_column(String(50), nullable=False)
+    school_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
     student_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

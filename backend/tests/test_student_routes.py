@@ -207,9 +207,114 @@ class StudentRouteTests(unittest.TestCase):
                 "first_name": "New",
                 "last_name": "Student",
                 "grade_level": "12",
+                "school_level": None,
                 "student_number": "AUDIT-STU-001",
             },
         )
+
+    def test_create_student_without_school_level_defaults_to_null(self):
+        response = self.client.post(
+            "/api/v1/students",
+            json=self._student_payload("NO-LEVEL-STU"),
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()["school_level"])
+        student = self.db.scalar(select(Student).where(Student.student_number == "NO-LEVEL-STU"))
+        self.assertIsNone(student.school_level)
+
+    def test_create_student_with_valid_school_level(self):
+        payload = self._student_payload("LEVEL-STU-001")
+        payload["school_level"] = "college"
+
+        response = self.client.post(
+            "/api/v1/students",
+            json=payload,
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["school_level"], "college")
+        student = self.db.scalar(select(Student).where(Student.student_number == "LEVEL-STU-001"))
+        self.assertEqual(student.school_level, "college")
+
+    def test_create_student_with_invalid_school_level_is_rejected(self):
+        for bad_value in ["highschool", "primary", "PRIMAIRE", "lycée", "random"]:
+            with self.subTest(value=bad_value):
+                payload = self._student_payload(f"BAD-{bad_value}")
+                payload["school_level"] = bad_value
+                response = self.client.post(
+                    "/api/v1/students",
+                    json=payload,
+                    headers=self._headers(self.admin_user.email),
+                )
+                self.assertEqual(response.status_code, 422)
+
+    def test_update_student_with_valid_school_level(self):
+        student = self._create_student("UPD-LEVEL-001")
+
+        response = self.client.put(
+            f"/api/v1/students/{student.id}",
+            json={"school_level": "lycee"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["school_level"], "lycee")
+        self.db.expire_all()
+        self.assertEqual(self.db.get(Student, student.id).school_level, "lycee")
+
+    def test_update_student_with_invalid_school_level_is_rejected(self):
+        student = self._create_student("UPD-BAD-LEVEL")
+
+        response = self.client.put(
+            f"/api/v1/students/{student.id}",
+            json={"school_level": "middle-school"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_update_school_level_only_does_not_change_other_fields(self):
+        student = self._create_student("UPD-LEVEL-ONLY")
+        original_first = student.first_name
+        original_last = student.last_name
+        original_grade = student.grade_level
+        original_number = student.student_number
+
+        response = self.client.put(
+            f"/api/v1/students/{student.id}",
+            json={"school_level": "primaire"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["school_level"], "primaire")
+        self.assertEqual(data["first_name"], original_first)
+        self.assertEqual(data["last_name"], original_last)
+        self.assertEqual(data["grade_level"], original_grade)
+        self.assertEqual(data["student_number"], original_number)
+
+    def test_existing_null_school_level_appears_in_list_and_detail(self):
+        student = self._create_student("NULL-LEVEL-VIEW")
+
+        list_response = self.client.get(
+            "/api/v1/students",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(list_response.status_code, 200)
+        listed = {item["id"]: item for item in list_response.json()}
+        self.assertIn(str(student.id), listed)
+        self.assertIsNone(listed[str(student.id)]["school_level"])
+
+        detail_response = self.client.get(
+            f"/api/v1/students/{student.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIsNone(detail_response.json()["school_level"])
 
     def test_admin_can_update_student(self):
         student = self._create_student("EDIT-STU-001")

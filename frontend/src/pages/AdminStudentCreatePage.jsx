@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createStudent } from '../api/students.js'
+import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 
 const EMPTY_FORM = {
@@ -8,6 +9,7 @@ const EMPTY_FORM = {
   lastName: '',
   studentNumber: '',
   gradeLevel: '',
+  schoolLevel: '',
 }
 
 export default function AdminStudentCreatePage() {
@@ -96,6 +98,24 @@ export default function AdminStudentCreatePage() {
             disabled={saving}
             required
           />
+        </label>
+
+        <label className="field">
+          <span>School level (optional)</span>
+          <select
+            className="grade-input"
+            value={form.schoolLevel}
+            onChange={(event) => updateField('schoolLevel', event.target.value)}
+            disabled={saving}
+            style={{ width: '100%', textAlign: 'left' }}
+          >
+            <option value="">Not set</option>
+            {SCHOOL_LEVELS.map((level) => (
+              <option key={level.value} value={level.value}>
+                {level.label}
+              </option>
+            ))}
+          </select>
         </label>
 
         <div className="grade-actions">

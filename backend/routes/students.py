@@ -90,6 +90,7 @@ def create_student(
     last_name = clean_required_text(payload.last_name, "last_name")
     grade_level = clean_required_text(payload.grade_level, "grade_level")
     student_number = clean_required_text(payload.student_number, "student_number")
+    school_level = payload.school_level.value if payload.school_level is not None else None
 
     existing_student = db.scalar(select(Student).where(Student.student_number == student_number))
     if existing_student is not None:
@@ -99,6 +100,7 @@ def create_student(
         first_name=first_name,
         last_name=last_name,
         grade_level=grade_level,
+        school_level=school_level,
         student_number=student_number,
     )
     db.add(student)
@@ -114,6 +116,7 @@ def create_student(
             "first_name": student.first_name,
             "last_name": student.last_name,
             "grade_level": student.grade_level,
+            "school_level": student.school_level,
             "student_number": student.student_number,
         },
     )
@@ -149,6 +152,7 @@ def update_student(
         "first_name": student.first_name,
         "last_name": student.last_name,
         "grade_level": student.grade_level,
+        "school_level": student.school_level,
         "student_number": student.student_number,
     }
 
@@ -166,11 +170,14 @@ def update_student(
         student.last_name = clean_required_text(payload.last_name, "last_name")
     if payload.grade_level is not None:
         student.grade_level = clean_required_text(payload.grade_level, "grade_level")
+    if payload.school_level is not None:
+        student.school_level = payload.school_level.value
 
     new_value = {
         "first_name": student.first_name,
         "last_name": student.last_name,
         "grade_level": student.grade_level,
+        "school_level": student.school_level,
         "student_number": student.student_number,
     }
     if new_value != old_value:

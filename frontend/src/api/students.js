@@ -6,12 +6,13 @@ export function listStudents() {
 }
 
 // POST /api/v1/students (admin)
-export function createStudent({ firstName, lastName, studentNumber, gradeLevel }) {
+export function createStudent({ firstName, lastName, studentNumber, gradeLevel, schoolLevel }) {
   return apiPost('/students', {
     first_name: firstName.trim(),
     last_name: lastName.trim(),
     student_number: studentNumber.trim(),
     grade_level: gradeLevel.trim(),
+    school_level: schoolLevel || null,
   })
 }
 
@@ -21,12 +22,13 @@ export function getStudent(studentId) {
 }
 
 // PUT /api/v1/students/{student_id} (admin)
-export function updateStudent(studentId, { firstName, lastName, studentNumber, gradeLevel }) {
+export function updateStudent(studentId, { firstName, lastName, studentNumber, gradeLevel, schoolLevel }) {
   return apiPut(`/students/${studentId}`, {
     first_name: firstName.trim(),
     last_name: lastName.trim(),
     student_number: studentNumber.trim(),
     grade_level: gradeLevel.trim(),
+    school_level: schoolLevel || null,
   })
 }
 

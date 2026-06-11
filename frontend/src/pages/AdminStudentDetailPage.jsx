@@ -11,6 +11,7 @@ import { listParents } from '../api/parents.js'
 import { getCourse } from '../api/courses.js'
 import { listStudentCourseResults } from '../api/courseResults.js'
 import { generateReport, getStudentReports } from '../api/reports.js'
+import { SCHOOL_LEVELS, schoolLevelLabel } from '../constants/schoolLevels.js'
 import { formatGpa, formatPercent } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -23,6 +24,7 @@ function studentToForm(student) {
     lastName: student?.last_name || '',
     studentNumber: student?.student_number || '',
     gradeLevel: student?.grade_level || '',
+    schoolLevel: student?.school_level || '',
   }
 }
 
@@ -295,7 +297,9 @@ export default function AdminStudentDetailPage() {
         {student.first_name} {student.last_name}
       </h2>
       <p className="muted">
-        {student.grade_level} · #{student.student_number}
+        {student.grade_level}
+        {student.school_level ? ` · ${schoolLevelLabel(student.school_level)}` : ''} · #
+        {student.student_number}
       </p>
       {!showEditForm && (
         <div className="grade-actions">
@@ -354,6 +358,24 @@ export default function AdminStudentDetailPage() {
               disabled={savingEdit}
               required
             />
+          </label>
+
+          <label className="field">
+            <span>School level (optional)</span>
+            <select
+              className="grade-input"
+              value={editForm.schoolLevel}
+              onChange={(event) => updateEditField('schoolLevel', event.target.value)}
+              disabled={savingEdit}
+              style={{ width: '100%', textAlign: 'left' }}
+            >
+              <option value="">Not set</option>
+              {SCHOOL_LEVELS.map((level) => (
+                <option key={level.value} value={level.value}>
+                  {level.label}
+                </option>
+              ))}
+            </select>
           </label>
 
           <div className="grade-actions">

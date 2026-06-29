@@ -344,6 +344,7 @@ def get_or_create_course_result(
         course_result.average = average
         course_result.letter_grade = letter_grade
         stats.update("course result")
+    course_result.scale = "20"
     course_result.calculated_at = now
     return course_result
 
@@ -425,6 +426,7 @@ def get_or_create_report_card(
     stats.reuse("approved report card")
     report_card.overall_average = overall_average
     report_card.gpa = gpa
+    report_card.scale = "20"
     report_card.status = "approved"
     report_card.ai_summary = DEMO_SUMMARY
     report_card.pdf_url = pdf_path

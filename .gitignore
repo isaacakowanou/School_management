@@ -8,4 +8,4 @@ backend/.pytest_cache/
 backend/.env
 .venv/
 venv/
-backend/storage/
+backend/storage/.DS_Store

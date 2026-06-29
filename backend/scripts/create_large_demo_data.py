@@ -443,6 +443,7 @@ def get_or_create_course_result(
     if course_result.letter_grade != letter_grade:
         course_result.letter_grade = letter_grade
         did_change = True
+    course_result.scale = "20"
     if did_change:
         course_result.calculated_at = datetime.now(timezone.utc)
         stats.update("course_results")
@@ -510,6 +511,7 @@ def get_or_create_report_card(
         return report_card
 
     stats.reuse("reports")
+    report_card.scale = "20"
     did_change = False
     if numbers_differ(report_card.overall_average, report_data["overall_average"]):
         report_card.overall_average = report_data["overall_average"]

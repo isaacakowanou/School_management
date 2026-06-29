@@ -109,8 +109,9 @@ def get_report_card_staleness(db: Session, report_card: ReportCard) -> ReportCar
             current_gpa=None,
         )
 
+    snapshot_scale = report_card.scale or "20"
     reasons: list[str] = []
-    if not _numbers_match(report_card.overall_average, current_data["overall_average"]):
+    if not _numbers_match(normalize_average_to_20(report_card.overall_average, snapshot_scale), current_data["overall_average"]):
         reasons.append("overall_average changed")
     if not _numbers_match(report_card.gpa, current_data["gpa"]):
         reasons.append("gpa changed")
@@ -122,7 +123,8 @@ def get_report_card_staleness(db: Session, report_card: ReportCard) -> ReportCar
     else:
         for course_id, snapshot_course in snapshot_courses.items():
             current_course = current_courses[course_id]
-            if not _numbers_match(snapshot_course.average, current_course["average"]):
+            snapshot_avg = normalize_average_to_20(snapshot_course.average, snapshot_scale)
+            if not _numbers_match(snapshot_avg, current_course["average"]):
                 reasons.append(f"course average changed for {snapshot_course.course_name}")
             if snapshot_course.letter_grade != current_course["letter_grade"]:
                 reasons.append(f"letter grade changed for {snapshot_course.course_name}")

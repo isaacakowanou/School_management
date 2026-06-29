@@ -71,6 +71,7 @@ class ReportBuilderTests(unittest.TestCase):
                     term="Fall 2026",
                     average=91.7,
                     letter_grade="A",
+                    scale="100",
                 ),
                 CourseResult(
                     student=self.student,
@@ -78,6 +79,7 @@ class ReportBuilderTests(unittest.TestCase):
                     term="Fall 2026",
                     average=96.5,
                     letter_grade="A",
+                    scale="100",
                 ),
                 CourseResult(
                     student=self.student,
@@ -85,6 +87,7 @@ class ReportBuilderTests(unittest.TestCase):
                     term="Fall 2026",
                     average=70,
                     letter_grade="C",
+                    scale="100",
                 ),
             ]
         )
@@ -115,7 +118,7 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertEqual(set(courses_by_code), {"CS-12", "MATH-12"})
         self.assertEqual(courses_by_code["MATH-12"]["course_id"], self.math.id)
         self.assertEqual(courses_by_code["MATH-12"]["course_name"], "Mathematics")
-        self.assertEqual(courses_by_code["MATH-12"]["average"], 91.7)
+        self.assertEqual(courses_by_code["MATH-12"]["average"], 18.34)
         self.assertEqual(courses_by_code["MATH-12"]["letter_grade"], "A")
 
     def test_overall_average_and_gpa_use_calculator_outputs(self):
@@ -126,7 +129,7 @@ class ReportBuilderTests(unittest.TestCase):
             school_year="2026-2027",
         )
 
-        self.assertEqual(report_data["overall_average"], 94.1)
+        self.assertEqual(report_data["overall_average"], 18.82)
         self.assertEqual(report_data["gpa"], 4.0)
 
     def test_scale_100_course_result_is_normalized_to_20(self):
@@ -247,6 +250,7 @@ class ReportCardStalenessTests(unittest.TestCase):
             term="Fall",
             average=95.0,
             letter_grade="A",
+            scale="100",
         )
         self.science_result = CourseResult(
             student=self.student,
@@ -254,6 +258,7 @@ class ReportCardStalenessTests(unittest.TestCase):
             term="Fall",
             average=85.0,
             letter_grade="B",
+            scale="100",
         )
         self.db.add_all([self.math_result, self.science_result])
         self.db.commit()

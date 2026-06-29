@@ -215,6 +215,105 @@ class ReportStalenessRouteTests(unittest.TestCase):
         report_card = self.db.get(ReportCard, self.report_card.id)
         self.assertEqual(report_card.scale, "20")
 
+    def test_historical_scale_100_report_is_not_stale_when_data_unchanged(self):
+        # A pre-A1.2 report has scale="100" and stores /100 averages in both the
+        # ReportCard and ReportCardCourse rows. The staleness check must normalize
+        # the snapshot to /20 before comparing against the builder's /20 output,
+        # otherwise every historical report falsely appears stale on deploy.
+        historical_student = Student(
+            first_name="Legacy",
+            last_name="Student",
+            grade_level="Grade 10",
+            student_number="LEGACY001",
+        )
+        self.db.add(historical_student)
+        self.db.flush()
+
+        # CourseResults tagged scale="100" — values 92.5 and 87.5 are on the /100 scale.
+        self.db.add_all([
+            CourseResult(
+                student=historical_student,
+                course=self.math,
+                term="Fall",
+                average=92.5,
+                letter_grade="A",
+                scale="100",
+            ),
+            CourseResult(
+                student=historical_student,
+                course=self.science,
+                term="Fall",
+                average=87.5,
+                letter_grade="B",
+                scale="100",
+            ),
+        ])
+        self.db.flush()
+
+        # ReportCard snapshot on the /100 scale: overall = (92.5 + 87.5) / 2 = 90.0
+        approved_at = datetime.now(timezone.utc)
+        historical_report = ReportCard(
+            student=historical_student,
+            term="Fall",
+            school_year="2026-2027",
+            overall_average=90.0,
+            gpa=3.5,
+            scale="100",
+            status="approved",
+            approved_by_admin_id=self.admin_user.id,
+            approved_at=approved_at,
+        )
+        self.db.add(historical_report)
+        self.db.flush()
+        self.db.add_all([
+            ReportCardCourse(
+                report_card_id=historical_report.id,
+                course_id=self.math.id,
+                course_name="Mathematics",
+                average=92.5,
+                letter_grade="A",
+            ),
+            ReportCardCourse(
+                report_card_id=historical_report.id,
+                course_id=self.science.id,
+                course_name="Science",
+                average=87.5,
+                letter_grade="B",
+            ),
+        ])
+        self.db.commit()
+        self.db.refresh(historical_report)
+
+        # Underlying data is unchanged — must not be stale.
+        # Builder normalizes 92.5 → 18.5 and 87.5 → 17.5 (/20); overall = 18.0.
+        # Staleness check normalizes snapshot 90.0 → 18.0 and compares 18.0 == 18.0.
+        response = self.client.get(
+            f"/api/v1/reports/{historical_report.id}/staleness",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["is_stale"], msg=f"Expected not stale; reasons: {data.get('reason')}")
+
+        # Now change a CourseResult — the report should become stale.
+        math_result = self.db.scalar(
+            select(CourseResult).where(
+                CourseResult.student_id == historical_student.id,
+                CourseResult.course_id == self.math.id,
+            )
+        )
+        math_result.average = 60.0  # Still /100; normalizes to 12.0 /20
+        self.db.commit()
+
+        response = self.client.get(
+            f"/api/v1/reports/{historical_report.id}/staleness",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["is_stale"])
+        self.assertIn("overall_average changed", data["reason"])
+
     def test_parent_and_teacher_cannot_get_report_staleness(self):
         for email in [self.parent_user.email, self.teacher_user.email]:
             response = self.client.get(

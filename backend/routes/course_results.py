@@ -15,7 +15,7 @@ from schemas import (
     CourseResultResponse,
     SkippedCourseResultStudent,
 )
-from services.grade_calculator import calculate_course_average, get_letter_grade
+from services.grade_calculator import calculate_course_average, letter_grade_for_course_average
 from utils import get_current_teacher
 
 
@@ -30,6 +30,7 @@ def to_course_result_response(course_result: CourseResult) -> CourseResultRespon
         term=course_result.term,
         average=course_result.average,
         letter_grade=course_result.letter_grade,
+        scale=course_result.scale,
     )
 
 
@@ -175,7 +176,7 @@ def calculate_results_for_students(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-        letter_grade = get_letter_grade(average)
+        letter_grade = letter_grade_for_course_average(average)
         calculated_at = datetime.now(timezone.utc)
         course_result = db.scalar(
             select(CourseResult).where(
@@ -192,12 +193,16 @@ def calculate_results_for_students(
                 term=course.term,
                 average=average,
                 letter_grade=letter_grade,
+                scale="20",
                 calculated_at=calculated_at,
             )
             db.add(course_result)
         else:
             course_result.average = average
             course_result.letter_grade = letter_grade
+            # Recalculated averages are always on the /20 scale, even if this
+            # row was previously a historical /100 result.
+            course_result.scale = "20"
             course_result.calculated_at = calculated_at
 
         results.append(course_result)

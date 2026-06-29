@@ -129,6 +129,48 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertEqual(report_data["overall_average"], 94.1)
         self.assertEqual(report_data["gpa"], 4.0)
 
+    def test_scale_100_course_result_is_normalized_to_20(self):
+        # A historical /100 course result must be scaled down to /20 before it is
+        # used in the report's averages.
+        legacy_student = Student(
+            first_name="Legacy",
+            last_name="Scale",
+            grade_level="Grade 12",
+            student_number="STU100",
+        )
+        history = Course(
+            name="History",
+            code="HIST-100",
+            teacher=self.teacher,
+            grade_level="Grade 12",
+            term="Fall 2026",
+            school_year="2026-2027",
+        )
+        self.db.add_all([legacy_student, history])
+        self.db.flush()
+        self.db.add(
+            CourseResult(
+                student=legacy_student,
+                course=history,
+                term="Fall 2026",
+                average=90.0,
+                letter_grade="A",
+                scale="100",
+            )
+        )
+        self.db.commit()
+
+        report_data = build_report_card_data(
+            self.db,
+            legacy_student.id,
+            term="Fall 2026",
+            school_year="2026-2027",
+        )
+
+        self.assertEqual(report_data["courses"][0]["average"], 18.0)
+        self.assertEqual(report_data["overall_average"], 18.0)
+        self.assertEqual(report_data["scale"], "20")
+
     def test_missing_student_raises_value_error(self):
         with self.assertRaisesRegex(ValueError, "Student not found"):
             build_report_card_data(

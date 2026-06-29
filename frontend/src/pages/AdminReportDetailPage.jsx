@@ -10,7 +10,7 @@ import {
   updateReportSummary,
 } from '../api/reports.js'
 import { checkReport, generateReportSummary } from '../api/ai.js'
-import { formatGpa, formatPercent } from '../utils/format.js'
+import { formatGpa, formatReportAverage, formatScore20 } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -275,7 +275,7 @@ export default function AdminReportDetailPage() {
       <div className="summary-row">
         <div className="stat">
           <div className="stat-label">Overall average</div>
-          <div className="stat-value">{formatPercent(report.overall_average)}</div>
+          <div className="stat-value">{formatReportAverage(report.overall_average, report.scale)}</div>
         </div>
         <div className="stat">
           <div className="stat-label">GPA</div>
@@ -303,13 +303,13 @@ export default function AdminReportDetailPage() {
           <div className="stale-report-values" aria-label="Snapshot and current values">
             <div>
               <span>Snapshot overall average</span>
-              <strong>{formatPercent(staleness.snapshot_overall_average)}</strong>
+              <strong>{formatReportAverage(staleness.snapshot_overall_average, report.scale)}</strong>
             </div>
             <div>
               <span>Current overall average</span>
               <strong>
                 {hasValue(staleness.current_overall_average)
-                  ? formatPercent(staleness.current_overall_average)
+                  ? formatScore20(staleness.current_overall_average)
                   : 'Unavailable'}
               </strong>
             </div>
@@ -430,7 +430,7 @@ export default function AdminReportDetailPage() {
             {report.courses.map((course) => (
               <tr key={course.id}>
                 <td>{course.course_name}</td>
-                <td className="num">{formatPercent(course.average)}</td>
+                <td className="num">{formatReportAverage(course.average, report.scale)}</td>
                 <td className="num">{course.letter_grade}</td>
               </tr>
             ))}

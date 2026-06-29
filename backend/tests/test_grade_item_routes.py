@@ -142,6 +142,19 @@ class GradeItemRouteTests(unittest.TestCase):
         grade_item = self.db.scalar(select(GradeItem).where(GradeItem.id == UUID(data["id"])))
         self.assertIsNotNone(grade_item)
 
+    def test_create_grade_item_defaults_max_score_to_20(self):
+        payload = self._grade_item_payload("No Max Score")
+        del payload["max_score"]
+
+        response = self.client.post(
+            "/api/v1/grade-items",
+            json=payload,
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["max_score"], 20)
+
     def test_assigned_teacher_can_create_grade_item(self):
         response = self.client.post(
             "/api/v1/grade-items",

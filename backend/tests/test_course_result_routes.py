@@ -230,7 +230,10 @@ class CourseResultRouteTests(unittest.TestCase):
         data = response.json()
         self.assertEqual(data["calculated_count"], 1)
         self.assertEqual(data["results"][0]["student_id"], str(self.student_one.id))
-        self.assertEqual(data["results"][0]["average"], 95.0)
+        # 100/100 and 90/100 at equal weight -> 20*.5 + 18*.5 = 19.0 on /20
+        self.assertEqual(data["results"][0]["average"], 19.0)
+        # Recalculated results are always on the /20 scale.
+        self.assertEqual(data["results"][0]["scale"], "20")
 
         self.db.expire_all()
         student_one_result = self.db.get(CourseResult, self.student_one_result.id)
@@ -266,11 +269,12 @@ class CourseResultRouteTests(unittest.TestCase):
         )
         self.assertEqual(recalc_response.status_code, 200)
         self.assertEqual(recalc_response.json()["calculated_count"], 1)
-        self.assertEqual(recalc_response.json()["results"][0]["average"], 95.0)
+        self.assertEqual(recalc_response.json()["results"][0]["average"], 19.0)
 
         self.db.expire_all()
         course_result = self.db.get(CourseResult, self.student_one_result.id)
-        self.assertEqual(course_result.average, 95.0)
+        self.assertEqual(course_result.average, 19.0)
+        # Letter grade unchanged by the /20 switch (A1.2 bridge: 19.0 -> 95 -> "A")
         self.assertEqual(course_result.letter_grade, "A")
         self.assertGreater(course_result.calculated_at, original_calculated_at)
 
@@ -283,7 +287,7 @@ class CourseResultRouteTests(unittest.TestCase):
             result["student_id"]: result
             for result in admin_results_response.json()
         }
-        self.assertEqual(admin_results[str(self.student_one.id)]["average"], 95.0)
+        self.assertEqual(admin_results[str(self.student_one.id)]["average"], 19.0)
         self.assertEqual(admin_results[str(self.student_one.id)]["letter_grade"], "A")
 
         reports = self._report_list_by_student_number()
@@ -296,8 +300,9 @@ class CourseResultRouteTests(unittest.TestCase):
         self.assertEqual(staleness_response.status_code, 200)
         staleness = staleness_response.json()
         self.assertTrue(staleness["is_stale"])
+        # Snapshot is a historical /100 fixture value; current is recomputed on /20.
         self.assertEqual(staleness["snapshot_overall_average"], 85.0)
-        self.assertEqual(staleness["current_overall_average"], 95.0)
+        self.assertEqual(staleness["current_overall_average"], 19.0)
 
     def test_whole_course_recalculation_still_updates_all_enrolled_students(self):
         original_one_calculated_at = self.student_one_result.calculated_at
@@ -315,6 +320,21 @@ class CourseResultRouteTests(unittest.TestCase):
         student_two_result = self.db.get(CourseResult, self.student_two_result.id)
         self.assertGreater(student_one_result.calculated_at, original_one_calculated_at)
         self.assertGreater(student_two_result.calculated_at, original_two_calculated_at)
+
+    def test_historical_course_result_returns_scale_100(self):
+        # A result not yet recalculated keeps its historical /100 scale in the
+        # response; recalculated results report /20.
+        self.student_one_result.scale = "100"
+        self.db.commit()
+
+        response = self.client.get(
+            f"/api/v1/course-results/{self.course.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(response.status_code, 200)
+        results = {result["student_id"]: result for result in response.json()}
+        self.assertEqual(results[str(self.student_one.id)]["scale"], "100")
+        self.assertEqual(results[str(self.student_two.id)]["scale"], "20")
 
     def test_selected_recalculation_permissions_and_enrollment_validation(self):
         payload = {"student_ids": [str(self.student_one.id)]}

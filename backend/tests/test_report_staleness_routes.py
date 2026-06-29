@@ -101,14 +101,14 @@ class ReportStalenessRouteTests(unittest.TestCase):
             student=self.student,
             course=self.math,
             term="Fall",
-            average=95.0,
+            average=19.0,
             letter_grade="A",
         )
         self.science_result = CourseResult(
             student=self.student,
             course=self.science,
             term="Fall",
-            average=85.0,
+            average=17.0,
             letter_grade="B",
         )
         self.db.add_all([self.math_result, self.science_result])
@@ -119,7 +119,7 @@ class ReportStalenessRouteTests(unittest.TestCase):
             student=self.student,
             term="Fall",
             school_year="2026-2027",
-            overall_average=90.0,
+            overall_average=18.0,
             gpa=3.5,
             status="sent",
             ai_summary="Keep this summary.",
@@ -136,14 +136,14 @@ class ReportStalenessRouteTests(unittest.TestCase):
                     report_card_id=self.report_card.id,
                     course_id=self.math.id,
                     course_name="Mathematics",
-                    average=95.0,
+                    average=19.0,
                     letter_grade="A",
                 ),
                 ReportCardCourse(
                     report_card_id=self.report_card.id,
                     course_id=self.science.id,
                     course_name="Science",
-                    average=85.0,
+                    average=17.0,
                     letter_grade="B",
                 ),
             ]
@@ -160,7 +160,7 @@ class ReportStalenessRouteTests(unittest.TestCase):
         return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
     def _make_report_stale(self) -> None:
-        self.math_result.average = 75.0
+        self.math_result.average = 15.0
         self.math_result.letter_grade = "C"
         self.db.commit()
 
@@ -176,10 +176,44 @@ class ReportStalenessRouteTests(unittest.TestCase):
         data = response.json()
         self.assertTrue(data["is_stale"])
         self.assertIn("overall_average changed", data["reason"])
-        self.assertEqual(data["snapshot_overall_average"], 90.0)
-        self.assertEqual(data["current_overall_average"], 80.0)
+        self.assertEqual(data["snapshot_overall_average"], 18.0)
+        self.assertEqual(data["current_overall_average"], 16.0)
         self.assertEqual(data["snapshot_gpa"], 3.5)
         self.assertEqual(data["current_gpa"], 2.5)
+
+    def test_report_response_includes_scale_for_historical_report(self):
+        self.report_card.scale = "100"
+        self.db.commit()
+
+        response = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["scale"], "100")
+
+    def test_regenerating_scale_100_report_sets_scale_20(self):
+        # Mark the report as a historical /100 snapshot, then regenerate from the
+        # current /20 course results.
+        self.report_card.scale = "100"
+        self.report_card.overall_average = 90.0
+        self.db.commit()
+
+        response = self.client.post(
+            f"/api/v1/reports/{self.report_card.id}/regenerate",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["scale"], "20")
+        # Current results are 19.0 and 17.0 on /20 -> overall 18.0
+        self.assertEqual(data["overall_average"], 18.0)
+
+        self.db.expire_all()
+        report_card = self.db.get(ReportCard, self.report_card.id)
+        self.assertEqual(report_card.scale, "20")
 
     def test_parent_and_teacher_cannot_get_report_staleness(self):
         for email in [self.parent_user.email, self.teacher_user.email]:
@@ -200,11 +234,11 @@ class ReportStalenessRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["status"], "draft")
-        self.assertEqual(data["overall_average"], 80.0)
+        self.assertEqual(data["overall_average"], 16.0)
         self.assertEqual(data["gpa"], 2.5)
         self.assertEqual(data["ai_summary"], "Keep this summary.")
         courses_by_name = {course["course_name"]: course for course in data["courses"]}
-        self.assertEqual(courses_by_name["Mathematics"]["average"], 75.0)
+        self.assertEqual(courses_by_name["Mathematics"]["average"], 15.0)
         self.assertEqual(courses_by_name["Mathematics"]["letter_grade"], "C")
 
         self.db.expire_all()

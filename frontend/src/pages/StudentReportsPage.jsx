@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { getParentStudents } from '../api/parents.js'
 import { getStudentReports } from '../api/reports.js'
-import { formatPercent } from '../utils/format.js'
+import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -77,7 +77,7 @@ export default function StudentReportsPage() {
                   <div className="report-term">
                     {report.term} · {report.school_year}
                   </div>
-                  <div className="muted">Overall {formatPercent(report.overall_average)}</div>
+                  <div className="muted">Overall {formatReportAverage(report.overall_average, report.scale)}</div>
                 </div>
                 <StatusBadge status={report.status} />
               </Link>

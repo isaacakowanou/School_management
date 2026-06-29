@@ -42,6 +42,7 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
         school_year=report_card.school_year,
         overall_average=report_card.overall_average,
         gpa=report_card.gpa,
+        scale=report_card.scale,
         status=report_card.status,
         ai_summary=report_card.ai_summary,
         pdf_url=report_card.pdf_url,
@@ -119,6 +120,7 @@ def to_admin_report_list_item(report_card: ReportCard, *, needs_review: bool) ->
         status=report_card.status,
         overall_average=report_card.overall_average,
         gpa=report_card.gpa,
+        scale=report_card.scale,
         created_at=report_card.created_at,
         needs_review=needs_review,
     )
@@ -249,6 +251,7 @@ def generate_report_card(
         school_year=payload.school_year,
         overall_average=report_data["overall_average"],
         gpa=report_data["gpa"],
+        scale="20",
         status="draft",
         ai_summary=None,
         pdf_url=pdf_path,
@@ -532,6 +535,7 @@ def regenerate_report_card(
         "status": report_card.status,
         "overall_average": report_card.overall_average,
         "gpa": report_card.gpa,
+        "scale": report_card.scale,
         "approved_by_admin_id": report_card.approved_by_admin_id,
         "approved_at": report_card.approved_at,
         "sent_at": report_card.sent_at,
@@ -554,6 +558,9 @@ def regenerate_report_card(
 
     report_card.overall_average = report_data["overall_average"]
     report_card.gpa = report_data["gpa"]
+    # Regenerated snapshots are always on the /20 scale, even when the previous
+    # snapshot was a historical /100 report.
+    report_card.scale = "20"
     report_card.status = "draft"
     report_card.approved_by_admin_id = None
     report_card.approved_at = None
@@ -574,6 +581,7 @@ def regenerate_report_card(
         "status": report_card.status,
         "overall_average": report_card.overall_average,
         "gpa": report_card.gpa,
+        "scale": report_card.scale,
         "approved_by_admin_id": None,
         "approved_at": None,
         "sent_at": None,

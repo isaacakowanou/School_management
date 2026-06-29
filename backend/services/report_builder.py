@@ -5,7 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import Course, CourseResult, ReportCard, ReportCardCourse, Student
-from services.grade_calculator import calculate_gpa, calculate_overall_average
+from services.grade_calculator import (
+    calculate_gpa,
+    calculate_overall_average,
+    normalize_average_to_20,
+)
 
 
 STALE_FLOAT_TOLERANCE = 0.005
@@ -39,12 +43,16 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
     if not course_results:
         raise ValueError("Student has no course results for the requested term and school year")
 
+    # Normalize each result to /20 by its stored scale so a report mixing
+    # pre-A1.2 (/100) and post-A1.2 (/20) course results is computed on one
+    # scale. letter_grade is scale-invariant (A on /100 == A on /20), so the
+    # stored letter is kept as-is.
     courses = [
         {
             "course_id": course_result.course_id,
             "course_name": course_result.course.name,
             "course_code": course_result.course.code,
-            "average": course_result.average,
+            "average": normalize_average_to_20(course_result.average, course_result.scale),
             "letter_grade": course_result.letter_grade,
         }
         for course_result in course_results
@@ -64,6 +72,8 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
         "courses": courses,
         "overall_average": calculate_overall_average(course_averages),
         "gpa": calculate_gpa(course_averages),
+        # Live recomputation always yields a /20 report.
+        "scale": "20",
     }
 
 
@@ -173,6 +183,7 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
         "courses": courses,
         "overall_average": report_card.overall_average,
         "gpa": report_card.gpa,
+        "scale": report_card.scale,
         "ai_summary": report_card.ai_summary,
         "status": report_card.status,
         "generated_date": generated_date,

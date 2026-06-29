@@ -90,6 +90,7 @@ def build_summary_report_data(report_card: ReportCard) -> dict:
         ],
         "overall_average": report_card.overall_average,
         "gpa": report_card.gpa,
+        "scale": report_card.scale,
     }
 
 

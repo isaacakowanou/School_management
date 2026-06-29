@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { getParentStudents } from '../api/parents.js'
 import { downloadReportPdf, getReport } from '../api/reports.js'
-import { formatGpa, formatPercent } from '../utils/format.js'
+import { formatGpa, formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 
@@ -119,7 +119,7 @@ export default function ReportDetailPage() {
       <div className="summary-row">
         <div className="stat">
           <div className="stat-label">Overall average</div>
-          <div className="stat-value">{formatPercent(report.overall_average)}</div>
+          <div className="stat-value">{formatReportAverage(report.overall_average, report.scale)}</div>
         </div>
         <div className="stat">
           <div className="stat-label">GPA</div>
@@ -140,7 +140,7 @@ export default function ReportDetailPage() {
           {report.courses.map((course) => (
             <tr key={course.id}>
               <td>{course.course_name}</td>
-              <td className="num">{formatPercent(course.average)}</td>
+              <td className="num">{formatReportAverage(course.average, report.scale)}</td>
               <td className="num">{course.letter_grade}</td>
             </tr>
           ))}

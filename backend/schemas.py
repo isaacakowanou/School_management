@@ -162,7 +162,8 @@ class GradeItemCreate(BaseModel):
     course_id: UUID
     title: str
     category: str
-    max_score: float
+    # Defaults to the /20 scale; teachers can still set a custom max (e.g. 10).
+    max_score: float = 20
     weight: float
     term: str
     due_date: date | None = None
@@ -214,6 +215,9 @@ class CourseResultResponse(BaseModel):
     term: str
     average: float
     letter_grade: str
+    # Grade scale of average: "20" for results calculated after the A1.2 switch,
+    # "100" for historical results not yet recalculated.
+    scale: str = "20"
 
 
 class CourseResultCalculationRequest(BaseModel):
@@ -271,6 +275,8 @@ class ReportCardResponse(BaseModel):
     school_year: str
     overall_average: float
     gpa: float | None = None
+    # Grade scale of overall_average and course averages: "20" or "100".
+    scale: str = "20"
     status: str
     ai_summary: str | None = None
     pdf_url: str | None = None
@@ -292,6 +298,8 @@ class AdminReportListItem(BaseModel):
     status: str
     overall_average: float
     gpa: float | None = None
+    # Grade scale of overall_average: "20" or "100" (historical reports).
+    scale: str = "20"
     created_at: datetime
     needs_review: bool
 

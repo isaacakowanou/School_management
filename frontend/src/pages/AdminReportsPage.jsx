@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listReports } from '../api/reports.js'
-import { formatGpa, formatPercent } from '../utils/format.js'
+import { formatGpa, formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -182,7 +182,7 @@ export default function AdminReportsPage() {
                       <td>
                         <ReportStatus report={report} />
                       </td>
-                      <td className="num">{formatPercent(report.overall_average)}</td>
+                      <td className="num">{formatReportAverage(report.overall_average, report.scale)}</td>
                       <td className="num">{formatGpa(report.gpa)}</td>
                       <td className="nowrap">
                         <Link className="back-link" to={`/admin/reports/${report.id}`}>

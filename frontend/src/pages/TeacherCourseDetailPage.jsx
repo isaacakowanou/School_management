@@ -8,7 +8,7 @@ import {
   calculateSelectedCourseResults,
   listCourseResults,
 } from '../api/courseResults.js'
-import { formatPercent } from '../utils/format.js'
+import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -17,7 +17,7 @@ import GradeEntryTable from '../components/GradeEntryTable.jsx'
 const EMPTY_GRADE_ITEM_FORM = {
   title: '',
   category: '',
-  maxScore: '100',
+  maxScore: '20',
   weight: '',
   term: '',
   dueDate: '',
@@ -670,7 +670,7 @@ export default function TeacherCourseDetailPage() {
                         {studentNameById[result.student_id] || result.student_id}
                       </td>
                       <td>{result.term}</td>
-                      <td className="num">{formatPercent(result.average)}</td>
+                      <td className="num">{formatReportAverage(result.average, result.scale)}</td>
                       <td>{result.letter_grade}</td>
                     </tr>
                   ))}

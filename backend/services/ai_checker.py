@@ -141,12 +141,16 @@ def check_report_card_data(db: Session, report_card_id: UUID) -> list[dict]:
             )
         )
 
+    # Out-of-range bound depends on the report's grade scale: historical /100
+    # reports allow up to 100, post-A1.2 /20 reports up to 20.
+    max_average = 100 if report_card.scale == "100" else 20
+
     for report_course in report_card.courses:
-        if report_course.average < 0 or report_course.average > 100:
+        if report_course.average < 0 or report_course.average > max_average:
             warnings.append(
                 _warning(
                     warning_type="report_course_average_out_of_range",
-                    message=f"{report_course.course_name} average is outside the 0-100 range.",
+                    message=f"{report_course.course_name} average is outside the 0-{max_average} range.",
                     severity="high",
                     entity_type="report_card_course",
                     entity_id=report_course.id,

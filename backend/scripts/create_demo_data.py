@@ -34,7 +34,7 @@ from services.grade_calculator import (  # noqa: E402
     calculate_course_average,
     calculate_gpa,
     calculate_overall_average,
-    get_letter_grade,
+    letter_grade_for_course_average,
 )
 from services.pdf_generator import generate_report_card_pdf  # noqa: E402
 
@@ -543,7 +543,7 @@ def create_demo_data() -> None:
             for grade in grades
         ]
         course_average = calculate_course_average(grade_inputs)
-        letter_grade = get_letter_grade(course_average)
+        letter_grade = letter_grade_for_course_average(course_average)
         overall_average = calculate_overall_average([course_average])
         gpa = calculate_gpa([course_average])
 

@@ -4,6 +4,16 @@
 WEIGHT_TOLERANCE_MIN = 0.999
 WEIGHT_TOLERANCE_MAX = 1.001
 
+# Course averages are computed and stored on a /20 scale (Beninese system).
+GRADE_SCALE_MAX = 20.0
+
+# A1.2 bridge: the letter-grade and GPA thresholds still use the legacy /100
+# scale. A /20 average is scaled back up by this factor before being mapped to
+# a letter, so letter grades and GPA stay byte-for-byte identical to the old
+# /100 behavior. A1.3 will rescale the letter thresholds to /20 and remove this
+# bridge entirely.
+LETTER_GRADE_SCALE_FACTOR = 100.0 / GRADE_SCALE_MAX  # 5.0
+
 
 def _get_grade_value(grade, field_name):
     if isinstance(grade, dict):
@@ -25,7 +35,11 @@ def _as_number(value, field_name):
 
 
 def calculate_course_average(grades):
-    """Calculate a weighted course average from grade-like objects or dicts."""
+    """Calculate a weighted course average on the /20 scale.
+
+    Each grade item's raw score is normalized to /20 via (score / max_score) * 20,
+    so items with any max_score (20, 10, 100, ...) contribute correctly.
+    """
     if not grades:
         raise ValueError("grades list cannot be empty")
 
@@ -46,8 +60,8 @@ def calculate_course_average(grades):
         if weight < 0 or weight > 1:
             raise ValueError("weight must be between 0 and 1")
 
-        percentage = score / max_score * 100
-        total += percentage * weight
+        normalized = score / max_score * GRADE_SCALE_MAX
+        total += normalized * weight
         total_weight += weight
 
     if not WEIGHT_TOLERANCE_MIN <= total_weight <= WEIGHT_TOLERANCE_MAX:
@@ -57,7 +71,12 @@ def calculate_course_average(grades):
 
 
 def get_letter_grade(average):
-    """Convert a numeric average to the current letter-grade scale."""
+    """Convert a /100 average to the current letter-grade scale.
+
+    A1.2 note: thresholds are still on the legacy /100 scale. Course averages
+    are now on /20, so callers go through letter_grade_for_course_average(),
+    which scales the value up first. A1.3 will rescale these thresholds to /20.
+    """
     average = _as_number(average, "average")
 
     if average >= 90:
@@ -69,6 +88,32 @@ def get_letter_grade(average):
     if average >= 60:
         return "D"
     return "F"
+
+
+def normalize_average_to_20(average, scale):
+    """Return a course average on the /20 scale.
+
+    Historical results stored on the legacy /100 scale (scale == "100") are
+    scaled down by 0.2; results already on /20 (the default) pass through
+    unchanged. Used by the report builder so a report mixing pre- and
+    post-A1.2 course results is always computed on a single /20 scale.
+    """
+    average = _as_number(average, "average")
+    if scale == "100":
+        return round(average * 0.2, 2)
+    return average
+
+
+def letter_grade_for_course_average(course_average):
+    """Map a /20 course average to a letter grade.
+
+    A1.2 bridge: get_letter_grade still uses /100 thresholds, so scale the /20
+    average up by LETTER_GRADE_SCALE_FACTOR before mapping. This keeps letters
+    identical to the old /100 behavior. A1.3 will rescale get_letter_grade to
+    /20 and let callers use it directly, removing this bridge.
+    """
+    scaled = _as_number(course_average, "course average") * LETTER_GRADE_SCALE_FACTOR
+    return get_letter_grade(scaled)
 
 
 def calculate_overall_average(course_averages):
@@ -93,5 +138,5 @@ def calculate_gpa(course_averages):
         "F": 0.0,
     }
 
-    points = [grade_points[get_letter_grade(average)] for average in course_averages]
+    points = [grade_points[letter_grade_for_course_average(average)] for average in course_averages]
     return round(sum(points) / len(points), 2)

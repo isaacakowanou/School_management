@@ -184,6 +184,10 @@ class CourseResult(Base):
     term: Mapped[str] = mapped_column(String(50), nullable=False)
     average: Mapped[float] = mapped_column(Float, nullable=False)
     letter_grade: Mapped[str] = mapped_column(String(5), nullable=False)
+    # Grade scale this row's average is on: "20" for results calculated after the
+    # A1.2 switch, "100" for historical results. Nullable at the DB level (added
+    # nullable-first); the ORM always supplies a value.
+    scale: Mapped[str] = mapped_column(String(10), nullable=True, default="20", server_default="20")
     calculated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     student: Mapped["Student"] = orm_relationship(back_populates="course_results")
@@ -199,6 +203,10 @@ class ReportCard(Base):
     school_year: Mapped[str] = mapped_column(String(20), nullable=False)
     overall_average: Mapped[float] = mapped_column(Float, nullable=False)
     gpa: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Grade scale this snapshot's numbers are on: "20" for reports generated
+    # after the A1.2 switch, "100" for historical reports. Nullable at the DB
+    # level (added nullable-first); the ORM always supplies a value.
+    scale: Mapped[str] = mapped_column(String(10), nullable=True, default="20", server_default="20")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     pdf_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -11,7 +11,7 @@ import { listStudents } from '../api/students.js'
 import { getTeacher, listTeachers } from '../api/teachers.js'
 import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
-import { formatPercent } from '../utils/format.js'
+import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -19,7 +19,7 @@ import Empty from '../components/Empty.jsx'
 const EMPTY_GRADE_ITEM_FORM = {
   title: '',
   category: '',
-  maxScore: '100',
+  maxScore: '20',
   weight: '',
   term: '',
 }
@@ -1004,7 +1004,7 @@ export default function AdminCourseDetailPage() {
                     )}
                   </td>
                   <td className="nowrap">{result.term}</td>
-                  <td className="num">{formatPercent(result.average)}</td>
+                  <td className="num">{formatReportAverage(result.average, result.scale)}</td>
                   <td className="num">{result.letter_grade}</td>
                 </tr>
               ))}

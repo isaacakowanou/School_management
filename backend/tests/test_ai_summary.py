@@ -71,10 +71,12 @@ class AISummaryServiceTests(unittest.TestCase):
         self.assertIn("Grade 12", prompt_text)
         self.assertIn("Fall", prompt_text)
         self.assertIn("2026-2027", prompt_text)
-        self.assertIn("Mathematics: 91.70, A", prompt_text)
-        self.assertIn("Computer Science: 96.50, A", prompt_text)
-        self.assertIn("Overall average: 94.10", prompt_text)
-        self.assertIn("GPA: 4.00", prompt_text)
+        self.assertIn("Averages use a /20 scale.", prompt_text)
+        self.assertIn("Mathematics: 91.70/20, A", prompt_text)
+        self.assertIn("Computer Science: 96.50/20, A", prompt_text)
+        self.assertIn("Overall average: 94.10/20", prompt_text)
+        # GPA is unitless and must not carry a scale suffix.
+        self.assertIn("GPA: 4.00\n", prompt_text)
         self.assertNotIn("teacher", prompt_text.lower())
         self.assertNotIn("attendance record", prompt_text.lower())
 

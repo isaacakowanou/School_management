@@ -10,22 +10,28 @@ def _create_openai_client(api_key: str):
     return OpenAI(api_key=api_key)
 
 
-def _format_course_lines(courses: list[dict]) -> str:
+def _scale_suffix(scale) -> str:
+    # Label numbers so the model is not confused about the grading scale.
+    return "/100" if scale == "100" else "/20"
+
+
+def _format_course_lines(courses: list[dict], scale_suffix: str) -> str:
     return "\n".join(
-        f"- {course['course_name']}: {course['average']:.2f}, {course['letter_grade']}"
+        f"- {course['course_name']}: {course['average']:.2f}{scale_suffix}, {course['letter_grade']}"
         for course in courses
     )
 
 
-def _format_optional_number(value) -> str:
+def _format_optional_number(value, scale_suffix: str = "") -> str:
     if value is None:
         return "Not provided"
-    return f"{value:.2f}"
+    return f"{value:.2f}{scale_suffix}"
 
 
 def _build_summary_prompt(report_data: dict) -> str:
     student = report_data["student"]
     student_name = f"{student['first_name']} {student['last_name']}"
+    scale_suffix = _scale_suffix(report_data.get("scale"))
 
     return f"""Write a short parent-friendly academic summary using only the data below.
 
@@ -33,9 +39,10 @@ Student name: {student_name}
 Grade level: {student['grade_level']}
 Term: {report_data['term']}
 School year: {report_data['school_year']}
+Averages use a {scale_suffix} scale.
 Courses:
-{_format_course_lines(report_data['courses'])}
-Overall average: {_format_optional_number(report_data['overall_average'])}
+{_format_course_lines(report_data['courses'], scale_suffix)}
+Overall average: {_format_optional_number(report_data['overall_average'], scale_suffix)}
 GPA: {_format_optional_number(report_data['gpa'])}
 
 Rules:

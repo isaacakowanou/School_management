@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { getParentStudents } from '../api/parents.js'
 import { downloadReportPdf, getReport } from '../api/reports.js'
-import { formatGpa, formatReportAverage } from '../utils/format.js'
+import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 
@@ -120,10 +120,6 @@ export default function ReportDetailPage() {
         <div className="stat">
           <div className="stat-label">Overall average</div>
           <div className="stat-value">{formatReportAverage(report.overall_average, report.scale)}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">GPA</div>
-          <div className="stat-value">{formatGpa(report.gpa)}</div>
         </div>
       </div>
 

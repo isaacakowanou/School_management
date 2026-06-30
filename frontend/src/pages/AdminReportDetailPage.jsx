@@ -10,7 +10,7 @@ import {
   updateReportSummary,
 } from '../api/reports.js'
 import { checkReport, generateReportSummary } from '../api/ai.js'
-import { formatGpa, formatReportAverage, formatScore20 } from '../utils/format.js'
+import { formatReportAverage, formatScore20 } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -278,10 +278,6 @@ export default function AdminReportDetailPage() {
           <div className="stat-value">{formatReportAverage(report.overall_average, report.scale)}</div>
         </div>
         <div className="stat">
-          <div className="stat-label">GPA</div>
-          <div className="stat-value">{formatGpa(report.gpa)}</div>
-        </div>
-        <div className="stat">
           <div className="stat-label">Status</div>
           <div className="stat-value" style={{ fontSize: '1.1rem' }}>
             <StatusBadge status={report.status} />
@@ -310,18 +306,6 @@ export default function AdminReportDetailPage() {
               <strong>
                 {hasValue(staleness.current_overall_average)
                   ? formatScore20(staleness.current_overall_average)
-                  : 'Unavailable'}
-              </strong>
-            </div>
-            <div>
-              <span>Snapshot GPA</span>
-              <strong>{formatGpa(staleness.snapshot_gpa)}</strong>
-            </div>
-            <div>
-              <span>Current GPA</span>
-              <strong>
-                {hasValue(staleness.current_gpa)
-                  ? formatGpa(staleness.current_gpa)
                   : 'Unavailable'}
               </strong>
             </div>

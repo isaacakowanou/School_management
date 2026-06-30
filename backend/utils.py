@@ -37,4 +37,5 @@ def to_course_response(course: Course) -> CourseResponse:
         grade_level=course.grade_level,
         term=course.term,
         school_year=course.school_year,
+        language_group=course.language_group,
     )

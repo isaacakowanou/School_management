@@ -120,6 +120,36 @@ class CourseRouteTests(unittest.TestCase):
 
         course = self.db.scalar(select(Course).where(Course.code == "NEW-101"))
         self.assertIsNotNone(course)
+        self.assertIsNone(course.language_group)
+
+    def test_create_course_with_language_group_sets_field(self):
+        payload = self._course_payload("LANG-101")
+        payload["language_group"] = "FRENCH"
+
+        response = self.client.post(
+            "/api/v1/courses",
+            json=payload,
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["language_group"], "FRENCH")
+
+        course = self.db.scalar(select(Course).where(Course.code == "LANG-101"))
+        self.assertEqual(course.language_group, "FRENCH")
+
+    def test_create_course_with_invalid_language_group_is_rejected(self):
+        payload = self._course_payload("BAD-LANG-101")
+        payload["language_group"] = "SPANISH"
+
+        response = self.client.post(
+            "/api/v1/courses",
+            json=payload,
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 422)
 
     def test_create_course_trims_required_fields(self):
         response = self.client.post(
@@ -217,6 +247,7 @@ class CourseRouteTests(unittest.TestCase):
                 "grade_level": "12",
                 "term": "Fall",
                 "school_year": "2026-2027",
+                "language_group": None,
             },
         )
 
@@ -242,6 +273,59 @@ class CourseRouteTests(unittest.TestCase):
         self.assertEqual(data["grade_level"], "11")
         self.assertEqual(data["term"], "Spring")
         self.assertEqual(data["school_year"], "2027-2028")
+
+    def test_update_course_sets_language_group(self):
+        self.assertIsNone(self.existing_course.language_group)
+
+        response = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={"language_group": "ENGLISH"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["language_group"], "ENGLISH")
+
+        self.db.expire_all()
+        course = self.db.get(Course, self.existing_course.id)
+        self.assertEqual(course.language_group, "ENGLISH")
+
+    def test_update_course_clears_language_group(self):
+        self.existing_course.language_group = "FRENCH"
+        self.db.commit()
+
+        response = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={"language_group": None},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsNone(data["language_group"])
+
+        self.db.expire_all()
+        course = self.db.get(Course, self.existing_course.id)
+        self.assertIsNone(course.language_group)
+
+    def test_update_course_omitting_language_group_preserves_existing(self):
+        self.existing_course.language_group = "FRENCH"
+        self.db.commit()
+
+        response = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={"term": "Spring"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["language_group"], "FRENCH")
+
+        self.db.expire_all()
+        course = self.db.get(Course, self.existing_course.id)
+        self.assertEqual(course.language_group, "FRENCH")
 
     def test_non_admin_cannot_update_course(self):
         for user in [self.teacher_user, self.parent_user]:

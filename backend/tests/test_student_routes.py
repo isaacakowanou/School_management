@@ -265,6 +265,38 @@ class StudentRouteTests(unittest.TestCase):
         self.db.expire_all()
         self.assertEqual(self.db.get(Student, student.id).school_level, "primaire")
 
+    def test_update_student_clears_school_level(self):
+        student = self._create_student("UPD-CLEAR-LEVEL")
+        student.school_level = "college"
+        self.db.commit()
+
+        response = self.client.put(
+            f"/api/v1/students/{student.id}",
+            json={"school_level": None},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["school_level"])
+        self.db.expire_all()
+        self.assertIsNone(self.db.get(Student, student.id).school_level)
+
+    def test_update_student_omitting_school_level_preserves_existing(self):
+        student = self._create_student("UPD-KEEP-LEVEL")
+        student.school_level = "college"
+        self.db.commit()
+
+        response = self.client.put(
+            f"/api/v1/students/{student.id}",
+            json={"grade_level": "11"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["school_level"], "college")
+        self.db.expire_all()
+        self.assertEqual(self.db.get(Student, student.id).school_level, "college")
+
     def test_update_student_with_invalid_school_level_is_rejected(self):
         student = self._create_student("UPD-BAD-LEVEL")
 

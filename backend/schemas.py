@@ -12,6 +12,11 @@ class SchoolLevel(str, Enum):
     college = "college"
 
 
+class LanguageGroup(str, Enum):
+    FRENCH = "FRENCH"
+    ENGLISH = "ENGLISH"
+
+
 class UserCreate(BaseModel):
     name: str
     email: str
@@ -127,6 +132,7 @@ class CourseResponse(BaseModel):
     grade_level: str
     term: str
     school_year: str
+    language_group: LanguageGroup | None = None
 
 
 class CourseCreate(BaseModel):
@@ -136,6 +142,7 @@ class CourseCreate(BaseModel):
     grade_level: str
     term: str
     school_year: str
+    language_group: LanguageGroup | None = None
 
 
 class CourseUpdate(BaseModel):
@@ -145,6 +152,7 @@ class CourseUpdate(BaseModel):
     grade_level: str | None = None
     term: str | None = None
     school_year: str | None = None
+    language_group: LanguageGroup | None = None
 
 
 class EnrollmentCreate(BaseModel):

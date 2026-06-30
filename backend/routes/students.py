@@ -170,8 +170,14 @@ def update_student(
         student.last_name = clean_required_text(payload.last_name, "last_name")
     if payload.grade_level is not None:
         student.grade_level = clean_required_text(payload.grade_level, "grade_level")
-    if payload.school_level is not None:
-        student.school_level = payload.school_level.value
+    # school_level is nullable: an explicit null clears it, while omitting the
+    # key leaves it unchanged. The `is not None` guard used for the required
+    # fields above can't express "clear", so key off whether the client actually
+    # sent the field.
+    if "school_level" in payload.model_fields_set:
+        student.school_level = (
+            payload.school_level.value if payload.school_level is not None else None
+        )
 
     new_value = {
         "first_name": student.first_name,

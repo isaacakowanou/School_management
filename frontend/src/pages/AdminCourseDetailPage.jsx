@@ -11,6 +11,7 @@ import { listStudents } from '../api/students.js'
 import { getTeacher, listTeachers } from '../api/teachers.js'
 import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
+import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
 import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -31,6 +32,7 @@ const EMPTY_COURSE_EDIT_FORM = {
   gradeLevel: '',
   term: '',
   schoolYear: '',
+  languageGroup: '',
 }
 
 const GRADE_ITEM_SUGGESTIONS = [
@@ -68,6 +70,7 @@ function courseToForm(course) {
     gradeLevel: course?.grade_level || '',
     term: course?.term || '',
     schoolYear: course?.school_year || '',
+    languageGroup: course?.language_group || '',
   }
 }
 
@@ -556,6 +559,24 @@ export default function AdminCourseDetailPage() {
               list="course-edit-school-year-options"
               required
             />
+          </label>
+
+          <label className="field">
+            <span>Language group (optional)</span>
+            <select
+              className="grade-input"
+              value={editForm.languageGroup}
+              onChange={(event) => updateEditField('languageGroup', event.target.value)}
+              disabled={savingEdit}
+              style={{ width: '100%', textAlign: 'left' }}
+            >
+              <option value="">Not set</option>
+              {SCHOOL_GROUPS.map((group) => (
+                <option key={group.value} value={group.value}>
+                  {group.label}
+                </option>
+              ))}
+            </select>
           </label>
 
           <datalist id="course-edit-grade-level-options">

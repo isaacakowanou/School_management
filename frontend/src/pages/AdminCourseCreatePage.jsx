@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createCourse } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
+import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -13,6 +14,7 @@ const EMPTY_FORM = {
   gradeLevel: '',
   term: '',
   schoolYear: '',
+  languageGroup: '',
 }
 
 const GRADE_LEVEL_SUGGESTIONS = [
@@ -181,6 +183,24 @@ export default function AdminCourseCreatePage() {
               list="course-school-year-options"
               required
             />
+          </label>
+
+          <label className="field">
+            <span>Language group (optional)</span>
+            <select
+              className="grade-input"
+              value={form.languageGroup}
+              onChange={(event) => updateField('languageGroup', event.target.value)}
+              disabled={saving}
+              style={{ width: '100%', textAlign: 'left' }}
+            >
+              <option value="">Not set</option>
+              {SCHOOL_GROUPS.map((group) => (
+                <option key={group.value} value={group.value}>
+                  {group.label}
+                </option>
+              ))}
+            </select>
           </label>
 
           <datalist id="course-grade-level-options">

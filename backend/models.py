@@ -108,6 +108,11 @@ class Course(Base):
     grade_level: Mapped[str] = mapped_column(String(50), nullable=False)
     term: Mapped[str] = mapped_column(String(50), nullable=False)
     school_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    # A1.5 prep for A1.6 (three averages): which language track this course
+    # belongs to. Nullable, no default — existing courses stay null until an
+    # admin tags them from the UI. Enforced via Pydantic enum, not a DB
+    # constraint (same Option C pattern as Student.school_level).
+    language_group: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()

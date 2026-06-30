@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { listCourses } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
+import { schoolGroupLabel } from '../constants/schoolGroups.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -85,6 +86,7 @@ export default function AdminCoursesPage() {
                 <th>Grade level</th>
                 <th>Term</th>
                 <th>School year</th>
+                <th>Group</th>
                 <th></th>
               </tr>
             </thead>
@@ -103,6 +105,7 @@ export default function AdminCoursesPage() {
                   <td className="nowrap">{course.grade_level}</td>
                   <td className="nowrap">{course.term}</td>
                   <td className="nowrap">{course.school_year}</td>
+                  <td className="nowrap">{schoolGroupLabel(course.language_group) || '—'}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/courses/${course.id}`}>
                       Open →

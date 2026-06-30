@@ -87,6 +87,7 @@ def create_course(
     grade_level = clean_required_text(payload.grade_level, "grade_level")
     term = clean_required_text(payload.term, "term")
     school_year = clean_required_text(payload.school_year, "school_year")
+    language_group = payload.language_group.value if payload.language_group is not None else None
 
     get_teacher_or_404(db, payload.teacher_id)
     ensure_unique_course_code(db, code)
@@ -98,6 +99,7 @@ def create_course(
         grade_level=grade_level,
         term=term,
         school_year=school_year,
+        language_group=language_group,
     )
     db.add(course)
     db.flush()
@@ -115,6 +117,7 @@ def create_course(
             "grade_level": course.grade_level,
             "term": course.term,
             "school_year": course.school_year,
+            "language_group": course.language_group,
         },
     )
     db.commit()
@@ -152,6 +155,7 @@ def update_course(
         "grade_level": course.grade_level,
         "term": course.term,
         "school_year": course.school_year,
+        "language_group": course.language_group,
     }
 
     if payload.code is not None:
@@ -169,6 +173,14 @@ def update_course(
         course.term = clean_required_text(payload.term, "term")
     if payload.school_year is not None:
         course.school_year = clean_required_text(payload.school_year, "school_year")
+    # language_group is nullable: an explicit null clears the tag, while omitting
+    # the key leaves it unchanged. The `is not None` guard used for the required
+    # fields above can't express "clear", so key off whether the client actually
+    # sent the field.
+    if "language_group" in payload.model_fields_set:
+        course.language_group = (
+            payload.language_group.value if payload.language_group is not None else None
+        )
 
     new_value = {
         "name": course.name,
@@ -177,6 +189,7 @@ def update_course(
         "grade_level": course.grade_level,
         "term": course.term,
         "school_year": course.school_year,
+        "language_group": course.language_group,
     }
     if new_value != old_value:
         create_audit_log(

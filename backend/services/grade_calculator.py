@@ -7,11 +7,8 @@ WEIGHT_TOLERANCE_MAX = 1.001
 # Course averages are computed and stored on a /20 scale (Beninese system).
 GRADE_SCALE_MAX = 20.0
 
-# A1.2 bridge: the letter-grade and GPA thresholds still use the legacy /100
-# scale. A /20 average is scaled back up by this factor before being mapped to
-# a letter, so letter grades and GPA stay byte-for-byte identical to the old
-# /100 behavior. A1.3 will rescale the letter thresholds to /20 and remove this
-# bridge entirely.
+# GPA still uses the legacy /100 bridge (scale /20 × 5 → map to A/B/C/D/F).
+# A1.4 deletes GPA entirely; this constant goes with it.
 LETTER_GRADE_SCALE_FACTOR = 100.0 / GRADE_SCALE_MAX  # 5.0
 
 
@@ -71,22 +68,25 @@ def calculate_course_average(grades):
 
 
 def get_letter_grade(average):
-    """Convert a /100 average to the current letter-grade scale.
-
-    A1.2 note: thresholds are still on the legacy /100 scale. Course averages
-    are now on /20, so callers go through letter_grade_for_course_average(),
-    which scales the value up first. A1.3 will rescale these thresholds to /20.
-    """
+    """Convert a /20 average to a BISC 9-letter grade code."""
     average = _as_number(average, "average")
 
-    if average >= 90:
+    if average >= 19:
+        return "A+"
+    if average >= 17:
         return "A"
-    if average >= 80:
+    if average >= 15:
+        return "B+"
+    if average >= 13:
         return "B"
-    if average >= 70:
+    if average >= 11:
+        return "C+"
+    if average >= 9:
         return "C"
-    if average >= 60:
+    if average >= 7:
         return "D"
+    if average >= 5:
+        return "E"
     return "F"
 
 
@@ -104,17 +104,6 @@ def normalize_average_to_20(average, scale):
     return average
 
 
-def letter_grade_for_course_average(course_average):
-    """Map a /20 course average to a letter grade.
-
-    A1.2 bridge: get_letter_grade still uses /100 thresholds, so scale the /20
-    average up by LETTER_GRADE_SCALE_FACTOR before mapping. This keeps letters
-    identical to the old /100 behavior. A1.3 will rescale get_letter_grade to
-    /20 and let callers use it directly, removing this bridge.
-    """
-    scaled = _as_number(course_average, "course average") * LETTER_GRADE_SCALE_FACTOR
-    return get_letter_grade(scaled)
-
 
 def calculate_overall_average(course_averages):
     """Calculate the arithmetic mean of course averages."""
@@ -130,13 +119,16 @@ def calculate_gpa(course_averages):
     if not course_averages:
         raise ValueError("course averages list cannot be empty")
 
-    grade_points = {
-        "A": 4.0,
-        "B": 3.0,
-        "C": 2.0,
-        "D": 1.0,
-        "F": 0.0,
-    }
+    _grade_points = {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0, "F": 0.0}
 
-    points = [grade_points[letter_grade_for_course_average(average)] for average in course_averages]
+    def _legacy_letter(avg):
+        # A1.4 removes GPA entirely; keeping /100 bridge here until then.
+        scaled = _as_number(avg, "course average") * LETTER_GRADE_SCALE_FACTOR
+        if scaled >= 90: return "A"
+        if scaled >= 80: return "B"
+        if scaled >= 70: return "C"
+        if scaled >= 60: return "D"
+        return "F"
+
+    points = [_grade_points[_legacy_letter(average)] for average in course_averages]
     return round(sum(points) / len(points), 2)

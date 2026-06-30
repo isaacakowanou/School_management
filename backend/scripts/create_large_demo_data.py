@@ -39,7 +39,7 @@ from models import (  # noqa: E402
     Teacher,
     User,
 )
-from services.grade_calculator import calculate_course_average, letter_grade_for_course_average  # noqa: E402
+from services.grade_calculator import calculate_course_average, get_letter_grade  # noqa: E402
 from services.report_builder import build_report_card_data  # noqa: E402
 
 
@@ -714,7 +714,7 @@ def create_large_demo_data() -> None:
                     for grade_item_index, grade_item in enumerate(grade_items, start=1)
                 ]
                 average = calculate_course_average(grade_inputs)
-                letter_grade = letter_grade_for_course_average(average)
+                letter_grade = get_letter_grade(average)
                 course_results.append(
                     get_or_create_course_result(
                         db,

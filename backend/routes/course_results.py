@@ -15,7 +15,7 @@ from schemas import (
     CourseResultResponse,
     SkippedCourseResultStudent,
 )
-from services.grade_calculator import calculate_course_average, letter_grade_for_course_average
+from services.grade_calculator import calculate_course_average, get_letter_grade
 from utils import get_current_teacher
 
 
@@ -176,7 +176,7 @@ def calculate_results_for_students(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-        letter_grade = letter_grade_for_course_average(average)
+        letter_grade = get_letter_grade(average)
         calculated_at = datetime.now(timezone.utc)
         course_result = db.scalar(
             select(CourseResult).where(

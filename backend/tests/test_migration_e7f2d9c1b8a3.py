@@ -251,11 +251,11 @@ class CalculatorSanityAfterMigrationTests(unittest.TestCase):
         self.assertAlmostEqual(avg, 18.05, places=2)
 
     def test_migrated_score_yields_correct_letter_grade(self):
-        from services.grade_calculator import letter_grade_for_course_average
-        # 18.5 /20 → bridge ×5 → 92.5 /100 → "A"
-        self.assertEqual(letter_grade_for_course_average(18.5), "A")
-        # 17.6 /20 → bridge ×5 → 88.0 /100 → "B"
-        self.assertEqual(letter_grade_for_course_average(17.6), "B")
+        from services.grade_calculator import get_letter_grade
+        # 18.5 /20 → BISC: 17 ≤ 18.5 < 19 → "A"
+        self.assertEqual(get_letter_grade(18.5), "A")
+        # 17.6 /20 → BISC: 17 ≤ 17.6 < 19 → "A"
+        self.assertEqual(get_letter_grade(17.6), "A")
 
     def test_non_100_max_score_still_normalised_correctly(self):
         # gr3: 45/50 — untouched by A1.2.1; Option B normalises it at query time.

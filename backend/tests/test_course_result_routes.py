@@ -274,8 +274,8 @@ class CourseResultRouteTests(unittest.TestCase):
         self.db.expire_all()
         course_result = self.db.get(CourseResult, self.student_one_result.id)
         self.assertEqual(course_result.average, 19.0)
-        # Letter grade unchanged by the /20 switch (A1.2 bridge: 19.0 -> 95 -> "A")
-        self.assertEqual(course_result.letter_grade, "A")
+        # 19.0 /20 → BISC: 19 ≥ 19 → "A+"
+        self.assertEqual(course_result.letter_grade, "A+")
         self.assertGreater(course_result.calculated_at, original_calculated_at)
 
         admin_results_response = self.client.get(
@@ -288,7 +288,7 @@ class CourseResultRouteTests(unittest.TestCase):
             for result in admin_results_response.json()
         }
         self.assertEqual(admin_results[str(self.student_one.id)]["average"], 19.0)
-        self.assertEqual(admin_results[str(self.student_one.id)]["letter_grade"], "A")
+        self.assertEqual(admin_results[str(self.student_one.id)]["letter_grade"], "A+")
 
         reports = self._report_list_by_student_number()
         self.assertTrue(reports["CR001"]["needs_review"])

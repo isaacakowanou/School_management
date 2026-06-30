@@ -5,7 +5,6 @@ from services.grade_calculator import (
     calculate_gpa,
     calculate_overall_average,
     get_letter_grade,
-    letter_grade_for_course_average,
 )
 
 
@@ -56,23 +55,32 @@ class GradeCalculatorTests(unittest.TestCase):
         self.assertEqual(calculate_course_average([{"score": 20, "max_score": 20, "weight": 1.0}]), 20.00)
         self.assertEqual(calculate_course_average([{"score": 0, "max_score": 20, "weight": 1.0}]), 0.00)
 
-    def test_letter_grade_boundaries(self):
-        # get_letter_grade still uses /100 thresholds (A1.2 bridge); unchanged.
-        self.assertEqual(get_letter_grade(90), "A")
-        self.assertEqual(get_letter_grade(89.99), "B")
-        self.assertEqual(get_letter_grade(80), "B")
-        self.assertEqual(get_letter_grade(79.99), "C")
-        self.assertEqual(get_letter_grade(70), "C")
-        self.assertEqual(get_letter_grade(60), "D")
-        self.assertEqual(get_letter_grade(59.99), "F")
+    def test_letter_grade_bisc_lower_bounds(self):
+        # Each grade at exactly its lower boundary.
+        self.assertEqual(get_letter_grade(20.0), "A+")
+        self.assertEqual(get_letter_grade(19.0), "A+")
+        self.assertEqual(get_letter_grade(17.0), "A")
+        self.assertEqual(get_letter_grade(15.0), "B+")
+        self.assertEqual(get_letter_grade(13.0), "B")
+        self.assertEqual(get_letter_grade(11.0), "C+")
+        self.assertEqual(get_letter_grade(9.0), "C")
+        self.assertEqual(get_letter_grade(7.0), "D")
+        self.assertEqual(get_letter_grade(5.0), "E")
+        self.assertEqual(get_letter_grade(0.0), "F")
 
-    def test_letter_grade_bridge_scales_20_to_100(self):
-        # A /20 average maps to the same letter as its /100 equivalent (x5).
-        self.assertEqual(letter_grade_for_course_average(18.0), "A")  # 90
-        self.assertEqual(letter_grade_for_course_average(16.0), "B")  # 80
-        self.assertEqual(letter_grade_for_course_average(14.0), "C")  # 70
-        self.assertEqual(letter_grade_for_course_average(12.0), "D")  # 60
-        self.assertEqual(letter_grade_for_course_average(11.99), "F")  # 59.95
+    def test_letter_grade_bisc_just_below_boundaries(self):
+        self.assertEqual(get_letter_grade(18.9), "A")
+        self.assertEqual(get_letter_grade(16.9), "B+")
+        self.assertEqual(get_letter_grade(14.9), "B")
+        self.assertEqual(get_letter_grade(12.9), "C+")
+        self.assertEqual(get_letter_grade(10.9), "C")
+        self.assertEqual(get_letter_grade(8.9), "D")
+        self.assertEqual(get_letter_grade(6.9), "E")
+        self.assertEqual(get_letter_grade(4.9), "F")
+
+    def test_letter_grade_bisc_fractional(self):
+        self.assertEqual(get_letter_grade(16.5), "B+")
+        self.assertEqual(get_letter_grade(17.5), "A")
 
     def test_overall_average(self):
         # Arithmetic mean of /20 course averages.

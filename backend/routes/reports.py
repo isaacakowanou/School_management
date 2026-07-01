@@ -8,15 +8,28 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from auth import get_current_user, require_admin
 from audit import create_audit_log
+from constants import CONDUCT_ITEMS, CONDUCT_ITEM_KEYS, WORK_HABIT_ITEMS, WORK_HABIT_ITEM_KEYS
 from database import get_db
-from models import Course, CourseResult, Parent, ReportCard, ReportCardCourse, StudentParent, User
+from models import (
+    Course,
+    CourseResult,
+    Parent,
+    ReportCard,
+    ReportCardCourse,
+    ReportConductItem,
+    ReportWorkHabitItem,
+    StudentParent,
+    User,
+)
 from schemas import (
     AdminReportListItem,
     AdminReportCardResponse,
     ReportCardCourseResponse,
     ReportCardResponse,
     ReportCardStalenessResponse,
+    ReportDetailsUpdate,
     ReportGenerateRequest,
+    ReportItemResponse,
     ReportReviewUpdate,
     ReportSendResponse,
 )
@@ -33,6 +46,54 @@ from utils import get_report_card_or_404
 router = APIRouter(tags=["reports"])
 PARENT_VISIBLE_STATUSES = {"approved", "sent"}
 
+_REPORT_COMMENT_FIELDS = (
+    "teacher_comment_fr",
+    "teacher_comment_en",
+    "principal_comment_fr",
+    "principal_comment_en",
+)
+
+
+def _build_report_items(stored_items, item_definitions) -> list[ReportItemResponse]:
+    """Merge stored (assessed) rows onto the full canonical item list so the
+    response always carries every row in order, with letter_grade null for
+    items that haven't been assessed."""
+    grade_by_key = {item.item_key: item.letter_grade for item in stored_items}
+    return [
+        ReportItemResponse(
+            item_key=key,
+            label_en=label_en,
+            label_fr=label_fr,
+            letter_grade=grade_by_key.get(key),
+        )
+        for key, label_en, label_fr in item_definitions
+    ]
+
+
+def _report_details_snapshot(report_card: ReportCard) -> dict:
+    """Audit-log snapshot of the A1.7a fields (comments + assessed items)."""
+    snapshot = {field: getattr(report_card, field) for field in _REPORT_COMMENT_FIELDS}
+    snapshot["conduct_items"] = {item.item_key: item.letter_grade for item in report_card.conduct_items}
+    snapshot["work_habit_items"] = {item.item_key: item.letter_grade for item in report_card.work_habit_items}
+    return snapshot
+
+
+def _validated_report_item_rows(items, allowed_keys, model_cls):
+    """Validate item_keys against the canonical set and build ORM rows for the
+    assessed (non-null) items only. A blank letter_grade means 'not assessed'
+    and is represented by the row's absence."""
+    rows = []
+    seen: set[str] = set()
+    for item in items:
+        if item.item_key not in allowed_keys:
+            raise HTTPException(status_code=422, detail=f"Unknown item_key: {item.item_key}")
+        if item.item_key in seen:
+            raise HTTPException(status_code=422, detail=f"Duplicate item_key: {item.item_key}")
+        seen.add(item.item_key)
+        if item.letter_grade is not None:
+            rows.append(model_cls(item_key=item.item_key, letter_grade=item.letter_grade.value))
+    return rows
+
 
 def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
     return ReportCardResponse(
@@ -48,6 +109,10 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
         scale=report_card.scale,
         status=report_card.status,
         ai_summary=report_card.ai_summary,
+        teacher_comment_fr=report_card.teacher_comment_fr,
+        teacher_comment_en=report_card.teacher_comment_en,
+        principal_comment_fr=report_card.principal_comment_fr,
+        principal_comment_en=report_card.principal_comment_en,
         pdf_url=report_card.pdf_url,
         courses=[
             ReportCardCourseResponse(
@@ -59,6 +124,8 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
             )
             for course in report_card.courses
         ],
+        conduct_items=_build_report_items(report_card.conduct_items, CONDUCT_ITEMS),
+        work_habit_items=_build_report_items(report_card.work_habit_items, WORK_HABIT_ITEMS),
     )
 
 
@@ -624,6 +691,55 @@ def regenerate_report_card(
     db.commit()
     db.refresh(report_card)
     db.expire(report_card, ["courses"])
+    return to_report_card_response(report_card)
+
+
+@router.patch("/{report_id}", response_model=ReportCardResponse)
+def update_report_details(
+    report_id: UUID,
+    payload: ReportDetailsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ReportCardResponse:
+    """Admin-only edit of A1.7a conduct / work-habit items and comments.
+
+    Does not touch grades, averages, status, or the course snapshot. Editable
+    on any status (draft/approved/sent).
+    """
+    report_card = get_report_card_or_404(db, report_id)
+    old_value = _report_details_snapshot(report_card)
+
+    # Comments: nullable Text. An explicit value (including null) sets or clears;
+    # an omitted key leaves the field unchanged (A1.5 model_fields_set pattern).
+    for field in _REPORT_COMMENT_FIELDS:
+        if field in payload.model_fields_set:
+            setattr(report_card, field, getattr(payload, field))
+
+    # Item collections: when provided, replace the report's rows for that
+    # category. delete-orphan cascade removes rows that are no longer present.
+    if "conduct_items" in payload.model_fields_set:
+        report_card.conduct_items = _validated_report_item_rows(
+            payload.conduct_items or [], CONDUCT_ITEM_KEYS, ReportConductItem
+        )
+    if "work_habit_items" in payload.model_fields_set:
+        report_card.work_habit_items = _validated_report_item_rows(
+            payload.work_habit_items or [], WORK_HABIT_ITEM_KEYS, ReportWorkHabitItem
+        )
+
+    new_value = _report_details_snapshot(report_card)
+    if new_value != old_value:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="report_details_edited",
+            entity_type="report_card",
+            entity_id=report_card.id,
+            old_value=old_value,
+            new_value=new_value,
+        )
+
+    db.commit()
+    db.refresh(report_card)
     return to_report_card_response(report_card)
 
 

@@ -96,6 +96,19 @@ export async function apiPut(path, body) {
   return response.json()
 }
 
+// Authenticated PATCH (partial update). Like apiPut, a 401 here means an
+// expired session and triggers the global logout.
+export async function apiPatch(path, body) {
+  const response = await rawFetch(path, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+    body: body != null ? JSON.stringify(body) : undefined,
+  })
+  if (response.status === 401) throw handleUnauthorized()
+  if (!response.ok) throw await parseError(response)
+  return response.json()
+}
+
 export async function apiDelete(path) {
   const response = await rawFetch(path, {
     method: 'DELETE',

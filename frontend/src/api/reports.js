@@ -1,4 +1,4 @@
-import { apiGet, apiGetBlob, apiPost, apiPut } from './client.js'
+import { apiGet, apiGetBlob, apiPatch, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/reports/student/{student_id}
 // For parents the backend returns ONLY approved/sent reports.
@@ -59,4 +59,9 @@ export function sendReport(reportId) {
 // POST /api/v1/reports/{report_id}/regenerate -> rebuild snapshot as draft (admin only)
 export function regenerateReport(reportId) {
   return apiPost(`/reports/${reportId}/regenerate`)
+}
+
+// PATCH /api/v1/reports/{report_id} -> update conduct/work-habit items + comments (admin only)
+export function updateReportDetails(reportId, payload) {
+  return apiPatch(`/reports/${reportId}`, payload)
 }

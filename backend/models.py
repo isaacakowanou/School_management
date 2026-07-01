@@ -221,6 +221,12 @@ class ReportCard(Base):
     scale: Mapped[str] = mapped_column(String(10), nullable=True, default="20", server_default="20")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A1.7a report-level comments (bilingual teacher + principal). Nullable Text;
+    # historical reports predate the feature and stay null.
+    teacher_comment_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    teacher_comment_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    principal_comment_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    principal_comment_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     pdf_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     approved_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
@@ -235,6 +241,12 @@ class ReportCard(Base):
     student: Mapped["Student"] = orm_relationship(back_populates="report_cards")
     approved_by_admin: Mapped["User | None"] = orm_relationship(back_populates="approved_report_cards")
     courses: Mapped[list["ReportCardCourse"]] = orm_relationship(back_populates="report_card")
+    conduct_items: Mapped[list["ReportConductItem"]] = orm_relationship(
+        back_populates="report_card", cascade="all, delete-orphan"
+    )
+    work_habit_items: Mapped[list["ReportWorkHabitItem"]] = orm_relationship(
+        back_populates="report_card", cascade="all, delete-orphan"
+    )
     ai_warnings: Mapped[list["AIWarning"]] = orm_relationship(back_populates="report_card")
 
 
@@ -252,6 +264,34 @@ class ReportCardCourse(Base):
 
     report_card: Mapped["ReportCard"] = orm_relationship(back_populates="courses")
     course: Mapped["Course"] = orm_relationship(back_populates="report_card_courses")
+
+
+class ReportConductItem(Base):
+    __tablename__ = "report_conduct_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    report_card_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("report_cards.id", ondelete="CASCADE"), nullable=False
+    )
+    item_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Reuses the BISC 9-letter grade codes; nullable so an unassessed item can be
+    # stored, though the write path only persists assessed (non-null) rows.
+    letter_grade: Mapped[str | None] = mapped_column(String(5), nullable=True)
+
+    report_card: Mapped["ReportCard"] = orm_relationship(back_populates="conduct_items")
+
+
+class ReportWorkHabitItem(Base):
+    __tablename__ = "report_work_habit_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    report_card_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("report_cards.id", ondelete="CASCADE"), nullable=False
+    )
+    item_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    letter_grade: Mapped[str | None] = mapped_column(String(5), nullable=True)
+
+    report_card: Mapped["ReportCard"] = orm_relationship(back_populates="work_habit_items")
 
 
 class AIWarning(Base):

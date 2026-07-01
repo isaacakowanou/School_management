@@ -17,6 +17,20 @@ class LanguageGroup(str, Enum):
     ENGLISH = "ENGLISH"
 
 
+class LetterGrade(str, Enum):
+    # BISC 9-letter grade codes (A1.3). Single source of truth for the conduct /
+    # work-habit dropdowns; the frontend constant mirrors these values.
+    A_PLUS = "A+"
+    A = "A"
+    B_PLUS = "B+"
+    B = "B"
+    C_PLUS = "C+"
+    C = "C"
+    D = "D"
+    E = "E"
+    F = "F"
+
+
 class UserCreate(BaseModel):
     name: str
     email: str
@@ -276,6 +290,18 @@ class ReportCardCourseResponse(BaseModel):
     letter_grade: str
 
 
+class ReportItemResponse(BaseModel):
+    item_key: str
+    label_en: str
+    label_fr: str
+    letter_grade: LetterGrade | None = None
+
+
+class ReportItemUpdate(BaseModel):
+    item_key: str
+    letter_grade: LetterGrade | None = None
+
+
 class ReportCardResponse(BaseModel):
     id: UUID
     student_id: UUID
@@ -290,13 +316,28 @@ class ReportCardResponse(BaseModel):
     scale: str = "20"
     status: str
     ai_summary: str | None = None
+    teacher_comment_fr: str | None = None
+    teacher_comment_en: str | None = None
+    principal_comment_fr: str | None = None
+    principal_comment_en: str | None = None
     pdf_url: str | None = None
     courses: list[ReportCardCourseResponse]
+    conduct_items: list[ReportItemResponse] = []
+    work_habit_items: list[ReportItemResponse] = []
 
 
 class AdminReportCardResponse(ReportCardResponse):
     student_name: str
     student_number: str
+
+
+class ReportDetailsUpdate(BaseModel):
+    conduct_items: list[ReportItemUpdate] | None = None
+    work_habit_items: list[ReportItemUpdate] | None = None
+    teacher_comment_fr: str | None = None
+    teacher_comment_en: str | None = None
+    principal_comment_fr: str | None = None
+    principal_comment_en: str | None = None
 
 
 class AdminReportListItem(BaseModel):

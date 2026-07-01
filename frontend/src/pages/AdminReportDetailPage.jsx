@@ -7,6 +7,7 @@ import {
   getReportStaleness,
   regenerateReport,
   sendReport,
+  updateReportDetails,
   updateReportSummary,
 } from '../api/reports.js'
 import { checkReport, generateReportSummary } from '../api/ai.js'
@@ -16,6 +17,21 @@ import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import { LETTER_GRADES } from '../constants/letterGrades.js'
+
+const COMMENT_FIELDS = [
+  ['teacher_comment_fr', "Teacher's Comment / Commentaire du censeur (FR)"],
+  ['teacher_comment_en', "Teacher's Comment / Commentaire du censeur (EN)"],
+  ['principal_comment_fr', "Principal's Comment / Commentaire du directeur (FR)"],
+  ['principal_comment_en', "Principal's Comment / Commentaire du directeur (EN)"],
+]
+
+const EMPTY_COMMENTS = {
+  teacher_comment_fr: '',
+  teacher_comment_en: '',
+  principal_comment_fr: '',
+  principal_comment_en: '',
+}
 
 function hasValue(value) {
   return value !== null && value !== undefined
@@ -42,6 +58,9 @@ export default function AdminReportDetailPage() {
 
   const [warnings, setWarnings] = useState(null)
   const [summaryDraft, setSummaryDraft] = useState('')
+  const [conductGrades, setConductGrades] = useState({})
+  const [workHabitGrades, setWorkHabitGrades] = useState({})
+  const [comments, setComments] = useState(EMPTY_COMMENTS)
 
   // Which action is in flight (e.g. 'check', 'summary', 'save', 'approve', 'send', 'pdf').
   const [pending, setPending] = useState(null)
@@ -73,6 +92,24 @@ export default function AdminReportDetailPage() {
     await loadStaleness()
     return data
   }, [loadReport, loadStaleness])
+
+  // Seed the editable conduct / work-habit / comment drafts whenever a fresh
+  // report loads (initial load or a post-action refresh).
+  useEffect(() => {
+    if (!report) return
+    setConductGrades(
+      Object.fromEntries((report.conduct_items ?? []).map((i) => [i.item_key, i.letter_grade ?? ''])),
+    )
+    setWorkHabitGrades(
+      Object.fromEntries((report.work_habit_items ?? []).map((i) => [i.item_key, i.letter_grade ?? ''])),
+    )
+    setComments({
+      teacher_comment_fr: report.teacher_comment_fr ?? '',
+      teacher_comment_en: report.teacher_comment_en ?? '',
+      principal_comment_fr: report.principal_comment_fr ?? '',
+      principal_comment_en: report.principal_comment_en ?? '',
+    })
+  }, [report])
 
   useEffect(() => {
     let cancelled = false
@@ -170,6 +207,26 @@ export default function AdminReportDetailPage() {
   async function handleSaveSummary() {
     await runAction('save', () => updateReportSummary(reportId, summaryDraft), {
       successMessage: 'Summary saved.',
+    })
+  }
+
+  async function handleSaveDetails() {
+    const payload = {
+      conduct_items: (report.conduct_items ?? []).map((item) => ({
+        item_key: item.item_key,
+        letter_grade: conductGrades[item.item_key] || null,
+      })),
+      work_habit_items: (report.work_habit_items ?? []).map((item) => ({
+        item_key: item.item_key,
+        letter_grade: workHabitGrades[item.item_key] || null,
+      })),
+      teacher_comment_fr: comments.teacher_comment_fr.trim() || null,
+      teacher_comment_en: comments.teacher_comment_en.trim() || null,
+      principal_comment_fr: comments.principal_comment_fr.trim() || null,
+      principal_comment_en: comments.principal_comment_en.trim() || null,
+    }
+    await runAction('details', () => updateReportDetails(reportId, payload), {
+      successMessage: 'Conduct, work habits, and comments saved.',
     })
   }
 
@@ -419,6 +476,95 @@ export default function AdminReportDetailPage() {
           </tbody>
         </table>
       )}
+
+      {/* ---- Conduct ---- */}
+      <h3 className="section-title">Conduct / Conduite</h3>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th className="num">Grade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(report.conduct_items ?? []).map((item) => (
+            <tr key={item.item_key}>
+              <td>
+                {item.label_en} <span className="muted">/ {item.label_fr}</span>
+              </td>
+              <td className="num">
+                <select
+                  className="grade-input"
+                  value={conductGrades[item.item_key] ?? ''}
+                  onChange={(e) => setConductGrades((g) => ({ ...g, [item.item_key]: e.target.value }))}
+                  disabled={busy}
+                >
+                  <option value="">—</option>
+                  {LETTER_GRADES.map((grade) => (
+                    <option key={grade} value={grade}>
+                      {grade}
+                    </option>
+                  ))}
+                </select>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* ---- Work habits ---- */}
+      <h3 className="section-title">Work Habits / Habitudes de travail</h3>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th className="num">Grade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(report.work_habit_items ?? []).map((item) => (
+            <tr key={item.item_key}>
+              <td>
+                {item.label_en} <span className="muted">/ {item.label_fr}</span>
+              </td>
+              <td className="num">
+                <select
+                  className="grade-input"
+                  value={workHabitGrades[item.item_key] ?? ''}
+                  onChange={(e) => setWorkHabitGrades((g) => ({ ...g, [item.item_key]: e.target.value }))}
+                  disabled={busy}
+                >
+                  <option value="">—</option>
+                  {LETTER_GRADES.map((grade) => (
+                    <option key={grade} value={grade}>
+                      {grade}
+                    </option>
+                  ))}
+                </select>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* ---- Conduct / work-habit comments ---- */}
+      <h3 className="section-title">Comments</h3>
+      {COMMENT_FIELDS.map(([field, label]) => (
+        <label className="field" key={field}>
+          <span>{label}</span>
+          <textarea
+            style={{ width: '100%', minHeight: 90, padding: '10px 12px' }}
+            value={comments[field]}
+            onChange={(e) => setComments((c) => ({ ...c, [field]: e.target.value }))}
+            disabled={busy}
+          />
+        </label>
+      ))}
+      <div className="grade-actions">
+        <button type="button" className="btn btn-primary" onClick={handleSaveDetails} disabled={busy}>
+          {pending === 'details' ? 'Saving…' : 'Save conduct & comments'}
+        </button>
+      </div>
 
       {/* ---- AI summary ---- */}
       <h3 className="section-title">Parent summary</h3>

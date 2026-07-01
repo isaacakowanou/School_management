@@ -28,8 +28,7 @@
   .num { text-align: center; white-space: nowrap; }
   /* Conduct / work-habits: compact rows so these 2-line-per-item columns don't
      tower over the academics column (which drives whitespace under it). */
-  .cwt td { padding: 1px 3px; line-height: 1.05; }
-  .cwt .small { font-size: 7pt; }
+  .cwt td { padding: 2px 3px; line-height: 1.08; }
   /* Fixed layout so the 55/22.5/22.5 body split holds regardless of content. */
   .grid { table-layout: fixed; }
   /* Compact averages table: tight padding, small columns, grouped by track. */
@@ -117,7 +116,7 @@
     <table class="cwt">
       <tr><td class="section-title" colspan="2">Conduct / Conduite</td></tr>
       {% for item in r.conduct_items %}
-      <tr><td>{{ item.en_label }}<br><span class="small">{{ item.fr_label }}</span></td><td class="num">{{ gr(item.letter_grade) }}</td></tr>
+      <tr><td>{{ item.en_label }} / {{ item.fr_label }}</td><td class="num">{{ gr(item.letter_grade) }}</td></tr>
       {% endfor %}
     </table>
   </td>
@@ -125,7 +124,7 @@
     <table class="cwt">
       <tr><td class="section-title" colspan="2">Work Habits / Habitudes de travail</td></tr>
       {% for item in r.work_habit_items %}
-      <tr><td>{{ item.en_label }}<br><span class="small">{{ item.fr_label }}</span></td><td class="num">{{ gr(item.letter_grade) }}</td></tr>
+      <tr><td>{{ item.en_label }} / {{ item.fr_label }}</td><td class="num">{{ gr(item.letter_grade) }}</td></tr>
       {% endfor %}
     </table>
   </td>

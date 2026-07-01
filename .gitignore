@@ -13,3 +13,4 @@ backend/storage/pdfs/
 backend.log
 frontend.log
 .DS_Store
+backend/ggfk_subject_catalog.json

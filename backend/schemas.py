@@ -282,6 +282,9 @@ class ReportCardResponse(BaseModel):
     term: str
     school_year: str
     overall_average: float
+    french_average: float | None = None
+    english_average: float | None = None
+    bilingual_average: float | None = None
     gpa: float | None = None
     # Grade scale of overall_average and course averages: "20" or "100".
     scale: str = "20"
@@ -305,6 +308,7 @@ class AdminReportListItem(BaseModel):
     school_year: str
     status: str
     overall_average: float
+    bilingual_average: float | None = None
     gpa: float | None = None
     # Grade scale of overall_average: "20" or "100" (historical reports).
     scale: str = "20"

@@ -77,7 +77,7 @@ export default function StudentReportsPage() {
                   <div className="report-term">
                     {report.term} · {report.school_year}
                   </div>
-                  <div className="muted">Overall {formatReportAverage(report.overall_average, report.scale)}</div>
+                  <div className="muted">Average {formatReportAverage(report.bilingual_average ?? report.overall_average, report.scale)}</div>
                 </div>
                 <StatusBadge status={report.status} />
               </Link>

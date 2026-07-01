@@ -11,6 +11,7 @@ import {
 } from '../api/reports.js'
 import { checkReport, generateReportSummary } from '../api/ai.js'
 import { formatReportAverage, formatScore20 } from '../utils/format.js'
+import ReportAverages from '../components/ReportAverages.jsx'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -273,10 +274,7 @@ export default function AdminReportDetailPage() {
       </div>
 
       <div className="summary-row">
-        <div className="stat">
-          <div className="stat-label">Overall average</div>
-          <div className="stat-value">{formatReportAverage(report.overall_average, report.scale)}</div>
-        </div>
+        <ReportAverages report={report} />
         <div className="stat">
           <div className="stat-label">Status</div>
           <div className="stat-value" style={{ fontSize: '1.1rem' }}>

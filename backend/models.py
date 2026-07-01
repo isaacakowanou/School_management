@@ -207,6 +207,13 @@ class ReportCard(Base):
     term: Mapped[str] = mapped_column(String(50), nullable=False)
     school_year: Mapped[str] = mapped_column(String(20), nullable=False)
     overall_average: Mapped[float] = mapped_column(Float, nullable=False)
+    # A1.6 three averages, all on the /20 scale. Nullable: a language track with
+    # no tagged courses stays null, and historical reports predate the feature.
+    # overall_average is retained as the legacy all-courses mean (staleness +
+    # back-compat); these three are computed alongside it.
+    french_average: Mapped[float | None] = mapped_column(Float, nullable=True)
+    english_average: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bilingual_average: Mapped[float | None] = mapped_column(Float, nullable=True)
     gpa: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Grade scale this snapshot's numbers are on: "20" for reports generated
     # after the A1.2 switch, "100" for historical reports. Nullable at the DB

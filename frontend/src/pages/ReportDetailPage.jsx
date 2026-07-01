@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext.jsx'
 import { getParentStudents } from '../api/parents.js'
 import { downloadReportPdf, getReport } from '../api/reports.js'
 import { formatReportAverage } from '../utils/format.js'
+import ReportAverages from '../components/ReportAverages.jsx'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 
@@ -117,10 +118,7 @@ export default function ReportDetailPage() {
       {downloadError && <ErrorBanner message={downloadError} />}
 
       <div className="summary-row">
-        <div className="stat">
-          <div className="stat-label">Overall average</div>
-          <div className="stat-value">{formatReportAverage(report.overall_average, report.scale)}</div>
-        </div>
+        <ReportAverages report={report} />
       </div>
 
       <h3 className="section-title">Courses</h3>

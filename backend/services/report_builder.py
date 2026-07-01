@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import Course, CourseResult, ReportCard, ReportCardCourse, Student
+from schemas import LanguageGroup
 from services.grade_calculator import (
     calculate_gpa,
     calculate_overall_average,
@@ -54,10 +55,26 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
             "course_code": course_result.course.code,
             "average": normalize_average_to_20(course_result.average, course_result.scale),
             "letter_grade": course_result.letter_grade,
+            "language_group": course_result.course.language_group,
         }
         for course_result in course_results
     ]
     course_averages = [course["average"] for course in courses]
+
+    # A1.6 three averages, all on /20. Courses are grouped by language_group;
+    # untagged (null) courses are ignored entirely. A track with no courses
+    # yields null, and bilingual is null unless BOTH tracks have a value — we
+    # never average a real number against null.
+    def _group_average(group: str) -> float | None:
+        values = [course["average"] for course in courses if course["language_group"] == group]
+        return calculate_overall_average(values) if values else None
+
+    french_average = _group_average(LanguageGroup.FRENCH.value)
+    english_average = _group_average(LanguageGroup.ENGLISH.value)
+    if french_average is not None and english_average is not None:
+        bilingual_average = calculate_overall_average([french_average, english_average])
+    else:
+        bilingual_average = None
 
     return {
         "student": {
@@ -71,6 +88,9 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
         "school_year": school_year,
         "courses": courses,
         "overall_average": calculate_overall_average(course_averages),
+        "french_average": french_average,
+        "english_average": english_average,
+        "bilingual_average": bilingual_average,
         "gpa": calculate_gpa(course_averages),
         # Live recomputation always yields a /20 report.
         "scale": "20",

@@ -174,6 +174,124 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertEqual(report_data["overall_average"], 18.0)
         self.assertEqual(report_data["scale"], "20")
 
+    def _add_tagged_course(self, student, *, code, language_group, average):
+        course = Course(
+            name=f"Course {code}",
+            code=code,
+            teacher=self.teacher,
+            grade_level="Grade 12",
+            term="Fall 2026",
+            school_year="2026-2027",
+            language_group=language_group,
+        )
+        self.db.add(course)
+        self.db.flush()
+        self.db.add(
+            CourseResult(
+                student=student,
+                course=course,
+                term="Fall 2026",
+                average=average,
+                letter_grade="A",
+                scale="20",
+            )
+        )
+
+    def test_language_averages_null_when_no_courses_tagged(self):
+        # self.student's Mathematics + Computer Science courses are untagged
+        # (language_group is null) — the historical / pre-tagging state.
+        report_data = build_report_card_data(
+            self.db,
+            self.student.id,
+            term="Fall 2026",
+            school_year="2026-2027",
+        )
+
+        self.assertIsNone(report_data["french_average"])
+        self.assertIsNone(report_data["english_average"])
+        self.assertIsNone(report_data["bilingual_average"])
+        # Decision: overall_average stays populated as the legacy all-courses mean
+        # (retained for the staleness check and the historical fallback UI).
+        self.assertEqual(report_data["overall_average"], 18.82)
+
+    def test_language_averages_with_mixed_tagged_and_untagged_courses(self):
+        student = Student(
+            first_name="Mixed",
+            last_name="Track",
+            grade_level="Grade 12",
+            student_number="STU-MIX",
+        )
+        self.db.add(student)
+        self.db.flush()
+        self._add_tagged_course(student, code="FR-A", language_group="FRENCH", average=16.0)
+        self._add_tagged_course(student, code="FR-B", language_group="FRENCH", average=12.0)
+        self._add_tagged_course(student, code="EN-A", language_group="ENGLISH", average=18.0)
+        self._add_tagged_course(student, code="UN-A", language_group=None, average=6.0)
+        self.db.commit()
+
+        report_data = build_report_card_data(
+            self.db,
+            student.id,
+            term="Fall 2026",
+            school_year="2026-2027",
+        )
+
+        self.assertEqual(report_data["french_average"], 14.0)
+        self.assertEqual(report_data["english_average"], 18.0)
+        self.assertEqual(report_data["bilingual_average"], 16.0)
+        # Untagged course is ignored by the three averages but still counts toward
+        # the legacy all-courses overall_average: (16 + 12 + 18 + 6) / 4.
+        self.assertEqual(report_data["overall_average"], 13.0)
+
+    def test_language_averages_null_when_no_french_courses(self):
+        student = Student(
+            first_name="English",
+            last_name="Only",
+            grade_level="Grade 12",
+            student_number="STU-EN-ONLY",
+        )
+        self.db.add(student)
+        self.db.flush()
+        self._add_tagged_course(student, code="EN-ONLY-1", language_group="ENGLISH", average=15.0)
+        self._add_tagged_course(student, code="EN-ONLY-2", language_group="ENGLISH", average=17.0)
+        self.db.commit()
+
+        report_data = build_report_card_data(
+            self.db,
+            student.id,
+            term="Fall 2026",
+            school_year="2026-2027",
+        )
+
+        self.assertIsNone(report_data["french_average"])
+        self.assertEqual(report_data["english_average"], 16.0)
+        # bilingual is null because we never average a real value against null.
+        self.assertIsNone(report_data["bilingual_average"])
+
+    def test_language_averages_null_when_no_english_courses(self):
+        student = Student(
+            first_name="French",
+            last_name="Only",
+            grade_level="Grade 12",
+            student_number="STU-FR-ONLY",
+        )
+        self.db.add(student)
+        self.db.flush()
+        self._add_tagged_course(student, code="FR-ONLY-1", language_group="FRENCH", average=13.0)
+        self._add_tagged_course(student, code="FR-ONLY-2", language_group="FRENCH", average=11.0)
+        self.db.commit()
+
+        report_data = build_report_card_data(
+            self.db,
+            student.id,
+            term="Fall 2026",
+            school_year="2026-2027",
+        )
+
+        self.assertEqual(report_data["french_average"], 12.0)
+        self.assertIsNone(report_data["english_average"])
+        self.assertIsNone(report_data["bilingual_average"])
+
     def test_missing_student_raises_value_error(self):
         with self.assertRaisesRegex(ValueError, "Student not found"):
             build_report_card_data(

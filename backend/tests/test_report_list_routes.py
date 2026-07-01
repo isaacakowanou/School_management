@@ -1,6 +1,7 @@
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import patch
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -217,6 +218,43 @@ class ReportListRouteTests(unittest.TestCase):
                 letter_grade="A",
                 calculated_at=self.base_time,
             )
+        )
+        self.db.commit()
+        self.db.refresh(student)
+        return student
+
+    def _create_student_with_tagged_course_results(self) -> Student:
+        # Two FRENCH courses + one ENGLISH course so overall_average (all-courses
+        # mean, 15.33) differs from bilingual_average (mean-of-track-means, 16.0).
+        student = Student(
+            first_name="Bilingual",
+            last_name="Student",
+            grade_level="Grade 12",
+            student_number="LIST-BILINGUAL",
+        )
+        french_a = Course(
+            name="Francais A", code="FR-BIL-A", teacher=self.teacher,
+            grade_level="Grade 12", term="Spring", school_year="2026-2027",
+            language_group="FRENCH",
+        )
+        french_b = Course(
+            name="Francais B", code="FR-BIL-B", teacher=self.teacher,
+            grade_level="Grade 12", term="Spring", school_year="2026-2027",
+            language_group="FRENCH",
+        )
+        english = Course(
+            name="English", code="EN-BIL", teacher=self.teacher,
+            grade_level="Grade 12", term="Spring", school_year="2026-2027",
+            language_group="ENGLISH",
+        )
+        self.db.add_all([student, french_a, french_b, english])
+        self.db.flush()
+        self.db.add_all(
+            [
+                CourseResult(student=student, course=french_a, term="Spring", average=12.0, letter_grade="C", scale="20", calculated_at=self.base_time),
+                CourseResult(student=student, course=french_b, term="Spring", average=16.0, letter_grade="B", scale="20", calculated_at=self.base_time),
+                CourseResult(student=student, course=english, term="Spring", average=18.0, letter_grade="A", scale="20", calculated_at=self.base_time),
+            ]
         )
         self.db.commit()
         self.db.refresh(student)
@@ -900,6 +938,88 @@ class ReportListRouteTests(unittest.TestCase):
             headers=self._headers(self.parent_user.email),
         )
         self.assertEqual(parent_approved_detail_response.status_code, 200)
+
+    def test_generate_report_exposes_language_averages(self):
+        student = self._create_student_with_tagged_course_results()
+
+        response = self.client.post(
+            f"/api/v1/reports/generate/{student.id}",
+            json={"term": "Spring", "school_year": "2026-2027"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        report = response.json()
+        self.assertEqual(report["french_average"], 14.0)
+        self.assertEqual(report["english_average"], 18.0)
+        self.assertEqual(report["bilingual_average"], 16.0)
+        # overall_average is still populated (legacy all-courses mean).
+        self.assertEqual(report["overall_average"], 15.33)
+
+    def test_regenerate_updates_language_averages(self):
+        student = self._create_student_with_tagged_course_results()
+        generate_response = self.client.post(
+            f"/api/v1/reports/generate/{student.id}",
+            json={"term": "Spring", "school_year": "2026-2027"},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(generate_response.status_code, 201)
+        report_id = generate_response.json()["id"]
+        self.assertEqual(generate_response.json()["english_average"], 18.0)
+        self.assertEqual(generate_response.json()["bilingual_average"], 16.0)
+
+        english_result = (
+            self.db.query(CourseResult).join(Course).filter(Course.code == "EN-BIL").one()
+        )
+        english_result.average = 10.0
+        self.db.commit()
+
+        regenerate_response = self.client.post(
+            f"/api/v1/reports/{report_id}/regenerate",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(regenerate_response.status_code, 200)
+        regenerated = regenerate_response.json()
+        self.assertEqual(regenerated["french_average"], 14.0)
+        self.assertEqual(regenerated["english_average"], 10.0)
+        self.assertEqual(regenerated["bilingual_average"], 12.0)
+
+        self.db.expire_all()
+        saved = self.db.get(ReportCard, UUID(report_id))
+        self.assertEqual(saved.french_average, 14.0)
+        self.assertEqual(saved.english_average, 10.0)
+        self.assertEqual(saved.bilingual_average, 12.0)
+
+    def test_admin_report_list_shows_bilingual_average_for_new_report(self):
+        student = self._create_student_with_tagged_course_results()
+        generate_response = self.client.post(
+            f"/api/v1/reports/generate/{student.id}",
+            json={"term": "Spring", "school_year": "2026-2027"},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(generate_response.status_code, 201)
+        report_id = generate_response.json()["id"]
+
+        item = self._admin_report_list_item(report_id)
+        self.assertEqual(item["bilingual_average"], 16.0)
+
+    def test_historical_report_exposes_null_language_averages(self):
+        # self.report_card predates A1.6 (created without the three averages).
+        detail_response = self.client.get(
+            f"/api/v1/reports/admin/{self.report_card.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        report = detail_response.json()
+        self.assertIsNone(report["french_average"])
+        self.assertIsNone(report["english_average"])
+        self.assertIsNone(report["bilingual_average"])
+        # Legacy overall_average is still present so the frontend fallback works.
+        self.assertEqual(report["overall_average"], 92.5)
+
+        item = self._admin_report_list_item(self.report_card.id)
+        self.assertIsNone(item["bilingual_average"])
 
 
 if __name__ == "__main__":

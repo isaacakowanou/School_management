@@ -181,7 +181,7 @@ export default function AdminReportsPage() {
                       <td>
                         <ReportStatus report={report} />
                       </td>
-                      <td className="num">{formatReportAverage(report.overall_average, report.scale)}</td>
+                      <td className="num">{formatReportAverage(report.bilingual_average ?? report.overall_average, report.scale)}</td>
                       <td className="nowrap">
                         <Link className="back-link" to={`/admin/reports/${report.id}`}>
                           Open →

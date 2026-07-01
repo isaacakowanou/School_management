@@ -1,219 +1,195 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Student Report Card</title>
-    <style>
-        @page {
-            size: letter;
-            margin: 0.75in;
-        }
-
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            color: #1f2933;
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 13px;
-            line-height: 1.45;
-            background: #ffffff;
-        }
-
-        .report {
-            width: 100%;
-        }
-
-        .header {
-            border-bottom: 2px solid #1f2933;
-            padding-bottom: 16px;
-            margin-bottom: 22px;
-        }
-
-        .school-name {
-            font-size: 22px;
-            font-weight: 700;
-            margin: 0 0 4px;
-        }
-
-        .document-title {
-            font-size: 16px;
-            font-weight: 700;
-            margin: 0;
-            color: #52606d;
-        }
-
-        .meta-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px 24px;
-            margin-bottom: 24px;
-        }
-
-        .meta-item {
-            border-bottom: 1px solid #d9e2ec;
-            padding-bottom: 6px;
-        }
-
-        .label {
-            display: block;
-            color: #627d98;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-        }
-
-        .value {
-            display: block;
-            margin-top: 2px;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        h2 {
-            font-size: 14px;
-            margin: 0 0 10px;
-            text-transform: uppercase;
-            color: #323f4b;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 22px;
-        }
-
-        th {
-            background: #f0f4f8;
-            border: 1px solid #bcccdc;
-            color: #323f4b;
-            font-size: 11px;
-            padding: 8px;
-            text-align: left;
-            text-transform: uppercase;
-        }
-
-        td {
-            border: 1px solid #d9e2ec;
-            padding: 8px;
-        }
-
-        .number {
-            text-align: right;
-            white-space: nowrap;
-        }
-
-        .summary-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 22px;
-        }
-
-        .summary-box {
-            border: 1px solid #bcccdc;
-            padding: 12px;
-        }
-
-        .summary-value {
-            display: block;
-            font-size: 22px;
-            font-weight: 700;
-            margin-top: 4px;
-        }
-
-        .ai-summary {
-            border-top: 1px solid #d9e2ec;
-            padding-top: 16px;
-            margin-top: 8px;
-        }
-
-        .footer {
-            border-top: 1px solid #d9e2ec;
-            color: #627d98;
-            font-size: 11px;
-            margin-top: 28px;
-            padding-top: 10px;
-        }
-    </style>
+<meta charset="utf-8">
+<title>Bulletin</title>
+<style>
+  @page { size: letter landscape; margin: 0.4in; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, "Helvetica Neue", sans-serif; font-size: 9pt; color: #000; margin: 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { border: 0.5pt solid #000; padding: 2px 4px; vertical-align: top; }
+  .noborder, .noborder > tbody > tr > td, .noborder > tbody > tr > th { border: none; }
+  th { background: #e8e8e8; font-weight: bold; }
+  .section-title { background: #666; color: #fff; font-weight: bold; font-size: 10pt; text-align: center; }
+  .center { text-align: center; }
+  .right { text-align: right; }
+  .small { font-size: 7.5pt; }
+  .auth { font-family: Calibri, "Helvetica", Arial, sans-serif; font-size: 11pt; }
+  .bold { font-weight: bold; }
+  .title-main { font-family: "Times New Roman", Georgia, serif; font-size: 16pt; font-weight: bold; text-align: center; }
+  .school-name { font-family: Georgia, "Times New Roman", serif; font-size: 14pt; font-weight: bold; line-height: 1.08; }
+  /* School-name block centered on the FULL page width; logo absolute at the left
+     so it does not push the block off-center. Both vertically centered in the 135px band. */
+  .header-wrap { position: relative; height: 135px; }
+  .school-block { position: absolute; left: 0; right: 0; top: 37px; text-align: center; }
+  .logo { position: absolute; left: 190px; top: 0; height: 135px; }
+  .block { margin-top: 6px; }
+  .num { text-align: center; white-space: nowrap; }
+  /* Conduct / work-habits: compact rows so these 2-line-per-item columns don't
+     tower over the academics column (which drives whitespace under it). */
+  .cwt td { padding: 1px 3px; line-height: 1.05; }
+  .cwt .small { font-size: 7pt; }
+  /* Fixed layout so the 55/22.5/22.5 body split holds regardless of content. */
+  .grid { table-layout: fixed; }
+  /* Compact averages table: tight padding, small columns, grouped by track. */
+  .avg-tbl { table-layout: fixed; }
+  .avg-tbl td, .avg-tbl th { padding: 1px 2px; font-size: 8pt; }
+  .avg-tbl .lbl { width: 46%; text-align: left; }
+  .tsep { border-left: 1.2pt solid #000; }
+  /* Compact comments: 2-line boxes, narrow right-aligned signature column. */
+  .cmt { height: 26px; }
+  .sig { width: 12%; text-align: right; vertical-align: bottom; }
+</style>
 </head>
 <body>
-    <main class="report">
-        <header class="header">
-            <p class="school-name">School AI System</p>
-            <p class="document-title">Student Report Card</p>
-        </header>
+{% set r = report_data %}
+{%- macro avg(v) -%}{%- if v is none -%}—{%- else -%}{{ '%.2f'|format(v) }}{%- endif -%}{%- endmacro -%}
+{%- macro gr(v) -%}{%- if v -%}{{ v }}{%- else -%}—{%- endif -%}{%- endmacro -%}
+{%- macro course_rows(courses) -%}
+  {%- for c in courses -%}
+  <tr><td>{{ c.course_name }}</td><td class="num">{{ gr(c.letter_grade) }}</td><td>{{ c.appreciation }}</td></tr>
+  {%- endfor -%}
+{%- endmacro -%}
 
-        <section class="meta-grid" aria-label="Student information">
-            <div class="meta-item">
-                <span class="label">Student Name</span>
-                <span class="value">{{ report_data.student.first_name }} {{ report_data.student.last_name }}</span>
-            </div>
-            <div class="meta-item">
-                <span class="label">Student Number</span>
-                <span class="value">{{ report_data.student.student_number }}</span>
-            </div>
-            <div class="meta-item">
-                <span class="label">Grade Level</span>
-                <span class="value">{{ report_data.student.grade_level }}</span>
-            </div>
-            <div class="meta-item">
-                <span class="label">Term / School Year</span>
-                <span class="value">{{ report_data.term }} / {{ report_data.school_year }}</span>
-            </div>
-        </section>
+<!-- 1. Header: 3-line school name centered on the page; logo absolute at left. -->
+<div class="header-wrap">
+  {% if logo_data_uri %}<img class="logo" src="{{ logo_data_uri }}" alt="GGFK">{% endif %}
+  <div class="school-block">
+    <div class="school-name">ECOLE</div>
+    <div class="school-name">BENINO AMERICAINE</div>
+    <div class="school-name">GOD'S GRACE FOR KIDS</div>
+  </div>
+</div>
+<div class="center auth" style="margin-top: 3px;">Autorisation N°216/MEMP/CAB/DC/SGM/DEPEMP/SPD/SP</div>
 
-        <section aria-label="Academic results">
-            <h2>Academic Results</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th scope="col">Course Code</th>
-                        <th scope="col">Course Name</th>
-                        <th scope="col" class="number">Average</th>
-                        <th scope="col">Letter Grade</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for course in report_data.courses %}
-                    <tr>
-                        <td>{{ course.course_code }}</td>
-                        <td>{{ course.course_name }}</td>
-                        <td class="number">{{ "%.2f"|format(course.average) }}</td>
-                        <td>{{ course.letter_grade }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </section>
+<!-- 2. Title (centered, year right-aligned on same line) -->
+<table class="noborder block">
+  <tr>
+    <td class="noborder" style="width: 25%;"></td>
+    <td class="noborder title-main">PROGRESS REPORT / BULLETIN - MIDDLE SCHOOL / COLLEGE</td>
+    <td class="noborder right bold" style="width: 25%;">Year/Année: {{ r.school_year }}</td>
+  </tr>
+</table>
 
-        <section class="summary-grid" aria-label="Summary results">
-            <div class="summary-box">
-                <span class="label">Overall Average</span>
-                <span class="summary-value">{{ "%.2f"|format(report_data.overall_average) }}</span>
-            </div>
-            <div class="summary-box">
-                <span class="label">GPA</span>
-                <span class="summary-value">{{ "%.2f"|format(report_data.gpa) }}</span>
-            </div>
-        </section>
+<!-- 3. Metadata -->
+<table class="block">
+  <tr>
+    <td style="width: 24%;"><span class="bold">Student /Élève:</span> {{ r.student.full_name }}</td>
+    <td style="width: 31%;"><span class="bold">N° Educmaster:</span> </td>
+    <td style="width: 25%;"><span class="bold">GRADE/CLASSE:</span>
+      {% if r.school_class %}{{ r.school_class.name_fr }}{% if r.school_class.name_en %}/{{ r.school_class.name_en }}{% endif %}{% else %}—{% endif %}
+    </td>
+    <td><span class="bold">TOTAL/EFFECTIF:</span> {% if r.class_effectif is not none %}{{ r.class_effectif }}{% else %}—{% endif %}</td>
+  </tr>
+</table>
 
-        {% if report_data.ai_summary %}
-        <section class="ai-summary" aria-label="Academic summary">
-            <h2>Academic Summary</h2>
-            <p>{{ report_data.ai_summary }}</p>
-        </section>
-        {% endif %}
+<!-- 4. Term line + Parent -->
+<table class="block">
+  <tr>
+    <td>
+      {% if r.term_number %}{{ r.term_ordinal_en }} Term: {{ r.term_dates_en }} &nbsp;/&nbsp; {{ r.term_ordinal_fr }} Trimestre : {{ r.term_dates_fr }}{% else %}{{ r.term }}{% endif %}
+    </td>
+    <td class="bold" style="width: 20%;">Parent:</td>
+  </tr>
+</table>
 
-        {% if report_data.status or report_data.generated_date %}
-        <footer class="footer">
-            {% if report_data.status %}Status: {{ report_data.status }}{% endif %}
-            {% if report_data.status and report_data.generated_date %} | {% endif %}
-            {% if report_data.generated_date %}Date: {{ report_data.generated_date }}{% endif %}
-        </footer>
-        {% endif %}
-    </main>
+<!-- 5. Main body: academics | conduct | work habits -->
+<table class="noborder block grid"><tr>
+  <td class="noborder" style="width: 55%; padding-right: 4px;">
+    <table>
+      <tr><th style="width: 58%;">Subject / Matière</th><th>Grade</th><th>Appreciation</th></tr>
+      {% if r.courses_by_language.french_courses %}
+        <tr><td class="section-title" colspan="3">FRANÇAIS / FRENCH</td></tr>
+        {{ course_rows(r.courses_by_language.french_courses) }}
+      {% endif %}
+      {% if r.courses_by_language.english_courses %}
+        <tr><td class="section-title" colspan="3">ENGLISH / ANGLAIS</td></tr>
+        {{ course_rows(r.courses_by_language.english_courses) }}
+      {% endif %}
+      {% if r.courses_by_language.untagged_courses %}
+        <tr><td class="section-title" colspan="3">OTHER / AUTRES</td></tr>
+        {{ course_rows(r.courses_by_language.untagged_courses) }}
+      {% endif %}
+    </table>
+  </td>
+  <td class="noborder" style="width: 22.5%; padding-right: 4px;">
+    <table class="cwt">
+      <tr><td class="section-title" colspan="2">Conduct / Conduite</td></tr>
+      {% for item in r.conduct_items %}
+      <tr><td>{{ item.en_label }}<br><span class="small">{{ item.fr_label }}</span></td><td class="num">{{ gr(item.letter_grade) }}</td></tr>
+      {% endfor %}
+    </table>
+  </td>
+  <td class="noborder" style="width: 22.5%;">
+    <table class="cwt">
+      <tr><td class="section-title" colspan="2">Work Habits / Habitudes de travail</td></tr>
+      {% for item in r.work_habit_items %}
+      <tr><td>{{ item.en_label }}<br><span class="small">{{ item.fr_label }}</span></td><td class="num">{{ gr(item.letter_grade) }}</td></tr>
+      {% endfor %}
+    </table>
+  </td>
+</tr></table>
+
+<!-- 6. Averages block -->
+{% set grid = r.averages_grid %}
+<table class="block avg-tbl">
+  <tr>
+    <th rowspan="2" class="lbl">Averages / Moyennes</th>
+    <th colspan="3">Moyenne française</th>
+    <th colspan="3" class="tsep">Moyenne anglaise</th>
+    <th colspan="3" class="tsep">Moyenne bilingue</th>
+  </tr>
+  <tr>
+    {% for track in ['french', 'english', 'bilingual'] %}<th class="num{% if track != 'french' %} tsep{% endif %}">1er</th><th class="num">2ème</th><th class="num">3ème</th>{% endfor %}
+  </tr>
+  <tr>
+    <td class="lbl bold">Student's Avg / Moyenne de l'élève</td>
+    {% for track in ['french', 'english', 'bilingual'] %}{% for trim in [1, 2, 3] %}<td class="num{% if track != 'french' and trim == 1 %} tsep{% endif %}">{{ avg(grid[trim][track].student) }}</td>{% endfor %}{% endfor %}
+  </tr>
+  <tr>
+    <td class="lbl bold">Class Highest / Plus forte moyenne</td>
+    {% for track in ['french', 'english', 'bilingual'] %}{% for trim in [1, 2, 3] %}<td class="num{% if track != 'french' and trim == 1 %} tsep{% endif %}">{{ avg(grid[trim][track].class_highest) }}</td>{% endfor %}{% endfor %}
+  </tr>
+  <tr>
+    <td class="lbl bold">Class Lowest / Plus faible moyenne</td>
+    {% for track in ['french', 'english', 'bilingual'] %}{% for trim in [1, 2, 3] %}<td class="num{% if track != 'french' and trim == 1 %} tsep{% endif %}">{{ avg(grid[trim][track].class_lowest) }}</td>{% endfor %}{% endfor %}
+  </tr>
+  {% if r.is_final_trimester %}
+  <tr>
+    <td class="lbl bold">Annual Avg / Moyenne annuelle</td>
+    <td class="num" colspan="3">{{ avg(r.three_averages.annual.french) }}</td>
+    <td class="num tsep" colspan="3">{{ avg(r.three_averages.annual.english) }}</td>
+    <td class="num tsep" colspan="3">{{ avg(r.three_averages.annual.bilingual) }}</td>
+  </tr>
+  {% endif %}
+</table>
+
+<!-- 7. Comments -->
+<table class="block">
+  <tr>
+    <th colspan="2">Teacher's Comment / Commentaire du censeur</th>
+    <th class="sig">Signature</th>
+  </tr>
+  <tr>
+    <td class="cmt">{{ r.teacher_comment_fr or '' }}</td>
+    <td class="cmt">{{ r.teacher_comment_en or '' }}</td>
+    <td class="sig"></td>
+  </tr>
+  <tr>
+    <th colspan="2">Principal's Comment / Commentaire du directeur</th>
+    <th class="sig">Signature</th>
+  </tr>
+  <tr>
+    <td class="cmt">{{ r.principal_comment_fr or '' }}</td>
+    <td class="cmt">{{ r.principal_comment_en or '' }}</td>
+    <td class="sig"></td>
+  </tr>
+</table>
+
+<!-- 8. Footer grading key -->
+<table class="noborder block">
+  <tr><td class="noborder center small">{{ r.grading_key }}</td></tr>
+</table>
 </body>
 </html>

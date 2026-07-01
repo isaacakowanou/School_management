@@ -36,7 +36,6 @@ from services.grade_calculator import (  # noqa: E402
     calculate_overall_average,
     get_letter_grade,
 )
-from services.pdf_generator import generate_report_card_pdf  # noqa: E402
 
 
 DEMO_PASSWORD = "dev-password-123"
@@ -391,7 +390,6 @@ def get_or_create_report_card(
     *,
     admin_user: User,
     student: Student,
-    pdf_path: str,
     overall_average: float,
     gpa: float,
 ) -> ReportCard:
@@ -414,7 +412,6 @@ def get_or_create_report_card(
             gpa=gpa,
             status="approved",
             ai_summary=DEMO_SUMMARY,
-            pdf_url=pdf_path,
             approved_by_admin=admin_user,
             approved_at=approved_at,
             sent_at=None,
@@ -429,7 +426,6 @@ def get_or_create_report_card(
     report_card.scale = "20"
     report_card.status = "approved"
     report_card.ai_summary = DEMO_SUMMARY
-    report_card.pdf_url = pdf_path
     report_card.approved_by_admin = admin_user
     report_card.approved_at = approved_at
     report_card.sent_at = None
@@ -559,26 +555,17 @@ def create_demo_data() -> None:
         )
         db.flush()
 
-        report_data = build_report_data(
-            student=student,
-            course=course,
-            average=course_average,
-            letter_grade=letter_grade,
-            overall_average=overall_average,
-            gpa=gpa,
-        )
-        pdf_path = generate_report_card_pdf(report_data)
-
         report_card = get_or_create_report_card(
             db,
             stats,
             admin_user=admin_user,
             student=student,
-            pdf_path=pdf_path,
             overall_average=overall_average,
             gpa=gpa,
         )
         db.flush()
+        # No file storage (A1.7b): pdf_url points at the live render endpoint.
+        report_card.pdf_url = f"/api/v1/reports/{report_card.id}/pdf"
         get_or_create_report_card_course(
             db,
             stats,
@@ -599,7 +586,7 @@ def create_demo_data() -> None:
         print(f"Overall average: {overall_average:.2f}")
         print(f"GPA: {gpa:.2f}")
         print(f"Report status: {report_card.status}")
-        print(f"PDF: {pdf_path}")
+        print(f"PDF: {report_card.pdf_url}")
     finally:
         db.close()
 

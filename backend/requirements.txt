@@ -8,6 +8,6 @@ python-jose[cryptography]
 passlib[bcrypt]
 bcrypt<4.1
 jinja2
-reportlab
+weasyprint
 openai>=2,<3
 resend>=2,<3

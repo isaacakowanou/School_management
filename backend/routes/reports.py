@@ -34,7 +34,7 @@ from schemas import (
     ReportSendResponse,
 )
 from services.email_service import send_report_notification_to_parents
-from services.pdf_generator import _build_pdf_filename, generate_report_card_pdf, render_report_card_pdf_bytes
+from services.pdf_renderer import _build_pdf_filename, render_report_card_pdf_bytes
 from services.report_builder import (
     build_report_card_data,
     build_report_card_data_from_report_card,
@@ -311,11 +311,6 @@ def generate_report_card(
     report_data["generated_date"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     report_data["ai_summary"] = None
 
-    try:
-        pdf_path = generate_report_card_pdf(report_data)
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="PDF generation failed") from exc
-
     report_card = ReportCard(
         student_id=student_id,
         term=payload.term,
@@ -328,10 +323,12 @@ def generate_report_card(
         scale="20",
         status="draft",
         ai_summary=None,
-        pdf_url=pdf_path,
     )
     db.add(report_card)
     db.flush()
+    # No file storage (A1.7b): the PDF is rendered on demand, so pdf_url simply
+    # points at the download endpoint.
+    report_card.pdf_url = f"/api/v1/reports/{report_card.id}/pdf"
 
     for course in report_data["courses"]:
         db.add(

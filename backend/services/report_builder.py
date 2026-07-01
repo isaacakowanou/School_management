@@ -4,8 +4,20 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from constants import (
+    CONDUCT_ITEMS,
+    FINAL_TRIMESTER_NUMBER,
+    GRADING_KEY_LEGEND,
+    TERM_ORDINAL_EN,
+    TERM_ORDINAL_FR,
+    TRIMESTER_DATE_RANGES,
+    WORK_HABIT_ITEMS,
+    appreciation_for_letter,
+    term_number,
+)
 from models import Course, CourseResult, ReportCard, ReportCardCourse, Student
 from schemas import LanguageGroup
+from services.class_stats import compute_class_stats
 from services.grade_calculator import (
     calculate_gpa,
     calculate_overall_average,
@@ -159,6 +171,16 @@ def get_report_card_staleness(db: Session, report_card: ReportCard) -> ReportCar
     )
 
 
+def _merge_report_items(stored_items, definitions) -> list[dict]:
+    """Merge stored conduct/work-habit rows onto the canonical list, so every
+    item appears in order with letter_grade None when unassessed (A1.7b)."""
+    grade_by_key = {item.item_key: item.letter_grade for item in stored_items}
+    return [
+        {"key": key, "en_label": en_label, "fr_label": fr_label, "letter_grade": grade_by_key.get(key)}
+        for key, en_label, fr_label in definitions
+    ]
+
+
 def build_report_card_data_from_report_card(db: Session, report_card: ReportCard) -> dict:
     """Reconstruct report_data from a stored ReportCard + ReportCardCourse snapshot.
 
@@ -170,9 +192,11 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
 
     course_ids = [course.course_id for course in report_card.courses]
     code_by_course_id: dict = {}
+    language_by_course_id: dict = {}
     if course_ids:
         for course in db.scalars(select(Course).where(Course.id.in_(course_ids))).all():
             code_by_course_id[course.id] = course.code
+            language_by_course_id[course.id] = course.language_group
 
     courses = [
         {
@@ -181,10 +205,24 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
             "course_code": code_by_course_id.get(course.course_id, "N/A"),
             "average": course.average,
             "letter_grade": course.letter_grade,
+            # A1.7b: French appreciation + language track (resolved live, since the
+            # snapshot ReportCardCourse rows don't carry language_group).
+            "appreciation": appreciation_for_letter(course.letter_grade),
+            "language_group": language_by_course_id.get(course.course_id),
         }
         for course in report_card.courses
     ]
     courses.sort(key=lambda course: (course["course_name"] or "", course["course_code"] or ""))
+
+    courses_by_language = {
+        "french_courses": [c for c in courses if c["language_group"] == LanguageGroup.FRENCH.value],
+        "english_courses": [c for c in courses if c["language_group"] == LanguageGroup.ENGLISH.value],
+        "untagged_courses": [
+            c
+            for c in courses
+            if c["language_group"] not in (LanguageGroup.FRENCH.value, LanguageGroup.ENGLISH.value)
+        ],
+    }
 
     generated_date = (
         report_card.created_at.isoformat(timespec="seconds")
@@ -192,20 +230,116 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
         else None
     )
 
+    # --- A1.7b bulletin sections ---
+    conduct_items = _merge_report_items(report_card.conduct_items, CONDUCT_ITEMS)
+    work_habit_items = _merge_report_items(report_card.work_habit_items, WORK_HABIT_ITEMS)
+
+    current_term_num = term_number(report_card.term)
+    class_stats = compute_class_stats(db, student, report_card.term, report_card.school_year)
+
+    def _track_block(source_report, stats, track):
+        return {
+            "student": getattr(source_report, f"{track}_average"),
+            "class_highest": stats[track]["highest"],
+            "class_lowest": stats[track]["lowest"],
+        }
+
+    three_averages = {
+        "term_number": current_term_num,
+        "french": _track_block(report_card, class_stats, "french"),
+        "english": _track_block(report_card, class_stats, "english"),
+        "bilingual": _track_block(report_card, class_stats, "bilingual"),
+        "annual": {"french": None, "english": None, "bilingual": None},
+    }
+
+    previous_term_averages = []
+    prior_reports = db.scalars(
+        select(ReportCard).where(
+            ReportCard.student_id == student.id,
+            ReportCard.school_year == report_card.school_year,
+            ReportCard.id != report_card.id,
+        )
+    ).all()
+    for prior in prior_reports:
+        prior_stats = compute_class_stats(db, student, prior.term, report_card.school_year)
+        previous_term_averages.append(
+            {
+                "term_number": term_number(prior.term),
+                "term": prior.term,
+                "french": _track_block(prior, prior_stats, "french"),
+                "english": _track_block(prior, prior_stats, "english"),
+                "bilingual": _track_block(prior, prior_stats, "bilingual"),
+            }
+        )
+    previous_term_averages.sort(key=lambda entry: (entry["term_number"] is None, entry["term_number"] or 0))
+
+    # Annual = mean of the student's own track averages across the year's trims,
+    # populated only in the final trimester and only where values exist.
+    if current_term_num == FINAL_TRIMESTER_NUMBER:
+        for track in ("french", "english", "bilingual"):
+            values = [three_averages[track]["student"]]
+            values += [entry[track]["student"] for entry in previous_term_averages]
+            values = [value for value in values if value is not None]
+            three_averages["annual"][track] = round(sum(values) / len(values), 2) if values else None
+
+    # Template convenience: per-trimester (1..3) track blocks for the averages
+    # grid. Reports whose term isn't a recognized trimester simply don't appear.
+    trim_lookup = {three_averages["term_number"]: three_averages}
+    for entry in previous_term_averages:
+        trim_lookup.setdefault(entry["term_number"], entry)
+    _empty_track = {"student": None, "class_highest": None, "class_lowest": None}
+    averages_grid = {
+        trim: {
+            track: (trim_lookup[trim][track] if trim in trim_lookup else _empty_track)
+            for track in ("french", "english", "bilingual")
+        }
+        for trim in (1, 2, 3)
+    }
+
+    school_class = student.school_class
+    class_block = None
+    class_effectif = None
+    if school_class is not None:
+        class_block = {"name_fr": school_class.name_fr, "name_en": school_class.name_en}
+        class_effectif = len(school_class.students)
+
+    term_dates_en, term_dates_fr = TRIMESTER_DATE_RANGES.get(current_term_num, (None, None))
+
     return {
         "student": {
             "id": student.id,
             "first_name": student.first_name,
             "last_name": student.last_name,
+            "full_name": f"{student.first_name} {student.last_name}",
             "student_number": student.student_number,
             "grade_level": student.grade_level,
         },
         "term": report_card.term,
         "school_year": report_card.school_year,
+        "term_number": current_term_num,
+        "is_final_trimester": current_term_num == FINAL_TRIMESTER_NUMBER,
+        "term_ordinal_en": TERM_ORDINAL_EN.get(current_term_num),
+        "term_ordinal_fr": TERM_ORDINAL_FR.get(current_term_num),
+        "term_dates_en": term_dates_en,
+        "term_dates_fr": term_dates_fr,
+        "school_class": class_block,
+        "class_effectif": class_effectif,
         "courses": courses,
+        "courses_by_language": courses_by_language,
         "overall_average": report_card.overall_average,
         "gpa": report_card.gpa,
         "scale": report_card.scale,
+        "three_averages": three_averages,
+        "previous_term_averages": previous_term_averages,
+        "averages_grid": averages_grid,
+        "class_stats": class_stats,
+        "conduct_items": conduct_items,
+        "work_habit_items": work_habit_items,
+        "teacher_comment_fr": report_card.teacher_comment_fr,
+        "teacher_comment_en": report_card.teacher_comment_en,
+        "principal_comment_fr": report_card.principal_comment_fr,
+        "principal_comment_en": report_card.principal_comment_en,
+        "grading_key": GRADING_KEY_LEGEND,
         "ai_summary": report_card.ai_summary,
         "status": report_card.status,
         "generated_date": generated_date,

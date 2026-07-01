@@ -27,3 +27,66 @@ WORK_HABIT_ITEMS = [
 
 CONDUCT_ITEM_KEYS = [key for key, _, _ in CONDUCT_ITEMS]
 WORK_HABIT_ITEM_KEYS = [key for key, _, _ in WORK_HABIT_ITEMS]
+
+
+# --- A1.7b Collège bulletin (PDF) reference data ---
+
+# Letter grade -> French appreciation shown on the academic table.
+APPRECIATION_BY_LETTER = {
+    "A+": "EXCELLENT",
+    "A": "TRES SATISFAISANT",
+    "B+": "SATISFAISANT",
+    "B": "ACCEPTABLE",
+    "C+": "PEUT MIEUX FAIRE",
+    "C": "INSUFFISANT",
+    "D": "TRES INSUFFISANT",
+    "E": "FAIBLE",
+    "F": "TRES FAIBLE",
+}
+
+# Footer grading-key legend (BISC 9-letter /20 bands, A1.3).
+GRADING_KEY_LEGEND = (
+    "Grading key/Code: A+ = 20-19; A = 18-17; B+ = 16-15; B = 14-13; "
+    "C+ = 12-11; C = 10-9; D = 8-7; E = 6-4; F = 3-0"
+)
+
+# Canonical GGFK trimester term values; list position == trimester number.
+TRIMESTER_TERMS = ["1er Trimestre", "2ème Trimestre", "3ème Trimestre"]
+FINAL_TRIMESTER_NUMBER = len(TRIMESTER_TERMS)  # 3
+
+TERM_ORDINAL_EN = {1: "1st", 2: "2nd", 3: "3rd"}
+TERM_ORDINAL_FR = {1: "1er", 2: "2ème", 3: "3ème"}
+
+# Hardcoded date ranges per trimester (english, french); real academic-calendar
+# handling is a future ticket.
+TRIMESTER_DATE_RANGES = {
+    1: ("Sept 15 - Dec 20", "15 Sept - 20 Déc"),
+    2: ("Jan 8 - Mar 28", "8 Janv - 28 Mars"),
+    3: ("Apr 16 - Jun 5", "16 Avr - 5 Juin"),
+}
+
+
+def appreciation_for_letter(letter_grade):
+    """French appreciation for a letter grade; '' when unknown or None."""
+    return APPRECIATION_BY_LETTER.get(letter_grade or "", "")
+
+
+def term_number(term):
+    """Resolve a term string to a trimester number (1/2/3), else None.
+
+    Match order: exact -> case-insensitive -> loose 'contains the digit'.
+    Unrecognized terms return None so the template degrades to '-'.
+    """
+    if not term:
+        return None
+    for index, value in enumerate(TRIMESTER_TERMS, start=1):
+        if term == value:
+            return index
+    lowered = term.strip().lower()
+    for index, value in enumerate(TRIMESTER_TERMS, start=1):
+        if lowered == value.lower():
+            return index
+    for digit in ("1", "2", "3"):
+        if digit in term:
+            return int(digit)
+    return None

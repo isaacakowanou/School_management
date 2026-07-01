@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createStudent } from '../api/students.js'
+import { listClasses } from '../api/classes.js'
 import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
+import ClassSelect from '../components/ClassSelect.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 
 const EMPTY_FORM = {
@@ -10,6 +12,7 @@ const EMPTY_FORM = {
   studentNumber: '',
   gradeLevel: '',
   schoolLevel: '',
+  classId: '',
 }
 
 export default function AdminStudentCreatePage() {
@@ -17,6 +20,21 @@ export default function AdminStudentCreatePage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [classes, setClasses] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    listClasses()
+      .then((data) => {
+        if (!cancelled) setClasses(data)
+      })
+      .catch(() => {
+        /* non-fatal: the class dropdown just stays empty */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -116,6 +134,16 @@ export default function AdminStudentCreatePage() {
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="field">
+          <span>Class / Classe (optional)</span>
+          <ClassSelect
+            classes={classes}
+            value={form.classId}
+            onChange={(value) => updateField('classId', value)}
+            disabled={saving}
+          />
         </label>
 
         <div className="grade-actions">

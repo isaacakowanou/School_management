@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/admin/teachers', label: 'Teachers', end: false },
   { to: '/admin/parents', label: 'Parents', end: false },
   { to: '/admin/courses', label: 'Courses', end: false },
+  { to: '/admin/classes', label: 'Classes', end: false },
   { to: '/admin/audit-logs', label: 'Audit logs', end: false },
 ]
 

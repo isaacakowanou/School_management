@@ -17,7 +17,7 @@ from schemas import (
     StudentResponse,
     StudentUpdate,
 )
-from utils import to_student_response
+from utils import get_class_or_404, to_student_response
 
 
 router = APIRouter(tags=["students"])
@@ -96,12 +96,16 @@ def create_student(
     if existing_student is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Student number already exists")
 
+    if payload.class_id is not None:
+        get_class_or_404(db, payload.class_id)
+
     student = Student(
         first_name=first_name,
         last_name=last_name,
         grade_level=grade_level,
         school_level=school_level,
         student_number=student_number,
+        class_id=payload.class_id,
     )
     db.add(student)
     db.flush()
@@ -118,6 +122,7 @@ def create_student(
             "grade_level": student.grade_level,
             "school_level": student.school_level,
             "student_number": student.student_number,
+            "class_id": student.class_id,
         },
     )
     db.commit()
@@ -154,6 +159,7 @@ def update_student(
         "grade_level": student.grade_level,
         "school_level": student.school_level,
         "student_number": student.student_number,
+        "class_id": student.class_id,
     }
 
     if payload.student_number is not None:
@@ -178,6 +184,10 @@ def update_student(
         student.school_level = (
             payload.school_level.value if payload.school_level is not None else None
         )
+    if "class_id" in payload.model_fields_set:
+        if payload.class_id is not None:
+            get_class_or_404(db, payload.class_id)
+        student.class_id = payload.class_id
 
     new_value = {
         "first_name": student.first_name,
@@ -185,6 +195,7 @@ def update_student(
         "grade_level": student.grade_level,
         "school_level": student.school_level,
         "student_number": student.student_number,
+        "class_id": student.class_id,
     }
     if new_value != old_value:
         create_audit_log(

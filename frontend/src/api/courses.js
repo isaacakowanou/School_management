@@ -23,7 +23,7 @@ export function listCourses() {
 }
 
 // POST /api/v1/courses (admin)
-export function createCourse({ name, code, teacherId, gradeLevel, term, schoolYear, languageGroup }) {
+export function createCourse({ name, code, teacherId, gradeLevel, term, schoolYear, languageGroup, classId }) {
   return apiPost('/courses', {
     name: name.trim(),
     code: code.trim(),
@@ -32,11 +32,12 @@ export function createCourse({ name, code, teacherId, gradeLevel, term, schoolYe
     term: term.trim(),
     school_year: schoolYear.trim(),
     language_group: languageGroup || null,
+    class_id: classId || null,
   })
 }
 
 // PUT /api/v1/courses/{course_id} (admin)
-export function updateCourse(courseId, { name, code, teacherId, gradeLevel, term, schoolYear, languageGroup }) {
+export function updateCourse(courseId, { name, code, teacherId, gradeLevel, term, schoolYear, languageGroup, classId }) {
   return apiPut(`/courses/${courseId}`, {
     name: name.trim(),
     code: code.trim(),
@@ -45,6 +46,7 @@ export function updateCourse(courseId, { name, code, teacherId, gradeLevel, term
     term: term.trim(),
     school_year: schoolYear.trim(),
     language_group: languageGroup || null,
+    class_id: classId || null,
   })
 }
 

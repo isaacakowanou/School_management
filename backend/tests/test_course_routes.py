@@ -248,6 +248,7 @@ class CourseRouteTests(unittest.TestCase):
                 "term": "Fall",
                 "school_year": "2026-2027",
                 "language_group": None,
+                "class_id": None,
             },
         )
 

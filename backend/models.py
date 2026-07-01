@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship as orm_relationship
 from sqlalchemy.types import Uuid
 
@@ -29,6 +29,29 @@ class User(Base):
     audit_logs: Mapped[list["AuditLog"]] = orm_relationship(back_populates="actor")
 
 
+class Class(Base):
+    __tablename__ = "classes"
+    __table_args__ = (UniqueConstraint("name_fr", "school_year", name="uq_class_name_fr_school_year"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name_fr: Mapped[str] = mapped_column(String(100), nullable=False)
+    name_en: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Reuses the SchoolLevel enum values (maternelle/primaire/college); validated
+    # via Pydantic, stored as a plain string (same Option C pattern as
+    # Student.school_level).
+    school_level: Mapped[str] = mapped_column(String(20), nullable=False)
+    stream: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    school_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    students: Mapped[list["Student"]] = orm_relationship(back_populates="school_class")
+    courses: Mapped[list["Course"]] = orm_relationship(back_populates="school_class")
+
+
 class Student(Base):
     __tablename__ = "students"
 
@@ -38,6 +61,9 @@ class Student(Base):
     grade_level: Mapped[str] = mapped_column(String(50), nullable=False)
     school_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
     student_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    class_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -48,6 +74,7 @@ class Student(Base):
     grades: Mapped[list["Grade"]] = orm_relationship(back_populates="student")
     course_results: Mapped[list["CourseResult"]] = orm_relationship(back_populates="student")
     report_cards: Mapped[list["ReportCard"]] = orm_relationship(back_populates="student")
+    school_class: Mapped["Class | None"] = orm_relationship(back_populates="students")
 
 
 class Parent(Base):
@@ -113,6 +140,9 @@ class Course(Base):
     # admin tags them from the UI. Enforced via Pydantic enum, not a DB
     # constraint (same Option C pattern as Student.school_level).
     language_group: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    class_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -123,6 +153,7 @@ class Course(Base):
     grade_items: Mapped[list["GradeItem"]] = orm_relationship(back_populates="course")
     course_results: Mapped[list["CourseResult"]] = orm_relationship(back_populates="course")
     report_card_courses: Mapped[list["ReportCardCourse"]] = orm_relationship(back_populates="course")
+    school_class: Mapped["Class | None"] = orm_relationship(back_populates="courses")
 
 
 class Enrollment(Base):

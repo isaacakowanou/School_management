@@ -11,11 +11,13 @@ import { listStudents } from '../api/students.js'
 import { getTeacher, listTeachers } from '../api/teachers.js'
 import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
+import { listClasses } from '../api/classes.js'
 import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
 import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
+import ClassSelect from '../components/ClassSelect.jsx'
 
 const EMPTY_GRADE_ITEM_FORM = {
   title: '',
@@ -33,6 +35,7 @@ const EMPTY_COURSE_EDIT_FORM = {
   term: '',
   schoolYear: '',
   languageGroup: '',
+  classId: '',
 }
 
 const GRADE_ITEM_SUGGESTIONS = [
@@ -71,6 +74,7 @@ function courseToForm(course) {
     term: course?.term || '',
     schoolYear: course?.school_year || '',
     languageGroup: course?.language_group || '',
+    classId: course?.class_id || '',
   }
 }
 
@@ -124,6 +128,22 @@ export default function AdminCourseDetailPage() {
       /* non-fatal: keep the current course detail view visible */
     }
   }, [courseId])
+
+  const [classes, setClasses] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    listClasses()
+      .then((data) => {
+        if (!cancelled) setClasses(data)
+      })
+      .catch(() => {
+        /* non-fatal: the class dropdown just stays empty */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -577,6 +597,16 @@ export default function AdminCourseDetailPage() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="field">
+            <span>Class / Classe (optional)</span>
+            <ClassSelect
+              classes={classes}
+              value={editForm.classId}
+              onChange={(value) => updateEditField('classId', value)}
+              disabled={savingEdit}
+            />
           </label>
 
           <datalist id="course-edit-grade-level-options">

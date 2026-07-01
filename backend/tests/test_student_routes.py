@@ -209,6 +209,7 @@ class StudentRouteTests(unittest.TestCase):
                 "grade_level": "12",
                 "school_level": None,
                 "student_number": "AUDIT-STU-001",
+                "class_id": None,
             },
         )
 

@@ -10,7 +10,7 @@ from auth import get_current_user, require_admin
 from database import get_db
 from models import Course, Teacher, User
 from schemas import CourseCreate, CourseResponse, CourseUpdate, StatusResponse
-from utils import get_current_teacher, to_course_response
+from utils import get_class_or_404, get_current_teacher, to_course_response
 
 
 router = APIRouter(tags=["courses"])
@@ -91,6 +91,8 @@ def create_course(
 
     get_teacher_or_404(db, payload.teacher_id)
     ensure_unique_course_code(db, code)
+    if payload.class_id is not None:
+        get_class_or_404(db, payload.class_id)
 
     course = Course(
         name=name,
@@ -100,6 +102,7 @@ def create_course(
         term=term,
         school_year=school_year,
         language_group=language_group,
+        class_id=payload.class_id,
     )
     db.add(course)
     db.flush()
@@ -118,6 +121,7 @@ def create_course(
             "term": course.term,
             "school_year": course.school_year,
             "language_group": course.language_group,
+            "class_id": course.class_id,
         },
     )
     db.commit()
@@ -156,6 +160,7 @@ def update_course(
         "term": course.term,
         "school_year": course.school_year,
         "language_group": course.language_group,
+        "class_id": course.class_id,
     }
 
     if payload.code is not None:
@@ -181,6 +186,10 @@ def update_course(
         course.language_group = (
             payload.language_group.value if payload.language_group is not None else None
         )
+    if "class_id" in payload.model_fields_set:
+        if payload.class_id is not None:
+            get_class_or_404(db, payload.class_id)
+        course.class_id = payload.class_id
 
     new_value = {
         "name": course.name,
@@ -190,6 +199,7 @@ def update_course(
         "term": course.term,
         "school_year": course.school_year,
         "language_group": course.language_group,
+        "class_id": course.class_id,
     }
     if new_value != old_value:
         create_audit_log(

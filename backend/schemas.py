@@ -57,12 +57,43 @@ class StatusResponse(BaseModel):
     message: str
 
 
+class ClassCreate(BaseModel):
+    name_fr: str
+    name_en: str | None = None
+    school_level: SchoolLevel
+    stream: str | None = None
+    sort_order: int
+    school_year: str
+
+
+class ClassUpdate(BaseModel):
+    name_fr: str | None = None
+    name_en: str | None = None
+    school_level: SchoolLevel | None = None
+    stream: str | None = None
+    sort_order: int | None = None
+    school_year: str | None = None
+
+
+class ClassResponse(BaseModel):
+    id: UUID
+    name_fr: str
+    name_en: str | None = None
+    school_level: SchoolLevel
+    stream: str | None = None
+    sort_order: int
+    school_year: str
+    student_count: int = 0
+    course_count: int = 0
+
+
 class StudentCreate(BaseModel):
     first_name: str
     last_name: str
     grade_level: str
     school_level: SchoolLevel | None = None
     student_number: str
+    class_id: UUID | None = None
 
 
 class StudentUpdate(BaseModel):
@@ -71,6 +102,7 @@ class StudentUpdate(BaseModel):
     grade_level: str | None = None
     school_level: SchoolLevel | None = None
     student_number: str | None = None
+    class_id: UUID | None = None
 
 
 class StudentResponse(BaseModel):
@@ -80,6 +112,7 @@ class StudentResponse(BaseModel):
     grade_level: str
     school_level: SchoolLevel | None = None
     student_number: str
+    class_id: UUID | None = None
 
 
 class StudentParentLinkCreate(BaseModel):
@@ -147,6 +180,7 @@ class CourseResponse(BaseModel):
     term: str
     school_year: str
     language_group: LanguageGroup | None = None
+    class_id: UUID | None = None
 
 
 class CourseCreate(BaseModel):
@@ -157,6 +191,7 @@ class CourseCreate(BaseModel):
     term: str
     school_year: str
     language_group: LanguageGroup | None = None
+    class_id: UUID | None = None
 
 
 class CourseUpdate(BaseModel):
@@ -167,6 +202,7 @@ class CourseUpdate(BaseModel):
     term: str | None = None
     school_year: str | None = None
     language_group: LanguageGroup | None = None
+    class_id: UUID | None = None
 
 
 class EnrollmentCreate(BaseModel):

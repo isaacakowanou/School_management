@@ -12,3 +12,4 @@ backend/storage/.DS_Store
 backend/storage/pdfs/
 backend.log
 frontend.log
+.DS_Store

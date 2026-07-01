@@ -8,6 +8,7 @@ import {
   updateStudent,
 } from '../api/students.js'
 import { listParents } from '../api/parents.js'
+import { listClasses } from '../api/classes.js'
 import { getCourse } from '../api/courses.js'
 import { listStudentCourseResults } from '../api/courseResults.js'
 import { generateReport, getStudentReports } from '../api/reports.js'
@@ -17,6 +18,7 @@ import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import ClassSelect from '../components/ClassSelect.jsx'
 
 function studentToForm(student) {
   return {
@@ -25,6 +27,7 @@ function studentToForm(student) {
     studentNumber: student?.student_number || '',
     gradeLevel: student?.grade_level || '',
     schoolLevel: student?.school_level || '',
+    classId: student?.class_id || '',
   }
 }
 
@@ -56,6 +59,21 @@ export default function AdminStudentDetailPage() {
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState(null)
   const [editMessage, setEditMessage] = useState(null)
+  const [classes, setClasses] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    listClasses()
+      .then((data) => {
+        if (!cancelled) setClasses(data)
+      })
+      .catch(() => {
+        /* non-fatal: the class dropdown just stays empty */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -376,6 +394,16 @@ export default function AdminStudentDetailPage() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="field">
+            <span>Class / Classe (optional)</span>
+            <ClassSelect
+              classes={classes}
+              value={editForm.classId}
+              onChange={(value) => updateEditField('classId', value)}
+              disabled={savingEdit}
+            />
           </label>
 
           <div className="grade-actions">

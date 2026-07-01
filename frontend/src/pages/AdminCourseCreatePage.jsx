@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createCourse } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
+import { listClasses } from '../api/classes.js'
 import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
+import ClassSelect from '../components/ClassSelect.jsx'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -15,6 +17,7 @@ const EMPTY_FORM = {
   term: '',
   schoolYear: '',
   languageGroup: '',
+  classId: '',
 }
 
 const GRADE_LEVEL_SUGGESTIONS = [
@@ -36,6 +39,21 @@ export default function AdminCourseCreatePage() {
   const [teachers, setTeachers] = useState(null)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [classes, setClasses] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    listClasses()
+      .then((data) => {
+        if (!cancelled) setClasses(data)
+      })
+      .catch(() => {
+        /* non-fatal: the class dropdown just stays empty */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -201,6 +219,16 @@ export default function AdminCourseCreatePage() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="field">
+            <span>Class / Classe (optional)</span>
+            <ClassSelect
+              classes={classes}
+              value={form.classId}
+              onChange={(value) => updateField('classId', value)}
+              disabled={saving}
+            />
           </label>
 
           <datalist id="course-grade-level-options">

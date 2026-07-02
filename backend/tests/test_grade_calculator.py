@@ -65,7 +65,7 @@ class GradeCalculatorTests(unittest.TestCase):
         self.assertEqual(get_letter_grade(11.0), "C+")
         self.assertEqual(get_letter_grade(9.0), "C")
         self.assertEqual(get_letter_grade(7.0), "D")
-        self.assertEqual(get_letter_grade(5.0), "E")
+        self.assertEqual(get_letter_grade(4.0), "E")
         self.assertEqual(get_letter_grade(0.0), "F")
 
     def test_letter_grade_bisc_just_below_boundaries(self):
@@ -76,7 +76,8 @@ class GradeCalculatorTests(unittest.TestCase):
         self.assertEqual(get_letter_grade(10.9), "C")
         self.assertEqual(get_letter_grade(8.9), "D")
         self.assertEqual(get_letter_grade(6.9), "E")
-        self.assertEqual(get_letter_grade(4.9), "F")
+        self.assertEqual(get_letter_grade(4.9), "E")
+        self.assertEqual(get_letter_grade(3.9), "F")
 
     def test_letter_grade_bisc_fractional(self):
         self.assertEqual(get_letter_grade(16.5), "B+")

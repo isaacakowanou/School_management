@@ -85,7 +85,7 @@ def get_letter_grade(average):
         return "C"
     if average >= 7:
         return "D"
-    if average >= 5:
+    if average >= 4:
         return "E"
     return "F"
 

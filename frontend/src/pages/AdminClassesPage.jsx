@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { bulkCreateClasses, createClass, deleteClass, listClasses, updateClass } from '../api/classes.js'
+import {
+  bulkCreateClasses,
+  bulkEnrollClassStudents,
+  createClass,
+  deleteClass,
+  listClasses,
+  previewClassEnrollments,
+  updateClass,
+} from '../api/classes.js'
 import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
 import { GGFK_CLASS_NAMES, normalizeClassName } from '../constants/ggfkClasses.js'
 import Spinner from '../components/Spinner.jsx'
@@ -37,6 +45,11 @@ export default function AdminClassesPage() {
   const [bulkYear, setBulkYear] = useState('')
   const [bulkError, setBulkError] = useState(null)
   const [bulkCreating, setBulkCreating] = useState(false)
+
+  const [enrollDialog, setEnrollDialog] = useState(null) // { cls, preview }
+  const [enrollLoading, setEnrollLoading] = useState(false)
+  const [enrollError, setEnrollError] = useState(null)
+  const [enrolling, setEnrolling] = useState(false)
 
   async function refresh() {
     const data = await listClasses()
@@ -215,6 +228,48 @@ export default function AdminClassesPage() {
     }
   }
 
+  async function openEnrollDialog(cls) {
+    setEnrollDialog({ cls, preview: null })
+    setEnrollLoading(true)
+    setEnrollError(null)
+    try {
+      const preview = await previewClassEnrollments(cls.id)
+      setEnrollDialog({ cls, preview })
+    } catch (err) {
+      setEnrollError(err.message)
+    } finally {
+      setEnrollLoading(false)
+    }
+  }
+
+  async function handleEnroll() {
+    if (!enrollDialog) return
+    const { cls } = enrollDialog
+    setEnrollError(null)
+    setMessage(null)
+    setEnrolling(true)
+    try {
+      const result = await bulkEnrollClassStudents(cls.id)
+      setEnrollDialog(null)
+      if (result.status === 'empty') {
+        const missing = []
+        if (result.students_in_class === 0) missing.push('no students assigned to this class')
+        if (result.courses_in_class === 0) missing.push(`no courses tagged with this class for ${result.school_year}`)
+        setMessage(`Nothing to enroll for ${cls.name_fr}: ${missing.join(' and ')}.`)
+      } else {
+        setMessage(
+          `Enrolled ${cls.name_fr}: ${result.enrollments_created} new enrollment(s), ` +
+            `${result.enrollments_skipped} already existed.`,
+        )
+      }
+      await refresh()
+    } catch (err) {
+      setEnrollError(err.message)
+    } finally {
+      setEnrolling(false)
+    }
+  }
+
   async function handleDelete(cls) {
     if (!window.confirm(`Delete class "${cls.name_fr}"?`)) return
     setMessage(null)
@@ -344,6 +399,21 @@ export default function AdminClassesPage() {
                             <button
                               type="button"
                               className="btn btn-ghost"
+                              onClick={() => openEnrollDialog(cls)}
+                              disabled={pending || cls.student_count === 0 || cls.course_count === 0}
+                              title={
+                                cls.student_count === 0
+                                  ? 'No students assigned to this class'
+                                  : cls.course_count === 0
+                                    ? 'No courses assigned to this class'
+                                    : 'Enroll every student in this class into every course in this class'
+                              }
+                            >
+                              Enroll
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
                               onClick={() => openEdit(cls)}
                               disabled={pending}
                             >
@@ -436,6 +506,96 @@ export default function AdminClassesPage() {
               </div>
               {bulkError && <ErrorBanner message={bulkError} />}
             </form>
+          </div>
+        </div>
+      )}
+
+      {enrollDialog && (
+        <div
+          onClick={() => !enrolling && setEnrollDialog(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 520, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
+          >
+            <h3 className="section-title">Enroll {enrollDialog.cls.name_fr} students</h3>
+            <p className="muted">
+              Enrolls every student in this class into every course tagged with this class for{' '}
+              {enrollDialog.cls.school_year}. Existing enrollments are kept, not duplicated.
+            </p>
+
+            {enrollLoading && <Spinner label="Counting enrollments…" />}
+
+            {!enrollLoading && enrollDialog.preview && enrollDialog.preview.status === 'empty' && (
+              <ErrorBanner
+                message={
+                  enrollDialog.preview.students_in_class === 0 &&
+                  enrollDialog.preview.courses_in_class === 0
+                    ? 'This class has no students and no courses assigned to it — nothing to enroll.'
+                    : enrollDialog.preview.students_in_class === 0
+                      ? 'No students are assigned to this class. Assign students first.'
+                      : `No courses are tagged with this class for ${enrollDialog.preview.school_year}. Create or tag courses first.`
+                }
+              />
+            )}
+
+            {!enrollLoading && enrollDialog.preview && enrollDialog.preview.status === 'ok' && (
+              <p>
+                <strong>{enrollDialog.preview.students_in_class}</strong> student(s) ×{' '}
+                <strong>{enrollDialog.preview.courses_in_class}</strong> course(s) ={' '}
+                <strong>{enrollDialog.preview.enrollments_to_create}</strong> new enrollment(s)
+                {enrollDialog.preview.enrollments_already_existing > 0 && (
+                  <>
+                    ; {enrollDialog.preview.enrollments_already_existing} already exist and will be
+                    kept.
+                  </>
+                )}
+              </p>
+            )}
+
+            <div className="grade-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleEnroll}
+                disabled={
+                  enrolling ||
+                  enrollLoading ||
+                  !enrollDialog.preview ||
+                  enrollDialog.preview.status !== 'ok' ||
+                  enrollDialog.preview.enrollments_to_create === 0
+                }
+              >
+                {enrolling
+                  ? 'Enrolling…'
+                  : enrollDialog.preview?.enrollments_to_create
+                    ? `Create ${enrollDialog.preview.enrollments_to_create} enrollment(s)`
+                    : 'Create enrollments'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setEnrollDialog(null)}
+                disabled={enrolling}
+              >
+                {enrollDialog.preview?.status === 'ok' &&
+                enrollDialog.preview.enrollments_to_create > 0
+                  ? 'Cancel'
+                  : 'Close'}
+              </button>
+            </div>
+            {enrollError && <ErrorBanner message={enrollError} />}
           </div>
         </div>
       )}

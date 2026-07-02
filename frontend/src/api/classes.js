@@ -50,3 +50,18 @@ export function deleteClass(classId) {
 export function bulkCreateClasses({ schoolYear }) {
   return apiPost('/classes/bulk-create', { school_year: schoolYear.trim() })
 }
+
+// GET /api/v1/classes/{class_id}/enrollment-preview (admin). Returns the
+// counts the bulk-enroll action would produce (students × courses, split into
+// to-create vs already-existing). status: "ok" when both sides have >=1 row,
+// "empty" when either is 0.
+export function previewClassEnrollments(classId) {
+  return apiGet(`/classes/${classId}/enrollment-preview`)
+}
+
+// POST /api/v1/classes/{class_id}/bulk-enroll (admin). Enrolls every student
+// in the class into every course tagged with the class AND the class's
+// school_year. Idempotent — existing (student, course) pairs are skipped.
+export function bulkEnrollClassStudents(classId) {
+  return apiPost(`/classes/${classId}/bulk-enroll`, null)
+}

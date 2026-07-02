@@ -9,11 +9,13 @@ from audit import create_audit_log
 from auth import require_admin
 from constants import GGFK_CLASSES, normalize_class_name
 from database import get_db
-from models import Class, Course, Student, User
+from models import Class, Course, Enrollment, Student, User
 from schemas import (
     ClassBulkCreateRequest,
     ClassBulkCreateResponse,
+    ClassBulkEnrollResponse,
     ClassCreate,
+    ClassEnrollmentPreviewResponse,
     ClassResponse,
     ClassUpdate,
     SchoolLevel,
@@ -214,6 +216,140 @@ def bulk_create_classes(
         db.commit()
 
     return ClassBulkCreateResponse(status="ok", created=created, skipped=skipped)
+
+
+def _compute_class_enrollment_plan(db: Session, school_class: Class) -> dict:
+    """Shared work for the preview and the write action.
+
+    Both must scope courses to class.school_year (guards against a course
+    accidentally tagged with the right class but created for the wrong year);
+    both need the same counts. Returns the raw student / course id lists plus
+    a set of existing (student_id, course_id) enrollment pairs so the write
+    path can insert only the missing ones.
+    """
+    student_ids = list(
+        db.scalars(select(Student.id).where(Student.class_id == school_class.id)).all()
+    )
+    course_ids = list(
+        db.scalars(
+            select(Course.id).where(
+                Course.class_id == school_class.id,
+                Course.school_year == school_class.school_year,
+            )
+        ).all()
+    )
+    existing_pairs: set[tuple[UUID, UUID]] = set()
+    if student_ids and course_ids:
+        existing_pairs = {
+            (student_id, course_id)
+            for student_id, course_id in db.execute(
+                select(Enrollment.student_id, Enrollment.course_id).where(
+                    Enrollment.student_id.in_(student_ids),
+                    Enrollment.course_id.in_(course_ids),
+                )
+            ).all()
+        }
+    return {
+        "student_ids": student_ids,
+        "course_ids": course_ids,
+        "existing_pairs": existing_pairs,
+    }
+
+
+@router.get("/{class_id}/enrollment-preview", response_model=ClassEnrollmentPreviewResponse)
+def preview_class_enrollments(
+    class_id: UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ClassEnrollmentPreviewResponse:
+    """Counts the bulk-enroll action would produce (no writes, no audit)."""
+    school_class = get_class_or_404(db, class_id)
+    plan = _compute_class_enrollment_plan(db, school_class)
+    students = len(plan["student_ids"])
+    courses = len(plan["course_ids"])
+    total_pairs = students * courses
+    already = len(plan["existing_pairs"])
+
+    return ClassEnrollmentPreviewResponse(
+        status="ok" if students and courses else "empty",
+        class_id=school_class.id,
+        school_year=school_class.school_year,
+        students_in_class=students,
+        courses_in_class=courses,
+        enrollments_to_create=total_pairs - already,
+        enrollments_already_existing=already,
+    )
+
+
+@router.post("/{class_id}/bulk-enroll", response_model=ClassBulkEnrollResponse)
+def bulk_enroll_class_students(
+    class_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ClassBulkEnrollResponse:
+    """Enroll every student in the class into every course in the class (A1.11).
+
+    Scope: students with student.class_id == class_id, courses with
+    course.class_id == class_id AND course.school_year == class.school_year.
+    Idempotent — existing (student_id, course_id) pairs are skipped, no
+    duplicate rows, no 409. Empty class (0 students or 0 courses) returns 200
+    with status="empty" and the two counts so callers can be specific.
+    """
+    school_class = get_class_or_404(db, class_id)
+    plan = _compute_class_enrollment_plan(db, school_class)
+    students = len(plan["student_ids"])
+    courses = len(plan["course_ids"])
+
+    if not students or not courses:
+        return ClassBulkEnrollResponse(
+            status="empty",
+            class_id=school_class.id,
+            school_year=school_class.school_year,
+            students_in_class=students,
+            courses_in_class=courses,
+            enrollments_created=0,
+            enrollments_skipped=0,
+        )
+
+    existing = plan["existing_pairs"]
+    to_create = [
+        Enrollment(student_id=student_id, course_id=course_id)
+        for student_id in plan["student_ids"]
+        for course_id in plan["course_ids"]
+        if (student_id, course_id) not in existing
+    ]
+    skipped = students * courses - len(to_create)
+
+    if to_create:
+        db.add_all(to_create)
+        db.flush()
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="class_students_bulk_enrolled",
+            entity_type="class_bulk_enroll",
+            entity_id=uuid4(),
+            old_value=None,
+            new_value={
+                "class_id": school_class.id,
+                "school_year": school_class.school_year,
+                "students_in_class": students,
+                "courses_in_class": courses,
+                "enrollments_created": len(to_create),
+                "enrollments_skipped": skipped,
+            },
+        )
+        db.commit()
+
+    return ClassBulkEnrollResponse(
+        status="ok",
+        class_id=school_class.id,
+        school_year=school_class.school_year,
+        students_in_class=students,
+        courses_in_class=courses,
+        enrollments_created=len(to_create),
+        enrollments_skipped=skipped,
+    )
 
 
 @router.get("/{class_id}", response_model=ClassResponse)

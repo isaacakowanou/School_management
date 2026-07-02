@@ -115,6 +115,29 @@ class ClassBulkCreateResponse(BaseModel):
     skipped: list[str]
 
 
+class ClassEnrollmentPreviewResponse(BaseModel):
+    # "ok" when both sides have >=1 row; "empty" when either is 0 (no writes
+    # would happen). Callers show a specific message using the two counts.
+    status: str
+    class_id: UUID
+    school_year: str
+    students_in_class: int
+    # Distinct courses tagged with this class AND matching class.school_year.
+    courses_in_class: int
+    enrollments_to_create: int
+    enrollments_already_existing: int
+
+
+class ClassBulkEnrollResponse(BaseModel):
+    status: str
+    class_id: UUID
+    school_year: str
+    students_in_class: int
+    courses_in_class: int
+    enrollments_created: int
+    enrollments_skipped: int
+
+
 class SubjectCreate(BaseModel):
     name_fr: str
     name_en: str

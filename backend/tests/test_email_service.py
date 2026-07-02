@@ -55,7 +55,7 @@ class EmailServiceTests(unittest.TestCase):
         self.parent = Parent(user=self.parent_user, phone="555-0100")
         self.report_card = ReportCard(
             student=self.student,
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
             overall_average=91.7,
             gpa=4.0,

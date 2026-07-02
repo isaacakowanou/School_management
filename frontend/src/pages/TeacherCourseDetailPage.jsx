@@ -13,6 +13,7 @@ import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import GradeEntryTable from '../components/GradeEntryTable.jsx'
+import TermSelect from '../components/TermSelect.jsx'
 
 const EMPTY_GRADE_ITEM_FORM = {
   title: '',
@@ -32,7 +33,6 @@ const GRADE_ITEM_SUGGESTIONS = [
   'Project',
   'Participation',
 ]
-const TERM_SUGGESTIONS = ['Fall', 'Spring', 'Summer', 'Trimester 1', 'Trimester 2', 'Trimester 3']
 const WEIGHT_TOLERANCE = 0.005
 
 function formatWeight(value) {
@@ -366,11 +366,6 @@ export default function TeacherCourseDetailPage() {
               <option key={value} value={value} />
             ))}
           </datalist>
-          <datalist id="teacher-grade-item-term-options">
-            {TERM_SUGGESTIONS.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
 
           {showGradeItemForm && (
             <form className="card admin-form" onSubmit={handleAddGradeItem}>
@@ -426,12 +421,10 @@ export default function TeacherCourseDetailPage() {
 
               <label className="field">
                 <span>Term</span>
-                <input
+                <TermSelect
                   value={gradeItemForm.term}
-                  onChange={(event) => updateGradeItemField('term', event.target.value)}
+                  onChange={(value) => updateGradeItemField('term', value)}
                   disabled={addingGradeItem}
-                  list="teacher-grade-item-term-options"
-                  required
                 />
               </label>
 
@@ -562,12 +555,10 @@ export default function TeacherCourseDetailPage() {
 
                               <label className="field">
                                 <span>Term</span>
-                                <input
+                                <TermSelect
                                   value={editGradeItemForm.term}
-                                  onChange={(event) => updateEditGradeItemField('term', event.target.value)}
+                                  onChange={(value) => updateEditGradeItemField('term', value)}
                                   disabled={savingGradeItemEdit}
-                                  list="teacher-grade-item-term-options"
-                                  required
                                 />
                               </label>
 

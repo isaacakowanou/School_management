@@ -100,7 +100,7 @@ class ClassRouteTests(unittest.TestCase):
     def _create_course(self, code, class_id=None):
         body = {
             "name": "Course", "code": code, "teacher_id": str(self.teacher.id),
-            "grade_level": "6", "term": "Fall", "school_year": "2026-2027",
+            "grade_level": "6", "term": "1er Trimestre", "school_year": "2026-2027",
         }
         if class_id is not None:
             body["class_id"] = class_id

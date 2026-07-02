@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
+import { isCanonicalTerm } from '../constants/terms.js'
 
 // GET /api/v1/courses
 // For teachers the backend returns ONLY the courses assigned to them.
@@ -51,11 +52,13 @@ export function updateCourse(courseId, { name, code, teacherId, gradeLevel, term
     code: code.trim(),
     teacher_id: teacherId,
     grade_level: gradeLevel.trim(),
-    term: term.trim(),
     school_year: schoolYear.trim(),
     class_id: classId || null,
     subject_id: subjectId || null,
   }
+  // A non-canonical (legacy) term is omitted rather than sent: the backend
+  // only accepts the three trimesters, and omitting leaves it unchanged.
+  if (isCanonicalTerm(term.trim())) body.term = term.trim()
   if (!subjectId) {
     body.name = name.trim()
     body.language_group = languageGroup || null

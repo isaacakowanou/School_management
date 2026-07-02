@@ -78,7 +78,7 @@ class CourseRouteTests(unittest.TestCase):
             code="EXIST-101",
             teacher=self.teacher,
             grade_level="12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add(self.existing_course)
@@ -98,7 +98,7 @@ class CourseRouteTests(unittest.TestCase):
             "code": code,
             "teacher_id": str(self.teacher.id),
             "grade_level": "12",
-            "term": "Fall",
+            "term": "1er Trimestre",
             "school_year": "2026-2027",
         }
 
@@ -115,7 +115,7 @@ class CourseRouteTests(unittest.TestCase):
         self.assertEqual(data["code"], "NEW-101")
         self.assertEqual(data["teacher_id"], str(self.teacher.id))
         self.assertEqual(data["grade_level"], "12")
-        self.assertEqual(data["term"], "Fall")
+        self.assertEqual(data["term"], "1er Trimestre")
         self.assertEqual(data["school_year"], "2026-2027")
 
         course = self.db.scalar(select(Course).where(Course.code == "NEW-101"))
@@ -159,7 +159,7 @@ class CourseRouteTests(unittest.TestCase):
                 "code": "  TRIM-101  ",
                 "teacher_id": str(self.teacher.id),
                 "grade_level": "  11  ",
-                "term": "  Spring  ",
+                "term": "2ème Trimestre",
                 "school_year": "  2027-2028  ",
             },
             headers=self._headers(self.admin_user.email),
@@ -170,7 +170,7 @@ class CourseRouteTests(unittest.TestCase):
         self.assertEqual(data["name"], "Trimmed Course")
         self.assertEqual(data["code"], "TRIM-101")
         self.assertEqual(data["grade_level"], "11")
-        self.assertEqual(data["term"], "Spring")
+        self.assertEqual(data["term"], "2ème Trimestre")
         self.assertEqual(data["school_year"], "2027-2028")
 
     def test_non_admin_cannot_create_course(self):
@@ -245,7 +245,7 @@ class CourseRouteTests(unittest.TestCase):
                 "code": "AUDIT-101",
                 "teacher_id": str(self.teacher.id),
                 "grade_level": "12",
-                "term": "Fall",
+                "term": "1er Trimestre",
                 "school_year": "2026-2027",
                 "language_group": None,
                 "class_id": None,
@@ -261,7 +261,7 @@ class CourseRouteTests(unittest.TestCase):
                 "code": "  EDIT-101  ",
                 "teacher_id": str(self.teacher.id),
                 "grade_level": "  11  ",
-                "term": "  Spring  ",
+                "term": "2ème Trimestre",
                 "school_year": "  2027-2028  ",
             },
             headers=self._headers(self.admin_user.email),
@@ -273,7 +273,7 @@ class CourseRouteTests(unittest.TestCase):
         self.assertEqual(data["code"], "EDIT-101")
         self.assertEqual(data["teacher_id"], str(self.teacher.id))
         self.assertEqual(data["grade_level"], "11")
-        self.assertEqual(data["term"], "Spring")
+        self.assertEqual(data["term"], "2ème Trimestre")
         self.assertEqual(data["school_year"], "2027-2028")
 
     def test_update_course_sets_language_group(self):
@@ -317,7 +317,7 @@ class CourseRouteTests(unittest.TestCase):
 
         response = self.client.put(
             f"/api/v1/courses/{self.existing_course.id}",
-            json={"term": "Spring"},
+            json={"term": "2ème Trimestre"},
             headers=self._headers(self.admin_user.email),
         )
 
@@ -345,7 +345,7 @@ class CourseRouteTests(unittest.TestCase):
             code="OTHER-101",
             teacher=self.teacher,
             grade_level="12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add(other_course)

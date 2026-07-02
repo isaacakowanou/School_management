@@ -82,15 +82,15 @@ class ReportPdfTests(unittest.TestCase):
         # Untagged course (no language_group) -> renders in the "Other" section.
         self.course = Course(
             name="Mathematics", code="MATH-12", teacher=self.teacher,
-            grade_level="Grade 12", term="Fall", school_year="2026-2027",
+            grade_level="Grade 12", term="1er Trimestre", school_year="2026-2027",
         )
         self.db.add(self.course)
         self.db.commit()
 
         # Sent report (parent-visible), no class, untagged course, bogus pdf_url on
         # purpose to prove the download renders live and needs no file on disk.
-        self.sent_report = self._add_report(term="Fall", status="sent", pdf_url="/nope.pdf")
-        self.draft_report = self._add_report(term="Spring", status="draft")
+        self.sent_report = self._add_report(term="1er Trimestre", status="sent", pdf_url="/nope.pdf")
+        self.draft_report = self._add_report(term="2ème Trimestre", status="draft")
 
     def _add_report(self, *, term, status, gpa=3.0, fr=None, en=None, bil=None, overall=15.0, pdf_url=None):
         report = ReportCard(
@@ -127,7 +127,7 @@ class ReportPdfTests(unittest.TestCase):
     def test_admin_downloads_pdf(self):
         response = self._download(self.sent_report, self.admin_user.email)
         self._assert_pdf(response)
-        self.assertIn("STU001_Fall_2026-2027.pdf", response.headers.get("content-disposition", ""))
+        self.assertIn("STU001_1er-Trimestre_2026-2027.pdf", response.headers.get("content-disposition", ""))
 
     def test_linked_parent_downloads_sent_report(self):
         self._assert_pdf(self._download(self.sent_report, self.parent_user.email))
@@ -171,7 +171,7 @@ class ReportPdfTests(unittest.TestCase):
         self._assert_pdf(response)
 
     def test_gpa_none_renders(self):
-        report = self._add_report(term="Fall", status="sent", gpa=None)
+        report = self._add_report(term="1er Trimestre", status="sent", gpa=None)
         self._assert_pdf(self._download(report, self.admin_user.email))
 
     # --- data layer: trimester / annual ---

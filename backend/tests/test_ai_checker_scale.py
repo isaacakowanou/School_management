@@ -34,7 +34,7 @@ class AiCheckerScaleTests(unittest.TestCase):
             code="MATH-CHK",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add_all([self.student, self.course])
@@ -48,7 +48,7 @@ class AiCheckerScaleTests(unittest.TestCase):
     def _report_with_average(self, average: float, scale: str) -> ReportCard:
         report_card = ReportCard(
             student=self.student,
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
             overall_average=average,
             gpa=3.0,

@@ -86,7 +86,7 @@ class ReportListRouteTests(unittest.TestCase):
             code="MATH-LIST",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add(self.course)
@@ -94,7 +94,7 @@ class ReportListRouteTests(unittest.TestCase):
         self.course_result = CourseResult(
             student=self.student,
             course=self.course,
-            term="Fall",
+            term="1er Trimestre",
             average=92.5,
             letter_grade="A",
             calculated_at=self.base_time,
@@ -104,7 +104,7 @@ class ReportListRouteTests(unittest.TestCase):
 
         self.report_card = ReportCard(
             student=self.student,
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
             overall_average=92.5,
             gpa=4.0,
@@ -147,7 +147,7 @@ class ReportListRouteTests(unittest.TestCase):
             code=f"COURSE-{suffix}",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add_all([student, course])
@@ -157,7 +157,7 @@ class ReportListRouteTests(unittest.TestCase):
             CourseResult(
                 student=student,
                 course=course,
-                term="Fall",
+                term="1er Trimestre",
                 average=88.0,
                 letter_grade="B",
                 calculated_at=calculated_at,
@@ -165,7 +165,7 @@ class ReportListRouteTests(unittest.TestCase):
         )
         report_values = {
             "student": student,
-            "term": "Fall",
+            "term": "1er Trimestre",
             "school_year": "2026-2027",
             "overall_average": 88.0,
             "gpa": 3.0,
@@ -203,7 +203,7 @@ class ReportListRouteTests(unittest.TestCase):
             code="COURSE-FIRST-REPORT",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Spring",
+            term="2ème Trimestre",
             school_year="2026-2027",
         )
         self.db.add_all([student, course])
@@ -213,7 +213,7 @@ class ReportListRouteTests(unittest.TestCase):
             CourseResult(
                 student=student,
                 course=course,
-                term="Spring",
+                term="2ème Trimestre",
                 average=91.0,
                 letter_grade="A",
                 calculated_at=self.base_time,
@@ -234,26 +234,26 @@ class ReportListRouteTests(unittest.TestCase):
         )
         french_a = Course(
             name="Francais A", code="FR-BIL-A", teacher=self.teacher,
-            grade_level="Grade 12", term="Spring", school_year="2026-2027",
+            grade_level="Grade 12", term="2ème Trimestre", school_year="2026-2027",
             language_group="FRENCH",
         )
         french_b = Course(
             name="Francais B", code="FR-BIL-B", teacher=self.teacher,
-            grade_level="Grade 12", term="Spring", school_year="2026-2027",
+            grade_level="Grade 12", term="2ème Trimestre", school_year="2026-2027",
             language_group="FRENCH",
         )
         english = Course(
             name="English", code="EN-BIL", teacher=self.teacher,
-            grade_level="Grade 12", term="Spring", school_year="2026-2027",
+            grade_level="Grade 12", term="2ème Trimestre", school_year="2026-2027",
             language_group="ENGLISH",
         )
         self.db.add_all([student, french_a, french_b, english])
         self.db.flush()
         self.db.add_all(
             [
-                CourseResult(student=student, course=french_a, term="Spring", average=12.0, letter_grade="C", scale="20", calculated_at=self.base_time),
-                CourseResult(student=student, course=french_b, term="Spring", average=16.0, letter_grade="B", scale="20", calculated_at=self.base_time),
-                CourseResult(student=student, course=english, term="Spring", average=18.0, letter_grade="A", scale="20", calculated_at=self.base_time),
+                CourseResult(student=student, course=french_a, term="2ème Trimestre", average=12.0, letter_grade="C", scale="20", calculated_at=self.base_time),
+                CourseResult(student=student, course=french_b, term="2ème Trimestre", average=16.0, letter_grade="B", scale="20", calculated_at=self.base_time),
+                CourseResult(student=student, course=english, term="2ème Trimestre", average=18.0, letter_grade="A", scale="20", calculated_at=self.base_time),
             ]
         )
         self.db.commit()
@@ -298,7 +298,7 @@ class ReportListRouteTests(unittest.TestCase):
         self.assertEqual(report["student_id"], str(self.student.id))
         self.assertEqual(report["student_name"], "Ada Lovelace")
         self.assertEqual(report["student_number"], "LIST001")
-        self.assertEqual(report["term"], "Fall")
+        self.assertEqual(report["term"], "1er Trimestre")
         self.assertEqual(report["school_year"], "2026-2027")
         self.assertEqual(report["status"], "approved")
         self.assertEqual(report["overall_average"], 92.5)
@@ -319,7 +319,7 @@ class ReportListRouteTests(unittest.TestCase):
         self.assertEqual(report["student_id"], str(self.student.id))
         self.assertEqual(report["student_name"], "Ada Lovelace")
         self.assertEqual(report["student_number"], "LIST001")
-        self.assertEqual(report["term"], "Fall")
+        self.assertEqual(report["term"], "1er Trimestre")
         self.assertEqual(report["school_year"], "2026-2027")
         self.assertEqual(report["status"], "approved")
         self.assertIn("courses", report)
@@ -563,7 +563,7 @@ class ReportListRouteTests(unittest.TestCase):
         student = self._create_student_with_course_result_no_report()
         generate_response = self.client.post(
             f"/api/v1/reports/generate/{student.id}",
-            json={"term": "Spring", "school_year": "2026-2027"},
+            json={"term": "2ème Trimestre", "school_year": "2026-2027"},
             headers=self._headers(self.admin_user.email),
         )
         self.assertEqual(generate_response.status_code, 201)
@@ -893,14 +893,14 @@ class ReportListRouteTests(unittest.TestCase):
 
         generate_response = self.client.post(
             f"/api/v1/reports/generate/{student.id}",
-            json={"term": "Spring", "school_year": "2026-2027"},
+            json={"term": "2ème Trimestre", "school_year": "2026-2027"},
             headers=self._headers(self.admin_user.email),
         )
 
         self.assertEqual(generate_response.status_code, 201)
         report = generate_response.json()
         self.assertEqual(report["student_id"], str(student.id))
-        self.assertEqual(report["term"], "Spring")
+        self.assertEqual(report["term"], "2ème Trimestre")
         self.assertEqual(report["school_year"], "2026-2027")
         self.assertEqual(report["overall_average"], 91.0)
         self.assertEqual(report["status"], "draft")
@@ -944,7 +944,7 @@ class ReportListRouteTests(unittest.TestCase):
 
         response = self.client.post(
             f"/api/v1/reports/generate/{student.id}",
-            json={"term": "Spring", "school_year": "2026-2027"},
+            json={"term": "2ème Trimestre", "school_year": "2026-2027"},
             headers=self._headers(self.admin_user.email),
         )
 
@@ -960,7 +960,7 @@ class ReportListRouteTests(unittest.TestCase):
         student = self._create_student_with_tagged_course_results()
         generate_response = self.client.post(
             f"/api/v1/reports/generate/{student.id}",
-            json={"term": "Spring", "school_year": "2026-2027"},
+            json={"term": "2ème Trimestre", "school_year": "2026-2027"},
             headers=self._headers(self.admin_user.email),
         )
         self.assertEqual(generate_response.status_code, 201)
@@ -995,7 +995,7 @@ class ReportListRouteTests(unittest.TestCase):
         student = self._create_student_with_tagged_course_results()
         generate_response = self.client.post(
             f"/api/v1/reports/generate/{student.id}",
-            json={"term": "Spring", "school_year": "2026-2027"},
+            json={"term": "2ème Trimestre", "school_year": "2026-2027"},
             headers=self._headers(self.admin_user.email),
         )
         self.assertEqual(generate_response.status_code, 201)

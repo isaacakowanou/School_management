@@ -113,7 +113,7 @@ def create_grade_item(
 ) -> GradeItemResponse:
     title = clean_required_text(payload.title, "title")
     category = clean_required_text(payload.category, "category")
-    term = clean_required_text(payload.term, "term")
+    term = payload.term.value
     validate_grade_item_values(max_score=payload.max_score, weight=payload.weight)
     course = get_course_or_404(db, payload.course_id)
     if not can_manage_course_grade_items(db, current_user, course):
@@ -176,7 +176,7 @@ def update_grade_item(
     if payload.weight is not None:
         grade_item.weight = payload.weight
     if payload.term is not None:
-        grade_item.term = clean_required_text(payload.term, "term")
+        grade_item.term = payload.term.value
     if "due_date" in updated_fields:
         grade_item.due_date = payload.due_date
 

@@ -41,7 +41,7 @@ class ReportBuilderTests(unittest.TestCase):
             code="MATH-12",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.cs = Course(
@@ -49,7 +49,7 @@ class ReportBuilderTests(unittest.TestCase):
             code="CS-12",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.old_course = Course(
@@ -57,7 +57,7 @@ class ReportBuilderTests(unittest.TestCase):
             code="MATH-OLD",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2025-2026",
         )
         self.db.add_all([self.student, self.math, self.cs, self.old_course])
@@ -68,7 +68,7 @@ class ReportBuilderTests(unittest.TestCase):
                 CourseResult(
                     student=self.student,
                     course=self.math,
-                    term="Fall 2026",
+                    term="1er Trimestre",
                     average=91.7,
                     letter_grade="A",
                     scale="100",
@@ -76,7 +76,7 @@ class ReportBuilderTests(unittest.TestCase):
                 CourseResult(
                     student=self.student,
                     course=self.cs,
-                    term="Fall 2026",
+                    term="1er Trimestre",
                     average=96.5,
                     letter_grade="A",
                     scale="100",
@@ -84,7 +84,7 @@ class ReportBuilderTests(unittest.TestCase):
                 CourseResult(
                     student=self.student,
                     course=self.old_course,
-                    term="Fall 2026",
+                    term="1er Trimestre",
                     average=70,
                     letter_grade="C",
                     scale="100",
@@ -102,7 +102,7 @@ class ReportBuilderTests(unittest.TestCase):
         report_data = build_report_card_data(
             self.db,
             self.student.id,
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
 
@@ -111,7 +111,7 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertEqual(report_data["student"]["last_name"], "Akowanou")
         self.assertEqual(report_data["student"]["student_number"], "STU001")
         self.assertEqual(report_data["student"]["grade_level"], "Grade 12")
-        self.assertEqual(report_data["term"], "Fall 2026")
+        self.assertEqual(report_data["term"], "1er Trimestre")
         self.assertEqual(report_data["school_year"], "2026-2027")
 
         courses_by_code = {course["course_code"]: course for course in report_data["courses"]}
@@ -125,7 +125,7 @@ class ReportBuilderTests(unittest.TestCase):
         report_data = build_report_card_data(
             self.db,
             self.student.id,
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
 
@@ -146,7 +146,7 @@ class ReportBuilderTests(unittest.TestCase):
             code="HIST-100",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add_all([legacy_student, history])
@@ -155,7 +155,7 @@ class ReportBuilderTests(unittest.TestCase):
             CourseResult(
                 student=legacy_student,
                 course=history,
-                term="Fall 2026",
+                term="1er Trimestre",
                 average=90.0,
                 letter_grade="A",
                 scale="100",
@@ -166,7 +166,7 @@ class ReportBuilderTests(unittest.TestCase):
         report_data = build_report_card_data(
             self.db,
             legacy_student.id,
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
 
@@ -180,7 +180,7 @@ class ReportBuilderTests(unittest.TestCase):
             code=code,
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
             language_group=language_group,
         )
@@ -190,7 +190,7 @@ class ReportBuilderTests(unittest.TestCase):
             CourseResult(
                 student=student,
                 course=course,
-                term="Fall 2026",
+                term="1er Trimestre",
                 average=average,
                 letter_grade="A",
                 scale="20",
@@ -203,7 +203,7 @@ class ReportBuilderTests(unittest.TestCase):
         report_data = build_report_card_data(
             self.db,
             self.student.id,
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
 
@@ -232,7 +232,7 @@ class ReportBuilderTests(unittest.TestCase):
         report_data = build_report_card_data(
             self.db,
             student.id,
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
 
@@ -259,7 +259,7 @@ class ReportBuilderTests(unittest.TestCase):
         report_data = build_report_card_data(
             self.db,
             student.id,
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
 
@@ -284,7 +284,7 @@ class ReportBuilderTests(unittest.TestCase):
         report_data = build_report_card_data(
             self.db,
             student.id,
-            term="Fall 2026",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
 
@@ -297,7 +297,7 @@ class ReportBuilderTests(unittest.TestCase):
             build_report_card_data(
                 self.db,
                 uuid.uuid4(),
-                term="Fall 2026",
+                term="1er Trimestre",
                 school_year="2026-2027",
             )
 
@@ -315,7 +315,7 @@ class ReportBuilderTests(unittest.TestCase):
             build_report_card_data(
                 self.db,
                 student_without_results.id,
-                term="Fall 2026",
+                term="1er Trimestre",
                 school_year="2026-2027",
             )
 
@@ -348,7 +348,7 @@ class ReportCardStalenessTests(unittest.TestCase):
             code="MATH-12",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.science = Course(
@@ -356,7 +356,7 @@ class ReportCardStalenessTests(unittest.TestCase):
             code="SCI-12",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add_all([self.student, self.math, self.science])
@@ -365,7 +365,7 @@ class ReportCardStalenessTests(unittest.TestCase):
         self.math_result = CourseResult(
             student=self.student,
             course=self.math,
-            term="Fall",
+            term="1er Trimestre",
             average=95.0,
             letter_grade="A",
             scale="100",
@@ -373,7 +373,7 @@ class ReportCardStalenessTests(unittest.TestCase):
         self.science_result = CourseResult(
             student=self.student,
             course=self.science,
-            term="Fall",
+            term="1er Trimestre",
             average=85.0,
             letter_grade="B",
             scale="100",
@@ -390,12 +390,12 @@ class ReportCardStalenessTests(unittest.TestCase):
         report_data = build_report_card_data(
             self.db,
             self.student.id,
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         report_card = ReportCard(
             student_id=self.student.id,
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
             overall_average=report_data["overall_average"],
             gpa=report_data["gpa"],
@@ -494,7 +494,7 @@ class BuildFromReportCardTests(unittest.TestCase):
             code="MATH-12",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add_all([self.student, self.math])
@@ -504,7 +504,7 @@ class BuildFromReportCardTests(unittest.TestCase):
         # prove reconstruction reads stored values rather than recomputing them.
         self.report_card = ReportCard(
             student=self.student,
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
             overall_average=88.88,
             gpa=3.5,
@@ -533,7 +533,7 @@ class BuildFromReportCardTests(unittest.TestCase):
     def test_uses_stored_report_card_values(self):
         data = build_report_card_data_from_report_card(self.db, self.report_card)
 
-        self.assertEqual(data["term"], "Fall")
+        self.assertEqual(data["term"], "1er Trimestre")
         self.assertEqual(data["school_year"], "2026-2027")
         self.assertEqual(data["overall_average"], 88.88)
         self.assertEqual(data["gpa"], 3.5)

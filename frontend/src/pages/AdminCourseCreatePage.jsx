@@ -8,6 +8,7 @@ import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
 import { derivedCourseName } from '../utils/subjectOptions.js'
 import ClassSelect from '../components/ClassSelect.jsx'
 import SubjectSelect from '../components/SubjectSelect.jsx'
+import TermSelect from '../components/TermSelect.jsx'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -34,7 +35,6 @@ const GRADE_LEVEL_SUGGESTIONS = [
   'Grade 12',
 ]
 
-const TERM_SUGGESTIONS = ['Fall', 'Spring', 'Summer', 'Trimester 1', 'Trimester 2', 'Trimester 3']
 const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
 
 export default function AdminCourseCreatePage() {
@@ -234,12 +234,10 @@ export default function AdminCourseCreatePage() {
 
           <label className="field">
             <span>Term</span>
-            <input
+            <TermSelect
               value={form.term}
-              onChange={(event) => updateField('term', event.target.value)}
+              onChange={(value) => updateField('term', value)}
               disabled={saving}
-              list="course-term-options"
-              required
             />
           </label>
 
@@ -284,11 +282,6 @@ export default function AdminCourseCreatePage() {
 
           <datalist id="course-grade-level-options">
             {GRADE_LEVEL_SUGGESTIONS.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
-          <datalist id="course-term-options">
-            {TERM_SUGGESTIONS.map((value) => (
               <option key={value} value={value} />
             ))}
           </datalist>

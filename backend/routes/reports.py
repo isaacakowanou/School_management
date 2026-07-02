@@ -300,7 +300,7 @@ def generate_report_card(
     _: User = Depends(require_admin),
 ) -> ReportCardResponse:
     try:
-        report_data = build_report_card_data(db, student_id, payload.term, payload.school_year)
+        report_data = build_report_card_data(db, student_id, payload.term.value, payload.school_year)
     except ValueError as exc:
         detail = str(exc)
         if detail == "Student not found":
@@ -313,7 +313,7 @@ def generate_report_card(
 
     report_card = ReportCard(
         student_id=student_id,
-        term=payload.term,
+        term=payload.term.value,
         school_year=payload.school_year,
         overall_average=report_data["overall_average"],
         french_average=report_data["french_average"],

@@ -108,7 +108,7 @@ class CourseResultRouteTests(unittest.TestCase):
             code="COURSE-RESULTS",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add(self.course)
@@ -120,7 +120,7 @@ class CourseResultRouteTests(unittest.TestCase):
             category="Homework",
             max_score=100,
             weight=0.5,
-            term="Fall",
+            term="1er Trimestre",
         )
         self.final = GradeItem(
             course=self.course,
@@ -128,7 +128,7 @@ class CourseResultRouteTests(unittest.TestCase):
             category="Final",
             max_score=100,
             weight=0.5,
-            term="Fall",
+            term="1er Trimestre",
         )
         self.db.add_all([self.homework, self.final])
         self.db.flush()
@@ -149,7 +149,7 @@ class CourseResultRouteTests(unittest.TestCase):
         self.student_one_result = CourseResult(
             student=self.student_one,
             course=self.course,
-            term="Fall",
+            term="1er Trimestre",
             average=85.0,
             letter_grade="B",
             calculated_at=self.base_time,
@@ -157,7 +157,7 @@ class CourseResultRouteTests(unittest.TestCase):
         self.student_two_result = CourseResult(
             student=self.student_two,
             course=self.course,
-            term="Fall",
+            term="1er Trimestre",
             average=75.0,
             letter_grade="C",
             calculated_at=self.base_time,
@@ -174,7 +174,7 @@ class CourseResultRouteTests(unittest.TestCase):
     def _approved_report(self, student: Student, average: float, letter_grade: str) -> ReportCard:
         report = ReportCard(
             student=student,
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
             overall_average=average,
             gpa=3.0,

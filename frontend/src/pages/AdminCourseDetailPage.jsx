@@ -21,6 +21,7 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import ClassSelect from '../components/ClassSelect.jsx'
 import SubjectSelect from '../components/SubjectSelect.jsx'
+import TermSelect from '../components/TermSelect.jsx'
 
 const EMPTY_GRADE_ITEM_FORM = {
   title: '',
@@ -61,7 +62,6 @@ const GRADE_LEVEL_SUGGESTIONS = [
   'Grade 11',
   'Grade 12',
 ]
-const TERM_SUGGESTIONS = ['Fall', 'Spring', 'Summer', 'Trimester 1', 'Trimester 2', 'Trimester 3']
 const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
 const WEIGHT_TOLERANCE = 0.005
 
@@ -613,12 +613,10 @@ export default function AdminCourseDetailPage() {
 
           <label className="field">
             <span>Term</span>
-            <input
+            <TermSelect
               value={editForm.term}
-              onChange={(event) => updateEditField('term', event.target.value)}
+              onChange={(value) => updateEditField('term', value)}
               disabled={savingEdit}
-              list="course-edit-term-options"
-              required
             />
           </label>
 
@@ -663,11 +661,6 @@ export default function AdminCourseDetailPage() {
 
           <datalist id="course-edit-grade-level-options">
             {GRADE_LEVEL_SUGGESTIONS.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
-          <datalist id="course-edit-term-options">
-            {TERM_SUGGESTIONS.map((value) => (
               <option key={value} value={value} />
             ))}
           </datalist>
@@ -873,12 +866,10 @@ export default function AdminCourseDetailPage() {
 
           <label className="field">
             <span>Term</span>
-            <input
+            <TermSelect
               value={gradeItemForm.term}
-              onChange={(event) => updateGradeItemField('term', event.target.value)}
+              onChange={(value) => updateGradeItemField('term', value)}
               disabled={addingGradeItem}
-              list="grade-item-term-options"
-              required
             />
           </label>
 
@@ -889,11 +880,6 @@ export default function AdminCourseDetailPage() {
           </datalist>
           <datalist id="grade-item-category-options">
             {GRADE_ITEM_SUGGESTIONS.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
-          <datalist id="grade-item-term-options">
-            {TERM_SUGGESTIONS.map((value) => (
               <option key={value} value={value} />
             ))}
           </datalist>
@@ -1018,12 +1004,10 @@ export default function AdminCourseDetailPage() {
 
                           <label className="field">
                             <span>Term</span>
-                            <input
+                            <TermSelect
                               value={editGradeItemForm.term}
-                              onChange={(event) => updateEditGradeItemField('term', event.target.value)}
+                              onChange={(value) => updateEditGradeItemField('term', value)}
                               disabled={savingGradeItemEdit}
-                              list="grade-item-edit-term-options"
-                              required
                             />
                           </label>
 
@@ -1044,11 +1028,6 @@ export default function AdminCourseDetailPage() {
                           </datalist>
                           <datalist id="grade-item-edit-category-options">
                             {GRADE_ITEM_SUGGESTIONS.map((value) => (
-                              <option key={value} value={value} />
-                            ))}
-                          </datalist>
-                          <datalist id="grade-item-edit-term-options">
-                            {TERM_SUGGESTIONS.map((value) => (
                               <option key={value} value={value} />
                             ))}
                           </datalist>

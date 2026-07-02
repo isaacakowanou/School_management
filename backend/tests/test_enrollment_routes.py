@@ -90,7 +90,7 @@ class EnrollmentRouteTests(unittest.TestCase):
             code="ENROLL-101",
             teacher=self.teacher,
             grade_level="12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add(self.course)

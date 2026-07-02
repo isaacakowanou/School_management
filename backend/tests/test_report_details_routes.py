@@ -76,20 +76,20 @@ class ReportDetailsRouteTests(unittest.TestCase):
 
         self.course = Course(
             name="Mathematics", code="MATH-DET", teacher=self.teacher,
-            grade_level="Grade 12", term="Fall", school_year="2026-2027",
+            grade_level="Grade 12", term="1er Trimestre", school_year="2026-2027",
         )
         self.db.add(self.course)
         self.db.flush()
         self.db.add(
             CourseResult(
-                student=self.student, course=self.course, term="Fall",
+                student=self.student, course=self.course, term="1er Trimestre",
                 average=15.0, letter_grade="B", scale="20",
             )
         )
         # Report created directly with no conduct/work-habit rows and no comments —
         # this stands in for an existing production report (everything null).
         self.report_card = ReportCard(
-            student=self.student, term="Fall", school_year="2026-2027",
+            student=self.student, term="1er Trimestre", school_year="2026-2027",
             overall_average=15.0, gpa=3.0, status="draft",
         )
         self.db.add(self.report_card)

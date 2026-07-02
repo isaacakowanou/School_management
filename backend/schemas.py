@@ -17,6 +17,15 @@ class LanguageGroup(str, Enum):
     ENGLISH = "ENGLISH"
 
 
+class TrimesterTerm(str, Enum):
+    # Canonical GGFK trimester values (A1.7c). Single source of truth for the
+    # term dropdowns; mirrors constants.TRIMESTER_TERMS (list position ==
+    # trimester number). Free-text terms are rejected at every write path.
+    FIRST = "1er Trimestre"
+    SECOND = "2ème Trimestre"
+    THIRD = "3ème Trimestre"
+
+
 class SubjectLevelGroup(str, Enum):
     NURSERY = "NURSERY"
     PRIMARY = "PRIMARY"
@@ -241,7 +250,7 @@ class CourseCreate(BaseModel):
     code: str
     teacher_id: UUID
     grade_level: str
-    term: str
+    term: TrimesterTerm
     school_year: str
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
@@ -253,7 +262,7 @@ class CourseUpdate(BaseModel):
     code: str | None = None
     teacher_id: UUID | None = None
     grade_level: str | None = None
-    term: str | None = None
+    term: TrimesterTerm | None = None
     school_year: str | None = None
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
@@ -291,7 +300,7 @@ class GradeItemCreate(BaseModel):
     # Defaults to the /20 scale; teachers can still set a custom max (e.g. 10).
     max_score: float = 20
     weight: float
-    term: str
+    term: TrimesterTerm
     due_date: date | None = None
 
 
@@ -300,7 +309,7 @@ class GradeItemUpdate(BaseModel):
     category: str | None = None
     max_score: float | None = None
     weight: float | None = None
-    term: str | None = None
+    term: TrimesterTerm | None = None
     due_date: date | None = None
 
 
@@ -378,7 +387,7 @@ class AuditLogResponse(BaseModel):
 
 
 class ReportGenerateRequest(BaseModel):
-    term: str
+    term: TrimesterTerm
     school_year: str
 
 

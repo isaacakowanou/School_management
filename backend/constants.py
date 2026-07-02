@@ -123,6 +123,36 @@ GRADING_KEY_LEGEND = (
 TRIMESTER_TERMS = ["1er Trimestre", "2ème Trimestre", "3ème Trimestre"]
 FINAL_TRIMESTER_NUMBER = len(TRIMESTER_TERMS)  # 3
 
+# A1.7c: legacy free-text term variants -> canonical trimester. Covers only
+# forms the old UI suggestions (Fall / Spring / Summer / Trimester N) and
+# French typing habits could have produced; anything else is deliberately NOT
+# mapped (the normalization migration leaves it untouched and reports it).
+# Keys are matching keys (accent/case/whitespace-insensitive).
+_TERM_VARIANTS = {
+    "1er Trimestre": ["1e trimestre", "trimestre 1", "trimester 1", "term 1", "1st term", "1er", "fall"],
+    "2ème Trimestre": ["2e trimestre", "trimestre 2", "trimester 2", "term 2", "2nd term", "2eme", "spring"],
+    # Summer -> 3ème: the old suggestions offered Fall/Spring/Summer as the
+    # trio, so Summer can only have meant the third trimester.
+    "3ème Trimestre": ["3e trimestre", "trimestre 3", "trimester 3", "term 3", "3rd term", "3eme", "summer"],
+}
+
+_CANONICAL_TERM_BY_KEY = {}
+for _canonical, _variants in _TERM_VARIANTS.items():
+    # normalize_class_name is a general accent/case/whitespace normalizer;
+    # reused here so "2ème", "2eme" and "2EME " all key identically.
+    _CANONICAL_TERM_BY_KEY[normalize_class_name(_canonical)] = _canonical
+    for _variant in _variants:
+        _CANONICAL_TERM_BY_KEY[_variant] = _canonical
+
+
+def normalize_term(value):
+    """Map a term string to its canonical trimester value, else None.
+
+    Canonical values pass through; recognized legacy variants map onto their
+    trimester; unknown strings return None (callers must not guess).
+    """
+    return _CANONICAL_TERM_BY_KEY.get(normalize_class_name(value))
+
 TERM_ORDINAL_EN = {1: "1st", 2: "2nd", 3: "3rd"}
 TERM_ORDINAL_FR = {1: "1er", 2: "2ème", 3: "3ème"}
 

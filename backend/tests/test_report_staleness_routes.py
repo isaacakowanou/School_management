@@ -83,7 +83,7 @@ class ReportStalenessRouteTests(unittest.TestCase):
             code="MATH-ST",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.science = Course(
@@ -91,7 +91,7 @@ class ReportStalenessRouteTests(unittest.TestCase):
             code="SCI-ST",
             teacher=self.teacher,
             grade_level="Grade 12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add_all([self.math, self.science])
@@ -100,14 +100,14 @@ class ReportStalenessRouteTests(unittest.TestCase):
         self.math_result = CourseResult(
             student=self.student,
             course=self.math,
-            term="Fall",
+            term="1er Trimestre",
             average=19.0,
             letter_grade="A",
         )
         self.science_result = CourseResult(
             student=self.student,
             course=self.science,
-            term="Fall",
+            term="1er Trimestre",
             average=17.0,
             letter_grade="B",
         )
@@ -117,7 +117,7 @@ class ReportStalenessRouteTests(unittest.TestCase):
         approved_at = datetime.now(timezone.utc)
         self.report_card = ReportCard(
             student=self.student,
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
             overall_average=18.0,
             gpa=3.5,
@@ -234,7 +234,7 @@ class ReportStalenessRouteTests(unittest.TestCase):
             CourseResult(
                 student=historical_student,
                 course=self.math,
-                term="Fall",
+                term="1er Trimestre",
                 average=92.5,
                 letter_grade="A",
                 scale="100",
@@ -242,7 +242,7 @@ class ReportStalenessRouteTests(unittest.TestCase):
             CourseResult(
                 student=historical_student,
                 course=self.science,
-                term="Fall",
+                term="1er Trimestre",
                 average=87.5,
                 letter_grade="B",
                 scale="100",
@@ -254,7 +254,7 @@ class ReportStalenessRouteTests(unittest.TestCase):
         approved_at = datetime.now(timezone.utc)
         historical_report = ReportCard(
             student=historical_student,
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
             overall_average=90.0,
             gpa=3.5,

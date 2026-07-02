@@ -111,7 +111,7 @@ def create_course(
 ) -> CourseResponse:
     code = clean_required_text(payload.code, "code")
     grade_level = clean_required_text(payload.grade_level, "grade_level")
-    term = clean_required_text(payload.term, "term")
+    term = payload.term.value
     school_year = clean_required_text(payload.school_year, "school_year")
     language_group = payload.language_group.value if payload.language_group is not None else None
 
@@ -357,7 +357,7 @@ def update_course(
     if payload.grade_level is not None:
         course.grade_level = clean_required_text(payload.grade_level, "grade_level")
     if payload.term is not None:
-        course.term = clean_required_text(payload.term, "term")
+        course.term = payload.term.value
     if payload.school_year is not None:
         course.school_year = clean_required_text(payload.school_year, "school_year")
     if "class_id" in payload.model_fields_set:

@@ -85,7 +85,7 @@ class GradeItemRouteTests(unittest.TestCase):
             code="GI-101",
             teacher=self.teacher,
             grade_level="12",
-            term="Fall",
+            term="1er Trimestre",
             school_year="2026-2027",
         )
         self.db.add(self.course)
@@ -106,7 +106,7 @@ class GradeItemRouteTests(unittest.TestCase):
             "category": "Homework",
             "max_score": 100,
             "weight": 0.3,
-            "term": "Fall",
+            "term": "1er Trimestre",
         }
 
     def _create_grade_item(self, title: str = "Existing Item") -> GradeItem:
@@ -116,7 +116,7 @@ class GradeItemRouteTests(unittest.TestCase):
             category="Homework",
             max_score=100,
             weight=0.3,
-            term="Fall",
+            term="1er Trimestre",
         )
         self.db.add(grade_item)
         self.db.commit()
@@ -137,7 +137,7 @@ class GradeItemRouteTests(unittest.TestCase):
         self.assertEqual(data["category"], "Homework")
         self.assertEqual(data["max_score"], 100)
         self.assertEqual(data["weight"], 0.3)
-        self.assertEqual(data["term"], "Fall")
+        self.assertEqual(data["term"], "1er Trimestre")
 
         grade_item = self.db.scalar(select(GradeItem).where(GradeItem.id == UUID(data["id"])))
         self.assertIsNotNone(grade_item)
@@ -241,7 +241,7 @@ class GradeItemRouteTests(unittest.TestCase):
                 "category": "  Exam  ",
                 "max_score": 100,
                 "weight": 0.3,
-                "term": "  Fall  ",
+                "term": "1er Trimestre",
             },
             headers=self._headers(self.admin_user.email),
         )
@@ -250,7 +250,7 @@ class GradeItemRouteTests(unittest.TestCase):
         data = response.json()
         self.assertEqual(data["title"], "Midterm")
         self.assertEqual(data["category"], "Exam")
-        self.assertEqual(data["term"], "Fall")
+        self.assertEqual(data["term"], "1er Trimestre")
 
     def test_create_grade_item_writes_audit_log(self):
         response = self.client.post(
@@ -279,7 +279,7 @@ class GradeItemRouteTests(unittest.TestCase):
                 "category": "Homework",
                 "max_score": 100,
                 "weight": 0.3,
-                "term": "Fall",
+                "term": "1er Trimestre",
                 "due_date": None,
             },
         )
@@ -316,7 +316,7 @@ class GradeItemRouteTests(unittest.TestCase):
                 "category": "  Practice  ",
                 "max_score": 50,
                 "weight": 0.2,
-                "term": "  Spring  ",
+                "term": "2ème Trimestre",
                 "due_date": "2026-11-20",
             },
             headers=self._headers(self.admin_user.email),
@@ -328,7 +328,7 @@ class GradeItemRouteTests(unittest.TestCase):
         self.assertEqual(data["category"], "Practice")
         self.assertEqual(data["max_score"], 50)
         self.assertEqual(data["weight"], 0.2)
-        self.assertEqual(data["term"], "Spring")
+        self.assertEqual(data["term"], "2ème Trimestre")
         self.assertEqual(data["due_date"], "2026-11-20")
 
     def test_assigned_teacher_can_update_grade_item(self):
@@ -358,7 +358,7 @@ class GradeItemRouteTests(unittest.TestCase):
     def test_update_grade_item_rejects_empty_text_fields(self):
         grade_item = self._create_grade_item("Empty Editable")
 
-        for field in ["title", "category", "term"]:
+        for field in ["title", "category"]:
             with self.subTest(field=field):
                 response = self.client.put(
                     f"/api/v1/grade-items/{grade_item.id}",
@@ -367,6 +367,15 @@ class GradeItemRouteTests(unittest.TestCase):
                 )
                 self.assertEqual(response.status_code, 422)
                 self.assertEqual(response.json()["detail"], f"{field} cannot be empty")
+
+        # term is enum-validated (A1.7c): blank is rejected by Pydantic with a
+        # structured detail, not the route's "cannot be empty" message.
+        response = self.client.put(
+            f"/api/v1/grade-items/{grade_item.id}",
+            json={"term": " "},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(response.status_code, 422)
 
     def test_update_grade_item_rejects_invalid_max_score_or_weight(self):
         grade_item = self._create_grade_item("Invalid Editable")

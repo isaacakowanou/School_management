@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from models import Class, Course, ReportCard, Student, Teacher, User
+from models import Class, Course, ReportCard, Student, Subject, Teacher, User
 from schemas import CourseResponse, StudentResponse
 
 
@@ -18,6 +18,13 @@ def get_class_or_404(db: Session, class_id) -> Class:
     if school_class is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
     return school_class
+
+
+def get_subject_or_404(db: Session, subject_id) -> Subject:
+    subject = db.get(Subject, subject_id)
+    if subject is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
+    return subject
 
 
 def get_current_teacher(db: Session, current_user: User) -> Teacher | None:
@@ -47,4 +54,5 @@ def to_course_response(course: Course) -> CourseResponse:
         school_year=course.school_year,
         language_group=course.language_group,
         class_id=course.class_id,
+        subject_id=course.subject_id,
     )

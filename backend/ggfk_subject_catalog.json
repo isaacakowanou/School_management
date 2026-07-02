@@ -1,0 +1,122 @@
+{
+  "school": "GGFK",
+  "source": "Extracted from 12 GGFK bulletin templates covering Pré-maternelle through 1ère C/D (3ème Trimestre 2025-2026)",
+  "notes": {
+    "sections": "Each subject belongs to either the FRENCH section or the ENGLISH section of the bulletin. This drives which language-average bucket (Moyenne française / Moyenne anglaise) the subject contributes to.",
+    "sort_order": "Order within a section as it appears on the paper bulletin. Preserve when rendering.",
+    "applicable_classes": "Class names from the locked 18-class GGFK taxonomy. Subjects vary by cycle within Collège: 6ème/5ème/4ème/3ème (first cycle) share one list, 2nde/1ère C/1ère D/Terminale C/Terminale D (second cycle) share another. Espagnol is 4ème/3ème only.",
+    "assumptions": [
+      "Primary subjects for CE1, CE2, CM1, CM2 assumed identical to CI/CP (verified from bulletins). Flag with mom before seeding if any diverge.",
+      "Terminale C and Terminale D subjects assumed identical to 1ère C and 1ère D respectively. Flag with mom before seeding.",
+      "3ème bulletin has a separate 'BILINGUAL AVERAGE' side block that other classes don't. Not a subject issue — layout consideration for A1.7b template."
+    ]
+  },
+  "subjects_by_level": {
+    "NURSERY": {
+      "applicable_classes": ["Pré-maternelle", "Maternelle 1", "Maternelle 2"],
+      "french_section": [
+        {"sort_order": 1, "name_fr": "Education pour la Santé", "name_en": "Health Education"},
+        {"sort_order": 2, "name_fr": "Pré-Lecture", "name_en": "Pre-reading skills"},
+        {"sort_order": 3, "name_fr": "Communication orale", "name_en": "Verbal Communication"},
+        {"sort_order": 4, "name_fr": "Pré-Ecriture", "name_en": "PreWriting"},
+        {"sort_order": 5, "name_fr": "Pré-Mathématique", "name_en": "Pre-math skills"},
+        {"sort_order": 6, "name_fr": "Observation", "name_en": "Sciences"},
+        {"sort_order": 7, "name_fr": "Education sensorielle", "name_en": "Sensory education"},
+        {"sort_order": 8, "name_fr": "Dessin", "name_en": "Visual Art"},
+        {"sort_order": 9, "name_fr": "Comptine et chants", "name_en": "Rhymes"},
+        {"sort_order": 10, "name_fr": "Sport", "name_en": "Physical Education"},
+        {"sort_order": 11, "name_fr": "Natation", "name_en": "Swimming"},
+        {"sort_order": 12, "name_fr": "Expression Emotionnelle", "name_en": "Emotional development"},
+        {"sort_order": 13, "name_fr": "Education Chrétienne", "name_en": "Christian's Ethics"},
+        {"sort_order": 14, "name_fr": "Informatique", "name_en": "Computer Science"}
+      ],
+      "english_section": [
+        {"sort_order": 1, "name_fr": "Maniement des lettres", "name_en": "Letter work"},
+        {"sort_order": 2, "name_fr": "Reflexes Mathématiques", "name_en": "Mathematical Thinking"},
+        {"sort_order": 3, "name_fr": "Observation", "name_en": "Science"},
+        {"sort_order": 4, "name_fr": "Normes sociales", "name_en": "Social norms"},
+        {"sort_order": 5, "name_fr": "Comptines & Chants", "name_en": "Rhymes"},
+        {"sort_order": 6, "name_fr": "Art Plastique", "name_en": "Creative Art"}
+      ]
+    },
+    "PRIMARY": {
+      "applicable_classes": ["CI", "CP", "CE1", "CE2", "CM1", "CM2"],
+      "french_section": [
+        {"sort_order": 1, "name_fr": "Expression Ecrite", "name_en": "Written Communication"},
+        {"sort_order": 2, "name_fr": "Compréhension de l'écrit", "name_en": "Reading Literacy"},
+        {"sort_order": 3, "name_fr": "Education Sociale", "name_en": "Social Science"},
+        {"sort_order": 4, "name_fr": "Mathématique", "name_en": "Mathematics"},
+        {"sort_order": 5, "name_fr": "EST", "name_en": "Science & Technology"},
+        {"sort_order": 6, "name_fr": "Ecriture", "name_en": "Writing"},
+        {"sort_order": 7, "name_fr": "Dictée", "name_en": "Dictation"},
+        {"sort_order": 8, "name_fr": "Dessin", "name_en": "Visual Art"},
+        {"sort_order": 9, "name_fr": "Poésie et chant", "name_en": "Rhymes"},
+        {"sort_order": 10, "name_fr": "Sport", "name_en": "Fitness"},
+        {"sort_order": 11, "name_fr": "Natation", "name_en": "Swimming"},
+        {"sort_order": 12, "name_fr": "Education Chrétienne", "name_en": "Christian's Ethics"},
+        {"sort_order": 13, "name_fr": "Informatique", "name_en": "Computer Science"}
+      ],
+      "english_section": [
+        {"sort_order": 1, "name_fr": "Anglais", "name_en": "English language"},
+        {"sort_order": 2, "name_fr": "Reflexes Mathématiques", "name_en": "Mathematical Thinking"},
+        {"sort_order": 3, "name_fr": "Logique du langage verbal", "name_en": "Verbal reasoning"},
+        {"sort_order": 4, "name_fr": "Science de base", "name_en": "Basic science"}
+      ]
+    },
+    "COLLEGE_FIRST_CYCLE": {
+      "applicable_classes": ["6ème", "5ème", "4ème", "3ème"],
+      "french_section": [
+        {"sort_order": 1, "name_fr": "Compréhension de l'écrit", "name_en": "Reading Comprehension"},
+        {"sort_order": 2, "name_fr": "Communication écrite", "name_en": "Written Communication"},
+        {"sort_order": 3, "name_fr": "Histoire-Géographie", "name_en": "History-Geography"},
+        {"sort_order": 4, "name_fr": "Physique Chimie et Technologie (PCT)", "name_en": "Physics Chemistry and Technology (PCT)"},
+        {"sort_order": 5, "name_fr": "Science de Vie et de la Terre (SVT)", "name_en": "Life and Earth Science (LES)"},
+        {"sort_order": 6, "name_fr": "Mathématique", "name_en": "Mathematics"},
+        {"sort_order": 7, "name_fr": "EPS", "name_en": "Fitness"},
+        {"sort_order": 8, "name_fr": "Anglais", "name_en": "English"},
+        {"sort_order": 9, "name_fr": "Espagnol", "name_en": "Spanish", "applicable_classes_override": ["4ème", "3ème"]}
+      ],
+      "english_section": [
+        {"sort_order": 1, "name_fr": "Étude de la langue anglaise", "name_en": "English studies"},
+        {"sort_order": 2, "name_fr": "Mathématique", "name_en": "Mathematics"},
+        {"sort_order": 3, "name_fr": "Sciences de base et Technologie", "name_en": "Basic Science and Technology"},
+        {"sort_order": 4, "name_fr": "Economie Domestique", "name_en": "Home Economics"},
+        {"sort_order": 5, "name_fr": "Etude de commerce", "name_en": "Business Studies"},
+        {"sort_order": 6, "name_fr": "Education Civique", "name_en": "National Values Education"},
+        {"sort_order": 7, "name_fr": "Art créative et culturel", "name_en": "Creative and Cultural Art"},
+        {"sort_order": 8, "name_fr": "Education Chrétienne", "name_en": "Christian Religious Studies"},
+        {"sort_order": 9, "name_fr": "Education Physique et à la santé", "name_en": "Physical and Health Education (PHE)"},
+        {"sort_order": 10, "name_fr": "Histoire", "name_en": "History"},
+        {"sort_order": 11, "name_fr": "Informatique", "name_en": "Computer Science"},
+        {"sort_order": 12, "name_fr": "Agriculture", "name_en": "Agriculture"},
+        {"sort_order": 13, "name_fr": "Etudes sociales", "name_en": "Social Studies", "applicable_classes_override": ["6ème", "5ème"]}
+      ]
+    },
+    "COLLEGE_SECOND_CYCLE": {
+      "applicable_classes": ["2nde", "1ère C", "1ère D", "Terminale C", "Terminale D"],
+      "french_section": [
+        {"sort_order": 1, "name_fr": "Français", "name_en": "French language"},
+        {"sort_order": 2, "name_fr": "Histoire-Géographie", "name_en": "History-Geography"},
+        {"sort_order": 3, "name_fr": "Physique Chimie et Technologie (PCT)", "name_en": "Physics Chemistry and Technology (PCT)"},
+        {"sort_order": 4, "name_fr": "Science de Vie et de la Terre (SVT)", "name_en": "Life and Earth Science (LES)"},
+        {"sort_order": 5, "name_fr": "Mathématique", "name_en": "Mathematics"},
+        {"sort_order": 6, "name_fr": "EPS", "name_en": "Fitness"},
+        {"sort_order": 7, "name_fr": "Philosophie", "name_en": "Philosophy"},
+        {"sort_order": 8, "name_fr": "Informatique", "name_en": "Computer Science"}
+      ],
+      "english_section": [
+        {"sort_order": 1, "name_fr": "Étude de la langue anglaise", "name_en": "English studies"},
+        {"sort_order": 2, "name_fr": "Mathématique", "name_en": "Mathematics"},
+        {"sort_order": 3, "name_fr": "Physique", "name_en": "Physics"},
+        {"sort_order": 4, "name_fr": "Chimie", "name_en": "Chemistry"},
+        {"sort_order": 5, "name_fr": "Commerce", "name_en": "Commerce"},
+        {"sort_order": 6, "name_fr": "Biologie", "name_en": "Biology"},
+        {"sort_order": 7, "name_fr": "Education civique", "name_en": "Civic Education"},
+        {"sort_order": 8, "name_fr": "Elevage", "name_en": "Animal Husbandry"},
+        {"sort_order": 9, "name_fr": "Géographie", "name_en": "Geography"},
+        {"sort_order": 10, "name_fr": "Economie", "name_en": "Economics"},
+        {"sort_order": 11, "name_fr": "Informatique", "name_en": "Computer Science"}
+      ]
+    }
+  }
+}

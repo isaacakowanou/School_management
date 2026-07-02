@@ -17,6 +17,13 @@ class LanguageGroup(str, Enum):
     ENGLISH = "ENGLISH"
 
 
+class SubjectLevelGroup(str, Enum):
+    NURSERY = "NURSERY"
+    PRIMARY = "PRIMARY"
+    COLLEGE_FIRST_CYCLE = "COLLEGE_FIRST_CYCLE"
+    COLLEGE_SECOND_CYCLE = "COLLEGE_SECOND_CYCLE"
+
+
 class LetterGrade(str, Enum):
     # BISC 9-letter grade codes (A1.3). Single source of truth for the conduct /
     # work-habit dropdowns; the frontend constant mirrors these values.
@@ -84,6 +91,37 @@ class ClassResponse(BaseModel):
     sort_order: int
     school_year: str
     student_count: int = 0
+    course_count: int = 0
+
+
+class SubjectCreate(BaseModel):
+    name_fr: str
+    name_en: str
+    # Bulletin section; reuses LanguageGroup because the values are the same
+    # thing — a course created from this subject inherits it as language_group.
+    section: LanguageGroup
+    level_group: SubjectLevelGroup
+    sort_order: int
+    applicable_classes: list[str] | None = None
+
+
+class SubjectUpdate(BaseModel):
+    name_fr: str | None = None
+    name_en: str | None = None
+    section: LanguageGroup | None = None
+    level_group: SubjectLevelGroup | None = None
+    sort_order: int | None = None
+    applicable_classes: list[str] | None = None
+
+
+class SubjectResponse(BaseModel):
+    id: UUID
+    name_fr: str
+    name_en: str
+    section: LanguageGroup
+    level_group: SubjectLevelGroup
+    sort_order: int
+    applicable_classes: list[str] | None = None
     course_count: int = 0
 
 
@@ -181,10 +219,13 @@ class CourseResponse(BaseModel):
     school_year: str
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
+    subject_id: UUID | None = None
 
 
 class CourseCreate(BaseModel):
-    name: str
+    # Optional when subject_id is provided (the route derives name from the
+    # subject); still required for free-text courses — enforced in the route.
+    name: str | None = None
     code: str
     teacher_id: UUID
     grade_level: str
@@ -192,6 +233,7 @@ class CourseCreate(BaseModel):
     school_year: str
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
+    subject_id: UUID | None = None
 
 
 class CourseUpdate(BaseModel):
@@ -203,6 +245,20 @@ class CourseUpdate(BaseModel):
     school_year: str | None = None
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
+    subject_id: UUID | None = None
+
+
+class CourseCloneYearRequest(BaseModel):
+    source_year: str
+    target_year: str
+
+
+class CourseCloneYearResponse(BaseModel):
+    status: str
+    created_count: int
+    # Source class names that had no same-named class in the target year; the
+    # cloned courses were created with class_id null.
+    unmatched_class_names: list[str]
 
 
 class EnrollmentCreate(BaseModel):

@@ -6,6 +6,8 @@ labels are display data owned by the backend and returned in the report
 response so the admin UI never has to duplicate them.
 """
 
+import unicodedata
+
 CONDUCT_ITEMS = [
     ("controls_talking", "Controls talking", "Contrôle de langage"),
     ("respects_authority", "Respects Authority", "Respect de l'autorité"),
@@ -27,6 +29,46 @@ WORK_HABIT_ITEMS = [
 
 CONDUCT_ITEM_KEYS = [key for key, _, _ in CONDUCT_ITEMS]
 WORK_HABIT_ITEM_KEYS = [key for key, _, _ in WORK_HABIT_ITEMS]
+
+
+# --- A1.9 Subject catalog reference data ---
+
+# Locked 18-class GGFK taxonomy grouped by subject level group. Used to resolve
+# which catalog subjects apply to a class: Subject.applicable_classes null
+# means "every class in the subject's level_group". Mirrors the
+# applicable_classes lists in ggfk_subject_catalog.json (seed test asserts the
+# two stay in sync).
+CLASSES_BY_LEVEL_GROUP = {
+    "NURSERY": ["Pré-maternelle", "Maternelle 1", "Maternelle 2"],
+    "PRIMARY": ["CI", "CP", "CE1", "CE2", "CM1", "CM2"],
+    "COLLEGE_FIRST_CYCLE": ["6ème", "5ème", "4ème", "3ème"],
+    "COLLEGE_SECOND_CYCLE": ["2nde", "1ère C", "1ère D", "Terminale C", "Terminale D"],
+}
+
+def normalize_class_name(name):
+    """Accent-, case-, and whitespace-insensitive key for class-name matching.
+
+    Class rows are created by admins (A1.8), so the same taxonomy class shows
+    up as "6ème", "6eme", or "6EME " depending on who typed it; taxonomy
+    lookups must not depend on the spelling.
+    """
+    if not name:
+        return ""
+    decomposed = unicodedata.normalize("NFKD", name)
+    stripped = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return " ".join(stripped.lower().split())
+
+
+_LEVEL_GROUP_BY_NORMALIZED_CLASS_NAME = {
+    normalize_class_name(class_name): level_group
+    for level_group, class_names in CLASSES_BY_LEVEL_GROUP.items()
+    for class_name in class_names
+}
+
+
+def level_group_for_class_name(name):
+    """Resolve a class name to its subject level group, else None."""
+    return _LEVEL_GROUP_BY_NORMALIZED_CLASS_NAME.get(normalize_class_name(name))
 
 
 # --- A1.7b Collège bulletin (PDF) reference data ---

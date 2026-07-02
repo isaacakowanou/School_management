@@ -3,8 +3,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { createCourse } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
 import { listClasses } from '../api/classes.js'
+import { listSubjects } from '../api/subjects.js'
 import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
+import { derivedCourseName } from '../utils/subjectOptions.js'
 import ClassSelect from '../components/ClassSelect.jsx'
+import SubjectSelect from '../components/SubjectSelect.jsx'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -18,6 +21,7 @@ const EMPTY_FORM = {
   schoolYear: '',
   languageGroup: '',
   classId: '',
+  subjectId: '',
 }
 
 const GRADE_LEVEL_SUGGESTIONS = [
@@ -40,6 +44,29 @@ export default function AdminCourseCreatePage() {
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [classes, setClasses] = useState([])
+  const [subjects, setSubjects] = useState([])
+
+  // Selecting a class narrows the catalog to that class's subjects; a subject
+  // that falls out of the narrowed list is deselected.
+  useEffect(() => {
+    let cancelled = false
+    listSubjects(form.classId ? { classId: form.classId } : {})
+      .then((data) => {
+        if (cancelled) return
+        setSubjects(data)
+        setForm((current) =>
+          current.subjectId && !data.some((s) => s.id === current.subjectId)
+            ? { ...current, subjectId: '' }
+            : current,
+        )
+      })
+      .catch(() => {
+        /* non-fatal: the subject dropdown just stays empty */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [form.classId])
 
   useEffect(() => {
     let cancelled = false
@@ -82,19 +109,23 @@ export default function AdminCourseCreatePage() {
     setForm((current) => ({ ...current, [field]: value }))
   }
 
+  const selectedSubject = form.subjectId
+    ? subjects.find((subject) => subject.id === form.subjectId) || null
+    : null
+
   async function handleSubmit(event) {
     event.preventDefault()
     setError(null)
 
     if (
-      !form.name.trim() ||
+      (!form.subjectId && !form.name.trim()) ||
       !form.code.trim() ||
       !form.teacherId ||
       !form.gradeLevel.trim() ||
       !form.term.trim() ||
       !form.schoolYear.trim()
     ) {
-      setError('Course name, code, teacher, grade level, term, and school year are required.')
+      setError('Course name (or a subject), code, teacher, grade level, term, and school year are required.')
       return
     }
 
@@ -133,13 +164,33 @@ export default function AdminCourseCreatePage() {
       {teachers && teachers.length > 0 && (
         <form className="card admin-form" onSubmit={handleSubmit}>
           <label className="field">
+            <span>Subject</span>
+            <SubjectSelect
+              subjects={subjects}
+              value={form.subjectId}
+              onChange={(value) => updateField('subjectId', value)}
+              disabled={saving}
+            />
+            <span className="muted">
+              Pick a catalog subject, or “Custom (free text)” for a course outside the catalog.
+            </span>
+          </label>
+
+          <label className="field">
             <span>Course name</span>
             <input
-              value={form.name}
+              value={selectedSubject ? derivedCourseName(selectedSubject) : form.name}
               onChange={(event) => updateField('name', event.target.value)}
               disabled={saving}
-              required
+              readOnly={Boolean(selectedSubject)}
+              required={!selectedSubject}
             />
+            {selectedSubject && (
+              <span className="muted">
+                Name and language group come from the subject. Switch Subject to “Custom (free
+                text)” to enter your own.
+              </span>
+            )}
           </label>
 
           <label className="field">
@@ -207,9 +258,9 @@ export default function AdminCourseCreatePage() {
             <span>Language group (optional)</span>
             <select
               className="grade-input"
-              value={form.languageGroup}
+              value={selectedSubject ? selectedSubject.section : form.languageGroup}
               onChange={(event) => updateField('languageGroup', event.target.value)}
-              disabled={saving}
+              disabled={saving || Boolean(selectedSubject)}
               style={{ width: '100%', textAlign: 'left' }}
             >
               <option value="">Not set</option>

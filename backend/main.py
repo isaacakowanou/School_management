@@ -13,6 +13,7 @@ from routes.grades import router as grades_router
 from routes.parents import router as parents_router
 from routes.reports import router as reports_router
 from routes.students import router as students_router
+from routes.subjects import router as subjects_router
 from routes.teachers import router as teachers_router
 from routes.users import router as users_router
 
@@ -34,6 +35,7 @@ app.include_router(grades_router, prefix="/api/v1")
 app.include_router(parents_router, prefix="/api/v1/parents")
 app.include_router(reports_router, prefix="/api/v1/reports")
 app.include_router(students_router, prefix="/api/v1/students")
+app.include_router(subjects_router, prefix="/api/v1/subjects")
 app.include_router(teachers_router, prefix="/api/v1/teachers")
 app.include_router(users_router, prefix="/api/v1/users")
 

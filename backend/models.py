@@ -125,6 +125,39 @@ class Teacher(Base):
     submitted_grades: Mapped[list["Grade"]] = orm_relationship(back_populates="submitted_by_teacher")
 
 
+class Subject(Base):
+    __tablename__ = "subjects"
+    __table_args__ = (
+        # name_fr alone is not unique: Mathématique / Informatique legitimately
+        # appear in both the FRENCH and ENGLISH sections of the same cycle.
+        UniqueConstraint("name_fr", "level_group", "section", name="uq_subject_name_fr_level_group_section"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name_fr: Mapped[str] = mapped_column(String(200), nullable=False)
+    name_en: Mapped[str] = mapped_column(String(200), nullable=False)
+    # FRENCH / ENGLISH bulletin section. Same values as Course.language_group:
+    # a course created from a subject inherits this as its language_group, which
+    # is what feeds the Moyenne française / anglaise buckets (A1.6). Validated
+    # via Pydantic, stored as a plain string (Option C, like Class.school_level).
+    section: Mapped[str] = mapped_column(String(20), nullable=False)
+    # NURSERY / PRIMARY / COLLEGE_FIRST_CYCLE / COLLEGE_SECOND_CYCLE.
+    level_group: Mapped[str] = mapped_column(String(30), nullable=False)
+    # Position within its section on the paper bulletin.
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Class names (from the locked 18-class taxonomy) this subject is limited
+    # to; null means every class in its level_group. Only exceptions set it
+    # (Espagnol -> 4ème/3ème, Etudes sociales -> 6ème/5ème). none_as_null keeps
+    # "no restriction" a real SQL NULL instead of JSON 'null' text.
+    applicable_classes: Mapped[list | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    courses: Mapped[list["Course"]] = orm_relationship(back_populates="subject")
+
+
 class Course(Base):
     __tablename__ = "courses"
 
@@ -143,12 +176,19 @@ class Course(Base):
     class_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
     )
+    # A1.9: catalog subject this course was created from. Nullable — free-text
+    # courses (and all pre-A1.9 rows) stay null; name stays the operative
+    # display column either way.
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
     teacher: Mapped["Teacher"] = orm_relationship(back_populates="courses")
+    subject: Mapped["Subject | None"] = orm_relationship(back_populates="courses")
     enrollments: Mapped[list["Enrollment"]] = orm_relationship(back_populates="course")
     grade_items: Mapped[list["GradeItem"]] = orm_relationship(back_populates="course")
     course_results: Mapped[list["CourseResult"]] = orm_relationship(back_populates="course")

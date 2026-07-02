@@ -12,12 +12,15 @@ import { getTeacher, listTeachers } from '../api/teachers.js'
 import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
 import { listClasses } from '../api/classes.js'
+import { listSubjects } from '../api/subjects.js'
 import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
 import { formatReportAverage } from '../utils/format.js'
+import { derivedCourseName } from '../utils/subjectOptions.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import ClassSelect from '../components/ClassSelect.jsx'
+import SubjectSelect from '../components/SubjectSelect.jsx'
 
 const EMPTY_GRADE_ITEM_FORM = {
   title: '',
@@ -36,6 +39,7 @@ const EMPTY_COURSE_EDIT_FORM = {
   schoolYear: '',
   languageGroup: '',
   classId: '',
+  subjectId: '',
 }
 
 const GRADE_ITEM_SUGGESTIONS = [
@@ -75,6 +79,7 @@ function courseToForm(course) {
     schoolYear: course?.school_year || '',
     languageGroup: course?.language_group || '',
     classId: course?.class_id || '',
+    subjectId: course?.subject_id || '',
   }
 }
 
@@ -130,6 +135,7 @@ export default function AdminCourseDetailPage() {
   }, [courseId])
 
   const [classes, setClasses] = useState([])
+  const [subjects, setSubjects] = useState([])
 
   useEffect(() => {
     let cancelled = false
@@ -144,6 +150,28 @@ export default function AdminCourseDetailPage() {
       cancelled = true
     }
   }, [])
+
+  // Selecting a class in the edit form narrows the catalog to that class's
+  // subjects; a subject that falls out of the narrowed list is deselected.
+  useEffect(() => {
+    let cancelled = false
+    listSubjects(editForm.classId ? { classId: editForm.classId } : {})
+      .then((data) => {
+        if (cancelled) return
+        setSubjects(data)
+        setEditForm((current) =>
+          current.subjectId && !data.some((s) => s.id === current.subjectId)
+            ? { ...current, subjectId: '' }
+            : current,
+        )
+      })
+      .catch(() => {
+        /* non-fatal: the subject dropdown just stays empty */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [editForm.classId])
 
   useEffect(() => {
     let cancelled = false
@@ -262,20 +290,24 @@ export default function AdminCourseDetailPage() {
     setShowEditForm(false)
   }
 
+  const editSelectedSubject = editForm.subjectId
+    ? subjects.find((subject) => subject.id === editForm.subjectId) || null
+    : null
+
   async function handleEditCourse(event) {
     event.preventDefault()
     setEditError(null)
     setEditMessage(null)
 
     if (
-      !editForm.name.trim() ||
+      (!editForm.subjectId && !editForm.name.trim()) ||
       !editForm.code.trim() ||
       !editForm.teacherId ||
       !editForm.gradeLevel.trim() ||
       !editForm.term.trim() ||
       !editForm.schoolYear.trim()
     ) {
-      setEditError('Course name, code, teacher, grade level, term, and school year are required.')
+      setEditError('Course name (or a subject), code, teacher, grade level, term, and school year are required.')
       return
     }
 
@@ -505,13 +537,33 @@ export default function AdminCourseDetailPage() {
       {showEditForm && (
         <form className="card admin-form" onSubmit={handleEditCourse}>
           <label className="field">
+            <span>Subject</span>
+            <SubjectSelect
+              subjects={subjects}
+              value={editForm.subjectId}
+              onChange={(value) => updateEditField('subjectId', value)}
+              disabled={savingEdit}
+            />
+            <span className="muted">
+              Pick a catalog subject, or “Custom (free text)” for a course outside the catalog.
+            </span>
+          </label>
+
+          <label className="field">
             <span>Course name</span>
             <input
-              value={editForm.name}
+              value={editSelectedSubject ? derivedCourseName(editSelectedSubject) : editForm.name}
               onChange={(event) => updateEditField('name', event.target.value)}
               disabled={savingEdit}
-              required
+              readOnly={Boolean(editSelectedSubject)}
+              required={!editSelectedSubject}
             />
+            {editSelectedSubject && (
+              <span className="muted">
+                Name and language group come from the subject. Switch Subject to “Custom (free
+                text)” to enter your own.
+              </span>
+            )}
           </label>
 
           <label className="field">
@@ -585,9 +637,9 @@ export default function AdminCourseDetailPage() {
             <span>Language group (optional)</span>
             <select
               className="grade-input"
-              value={editForm.languageGroup}
+              value={editSelectedSubject ? editSelectedSubject.section : editForm.languageGroup}
               onChange={(event) => updateEditField('languageGroup', event.target.value)}
-              disabled={savingEdit}
+              disabled={savingEdit || Boolean(editSelectedSubject)}
               style={{ width: '100%', textAlign: 'left' }}
             >
               <option value="">Not set</option>

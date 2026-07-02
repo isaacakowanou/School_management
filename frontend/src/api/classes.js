@@ -43,3 +43,10 @@ export function updateClass(classId, { nameFr, nameEn, schoolLevel, stream, sort
 export function deleteClass(classId) {
   return apiDelete(`/classes/${classId}`)
 }
+
+// POST /api/v1/classes/bulk-create (admin). Creates all 18 GGFK taxonomy
+// classes for the year; already-existing ones (normalized-name match) are
+// skipped. Returns { status, created: [...], skipped: [...] }.
+export function bulkCreateClasses({ schoolYear }) {
+  return apiPost('/classes/bulk-create', { school_year: schoolYear.trim() })
+}

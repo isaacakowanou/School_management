@@ -94,6 +94,18 @@ class ClassResponse(BaseModel):
     course_count: int = 0
 
 
+class ClassBulkCreateRequest(BaseModel):
+    school_year: str
+
+
+class ClassBulkCreateResponse(BaseModel):
+    status: str
+    # Canonical name_fr of taxonomy classes created for the year vs. skipped
+    # because a (normalized-name) match already existed.
+    created: list[str]
+    skipped: list[str]
+
+
 class SubjectCreate(BaseModel):
     name_fr: str
     name_en: str

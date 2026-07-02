@@ -33,17 +33,44 @@ WORK_HABIT_ITEM_KEYS = [key for key, _, _ in WORK_HABIT_ITEMS]
 
 # --- A1.9 Subject catalog reference data ---
 
-# Locked 18-class GGFK taxonomy grouped by subject level group. Used to resolve
-# which catalog subjects apply to a class: Subject.applicable_classes null
-# means "every class in the subject's level_group". Mirrors the
-# applicable_classes lists in ggfk_subject_catalog.json (seed test asserts the
-# two stay in sync).
-CLASSES_BY_LEVEL_GROUP = {
-    "NURSERY": ["Pré-maternelle", "Maternelle 1", "Maternelle 2"],
-    "PRIMARY": ["CI", "CP", "CE1", "CE2", "CM1", "CM2"],
-    "COLLEGE_FIRST_CYCLE": ["6ème", "5ème", "4ème", "3ème"],
-    "COLLEGE_SECOND_CYCLE": ["2nde", "1ère C", "1ère D", "Terminale C", "Terminale D"],
-}
+# Locked 18-class GGFK taxonomy (A1.8/A1.10). Single source of truth: the
+# subject level-group mapping derives from it and the bulk-create action seeds
+# from it. name_en is the anglophone track name printed on the bulletin header
+# (e.g. "JSS4/3eme"); nursery and primary bulletins print the French name only,
+# so name_en None is canon there, not missing data. sort_order is the position
+# within the class's school level.
+GGFK_CLASSES = [
+    {"name_fr": "Pré-maternelle", "name_en": None, "school_level": "maternelle", "level_group": "NURSERY", "stream": None, "sort_order": 1},
+    {"name_fr": "Maternelle 1", "name_en": None, "school_level": "maternelle", "level_group": "NURSERY", "stream": None, "sort_order": 2},
+    {"name_fr": "Maternelle 2", "name_en": None, "school_level": "maternelle", "level_group": "NURSERY", "stream": None, "sort_order": 3},
+    {"name_fr": "CI", "name_en": None, "school_level": "primaire", "level_group": "PRIMARY", "stream": None, "sort_order": 1},
+    {"name_fr": "CP", "name_en": None, "school_level": "primaire", "level_group": "PRIMARY", "stream": None, "sort_order": 2},
+    {"name_fr": "CE1", "name_en": None, "school_level": "primaire", "level_group": "PRIMARY", "stream": None, "sort_order": 3},
+    {"name_fr": "CE2", "name_en": None, "school_level": "primaire", "level_group": "PRIMARY", "stream": None, "sort_order": 4},
+    {"name_fr": "CM1", "name_en": None, "school_level": "primaire", "level_group": "PRIMARY", "stream": None, "sort_order": 5},
+    {"name_fr": "CM2", "name_en": None, "school_level": "primaire", "level_group": "PRIMARY", "stream": None, "sort_order": 6},
+    {"name_fr": "6ème", "name_en": "JSS1", "school_level": "college", "level_group": "COLLEGE_FIRST_CYCLE", "stream": None, "sort_order": 1},
+    {"name_fr": "5ème", "name_en": "JSS2", "school_level": "college", "level_group": "COLLEGE_FIRST_CYCLE", "stream": None, "sort_order": 2},
+    {"name_fr": "4ème", "name_en": "JSS3", "school_level": "college", "level_group": "COLLEGE_FIRST_CYCLE", "stream": None, "sort_order": 3},
+    # GGFK genuinely uses JSS4 for 3ème (bulletin header "JSS4/3eme").
+    {"name_fr": "3ème", "name_en": "JSS4", "school_level": "college", "level_group": "COLLEGE_FIRST_CYCLE", "stream": None, "sort_order": 4},
+    {"name_fr": "2nde", "name_en": "SS1", "school_level": "college", "level_group": "COLLEGE_SECOND_CYCLE", "stream": None, "sort_order": 5},
+    # Streamed classes carry the full name in name_fr (subject filtering matches
+    # on it) with the stream also populated on its own column.
+    {"name_fr": "1ère C", "name_en": "SS2", "school_level": "college", "level_group": "COLLEGE_SECOND_CYCLE", "stream": "C", "sort_order": 6},
+    {"name_fr": "1ère D", "name_en": "SS2", "school_level": "college", "level_group": "COLLEGE_SECOND_CYCLE", "stream": "D", "sort_order": 7},
+    {"name_fr": "Terminale C", "name_en": "SS3", "school_level": "college", "level_group": "COLLEGE_SECOND_CYCLE", "stream": "C", "sort_order": 8},
+    {"name_fr": "Terminale D", "name_en": "SS3", "school_level": "college", "level_group": "COLLEGE_SECOND_CYCLE", "stream": "D", "sort_order": 9},
+]
+
+# Taxonomy class names grouped by subject level group, derived from
+# GGFK_CLASSES. Used to resolve which catalog subjects apply to a class:
+# Subject.applicable_classes null means "every class in the subject's
+# level_group". Mirrors the applicable_classes lists in
+# ggfk_subject_catalog.json (seed test asserts the two stay in sync).
+CLASSES_BY_LEVEL_GROUP = {}
+for _entry in GGFK_CLASSES:
+    CLASSES_BY_LEVEL_GROUP.setdefault(_entry["level_group"], []).append(_entry["name_fr"])
 
 def normalize_class_name(name):
     """Accent-, case-, and whitespace-insensitive key for class-name matching.

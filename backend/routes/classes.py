@@ -1,4 +1,4 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -7,9 +7,18 @@ from sqlalchemy.orm import Session
 
 from audit import create_audit_log
 from auth import require_admin
+from constants import GGFK_CLASSES, normalize_class_name
 from database import get_db
 from models import Class, Course, Student, User
-from schemas import ClassCreate, ClassResponse, ClassUpdate, SchoolLevel, StatusResponse
+from schemas import (
+    ClassBulkCreateRequest,
+    ClassBulkCreateResponse,
+    ClassCreate,
+    ClassResponse,
+    ClassUpdate,
+    SchoolLevel,
+    StatusResponse,
+)
 from utils import get_class_or_404
 
 
@@ -148,6 +157,63 @@ def create_class(
     db.commit()
     db.refresh(school_class)
     return to_class_response(school_class)
+
+
+@router.post("/bulk-create", response_model=ClassBulkCreateResponse)
+def bulk_create_classes(
+    payload: ClassBulkCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ClassBulkCreateResponse:
+    """Create all 18 GGFK taxonomy classes for a school year (A1.10).
+
+    Idempotent: classes already present for the year (matched accent/case-
+    insensitively, so a hand-typed "6eme" counts as 6ème) are skipped, not
+    duplicated and not errored.
+    """
+    school_year = clean_required_text(payload.school_year, "school_year")
+
+    existing_keys = {
+        normalize_class_name(name)
+        for name in db.scalars(select(Class.name_fr).where(Class.school_year == school_year)).all()
+    }
+
+    created: list[str] = []
+    skipped: list[str] = []
+    for entry in GGFK_CLASSES:
+        if normalize_class_name(entry["name_fr"]) in existing_keys:
+            skipped.append(entry["name_fr"])
+            continue
+        db.add(
+            Class(
+                name_fr=entry["name_fr"],
+                name_en=entry["name_en"],
+                school_level=entry["school_level"],
+                stream=entry["stream"],
+                sort_order=entry["sort_order"],
+                school_year=school_year,
+            )
+        )
+        created.append(entry["name_fr"])
+
+    if created:
+        db.flush()
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="classes_bulk_created",
+            entity_type="class_bulk_create",
+            entity_id=uuid4(),
+            old_value=None,
+            new_value={
+                "school_year": school_year,
+                "created": created,
+                "skipped": skipped,
+            },
+        )
+        db.commit()
+
+    return ClassBulkCreateResponse(status="ok", created=created, skipped=skipped)
 
 
 @router.get("/{class_id}", response_model=ClassResponse)

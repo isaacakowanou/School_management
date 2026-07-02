@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createClass, deleteClass, listClasses, updateClass } from '../api/classes.js'
+import { bulkCreateClasses, createClass, deleteClass, listClasses, updateClass } from '../api/classes.js'
 import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
+import { GGFK_CLASS_NAMES, normalizeClassName } from '../constants/ggfkClasses.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 
 const DEFAULT_SCHOOL_YEAR = '2026-2027'
+const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
 
 const SECTION_TITLES = {
   maternelle: 'Nursery / Maternelle',
@@ -30,6 +32,11 @@ export default function AdminClassesPage() {
   const [editing, setEditing] = useState(null)
   const [editForm, setEditForm] = useState(null)
   const [editError, setEditError] = useState(null)
+
+  const [showBulkDialog, setShowBulkDialog] = useState(false)
+  const [bulkYear, setBulkYear] = useState('')
+  const [bulkError, setBulkError] = useState(null)
+  const [bulkCreating, setBulkCreating] = useState(false)
 
   async function refresh() {
     const data = await listClasses()
@@ -165,6 +172,49 @@ export default function AdminClassesPage() {
     }
   }
 
+  // Precheck for the dialog: how many taxonomy classes are missing for the
+  // chosen year. Display-only — the server re-checks with the same
+  // normalization on submit.
+  const bulkMissingCount = useMemo(() => {
+    const existingKeys = new Set(
+      (classes || [])
+        .filter((cls) => cls.school_year === bulkYear.trim())
+        .map((cls) => normalizeClassName(cls.name_fr)),
+    )
+    return GGFK_CLASS_NAMES.filter((name) => !existingKeys.has(normalizeClassName(name))).length
+  }, [classes, bulkYear])
+
+  function openBulkDialog() {
+    setBulkYear(selectedYear || DEFAULT_SCHOOL_YEAR)
+    setBulkError(null)
+    setShowBulkDialog(true)
+  }
+
+  async function handleBulkCreate(event) {
+    event.preventDefault()
+    setBulkError(null)
+    if (!bulkYear.trim()) {
+      setBulkError('School year is required.')
+      return
+    }
+    setBulkCreating(true)
+    try {
+      const result = await bulkCreateClasses({ schoolYear: bulkYear })
+      await refresh()
+      setShowBulkDialog(false)
+      setSelectedYear(bulkYear.trim())
+      let text = `Created ${result.created.length} class(es) for ${bulkYear.trim()}.`
+      if (result.skipped.length) {
+        text += ` Skipped ${result.skipped.length} already existing.`
+      }
+      setMessage(text)
+    } catch (err) {
+      setBulkError(err.message)
+    } finally {
+      setBulkCreating(false)
+    }
+  }
+
   async function handleDelete(cls) {
     if (!window.confirm(`Delete class "${cls.name_fr}"?`)) return
     setMessage(null)
@@ -196,21 +246,26 @@ export default function AdminClassesPage() {
           <p className="muted">Create and manage classes per school year and level.</p>
         </div>
         {classes && (
-          <label className="field" style={{ marginBottom: 0 }}>
-            <span>School year</span>
-            <select
-              className="grade-input"
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              style={{ width: 'auto', textAlign: 'left' }}
-            >
-              {years.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <label className="field" style={{ marginBottom: 0 }}>
+              <span>School year</span>
+              <select
+                className="grade-input"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                style={{ width: 'auto', textAlign: 'left' }}
+              >
+                {years.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="btn btn-primary" onClick={openBulkDialog} disabled={pending}>
+              Create GGFK classes
+            </button>
+          </div>
         )}
       </div>
 
@@ -312,6 +367,78 @@ export default function AdminClassesPage() {
             </div>
           )
         })}
+
+      {showBulkDialog && (
+        <div
+          onClick={() => setShowBulkDialog(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
+          >
+            <h3 className="section-title">Create GGFK classes</h3>
+            <p className="muted">
+              Creates the 18 taxonomy classes (Pré-maternelle through Terminale D) for a school
+              year with canonical spellings. Classes that already exist for the year are skipped —
+              safe to re-run.
+            </p>
+            <form className="admin-form" onSubmit={handleBulkCreate}>
+              <label className="field">
+                <span>School year</span>
+                <input
+                  value={bulkYear}
+                  onChange={(e) => setBulkYear(e.target.value)}
+                  disabled={bulkCreating}
+                  list="bulk-school-year-options"
+                  placeholder="e.g. 2027-2028"
+                  required
+                />
+              </label>
+              <datalist id="bulk-school-year-options">
+                {SCHOOL_YEAR_SUGGESTIONS.map((year) => (
+                  <option key={year} value={year} />
+                ))}
+              </datalist>
+
+              {bulkYear.trim() && bulkMissingCount === 0 && (
+                <p className="muted">All 18 GGFK classes already exist for {bulkYear.trim()}.</p>
+              )}
+
+              <div className="grade-actions">
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={bulkCreating || !bulkYear.trim() || bulkMissingCount === 0}
+                >
+                  {bulkCreating
+                    ? 'Creating…'
+                    : `Create ${bulkMissingCount} class${bulkMissingCount === 1 ? '' : 'es'} for ${bulkYear.trim() || '…'}`}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setShowBulkDialog(false)}
+                  disabled={bulkCreating}
+                >
+                  Cancel
+                </button>
+              </div>
+              {bulkError && <ErrorBanner message={bulkError} />}
+            </form>
+          </div>
+        </div>
+      )}
 
       {editing && editForm && (
         <div

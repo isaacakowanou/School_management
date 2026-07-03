@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { getCurrentParent, updateCurrentParent } from '../api/parents.js'
 import { changePassword } from '../api/auth.js'
 import { useAuth } from '../auth/AuthContext.jsx'
@@ -80,6 +81,7 @@ export default function ParentSettingsPage() {
 
   return (
     <section className="admin-page">
+      <Link to="/" className="back-link">&larr; Back</Link>
       <div className="report-header">
         <div>
           <h2 className="page-title">Settings</h2>

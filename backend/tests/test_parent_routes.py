@@ -96,7 +96,6 @@ class CurrentParentRouteTests(unittest.TestCase):
         return {
             "name": "New Parent",
             "email": email,
-            "password": "new-parent-password",
             "phone": "555-0199",
         }
 
@@ -151,11 +150,14 @@ class CurrentParentRouteTests(unittest.TestCase):
         self.assertEqual(data["name"], "New Parent")
         self.assertEqual(data["email"], "new-parent@example.test")
         self.assertEqual(data["phone"], "555-0199")
+        self.assertIn("temp_password", data)
+        self.assertGreater(len(data["temp_password"]), 0)
 
         user = self.db.scalar(select(User).where(User.email == "new-parent@example.test"))
         self.assertIsNotNone(user)
         self.assertEqual(user.name, "New Parent")
         self.assertEqual(user.role, "parent")
+        self.assertTrue(user.must_change_password)
 
         parent = self.db.scalar(select(Parent).where(Parent.user_id == user.id))
         self.assertIsNotNone(parent)
@@ -163,9 +165,10 @@ class CurrentParentRouteTests(unittest.TestCase):
 
         login_response = self.client.post(
             "/api/v1/auth/login",
-            json={"email": "new-parent@example.test", "password": "new-parent-password"},
+            json={"email": "new-parent@example.test", "password": data["temp_password"]},
         )
         self.assertEqual(login_response.status_code, 200)
+        self.assertTrue(login_response.json()["must_change_password"])
 
     def test_create_parent_trims_fields_and_allows_empty_phone(self):
         response = self.client.post(
@@ -173,7 +176,6 @@ class CurrentParentRouteTests(unittest.TestCase):
             json={
                 "name": "  Trimmed Parent  ",
                 "email": "  trimmed-parent@example.test  ",
-                "password": "  trimmed-password  ",
                 "phone": "   ",
             },
             headers=self._auth_headers(self.admin_user.email),
@@ -211,7 +213,6 @@ class CurrentParentRouteTests(unittest.TestCase):
             json={
                 "name": " ",
                 "email": "empty-parent@example.test",
-                "password": "new-parent-password",
                 "phone": None,
             },
             headers=self._auth_headers(self.admin_user.email),

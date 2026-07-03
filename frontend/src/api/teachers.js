@@ -5,12 +5,11 @@ export function listTeachers() {
   return apiGet('/teachers')
 }
 
-// POST /api/v1/teachers (admin)
-export function createTeacher({ name, email, password, employeeNumber }) {
+// POST /api/v1/teachers (admin) -> { id, user_id, name, email, employee_number, temp_password }
+export function createTeacher({ name, email, employeeNumber }) {
   return apiPost('/teachers', {
     name: name.trim(),
     email: email.trim(),
-    password: password.trim(),
     employee_number: employeeNumber.trim(),
   })
 }

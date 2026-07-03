@@ -29,11 +29,23 @@ import AdminClassesPage from './pages/AdminClassesPage.jsx'
 import AdminSubjectsPage from './pages/AdminSubjectsPage.jsx'
 import AdminDangerZonePage from './pages/AdminDangerZonePage.jsx'
 import AdminTrashPage from './pages/AdminTrashPage.jsx'
+import ChangePasswordPage from './pages/ChangePasswordPage.jsx'
+import ParentSettingsPage from './pages/ParentSettingsPage.jsx'
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+
+      {/* Change password — any authenticated role; bypasses must_change_password guard */}
+      <Route
+        path="/change-password"
+        element={
+          <RequireRole>
+            <ChangePasswordPage />
+          </RequireRole>
+        }
+      />
 
       {/* Parent area */}
       <Route
@@ -44,6 +56,7 @@ export default function App() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/settings" element={<ParentSettingsPage />} />
         <Route path="/students/:studentId/reports" element={<StudentReportsPage />} />
         <Route path="/reports/:reportId" element={<ReportDetailPage />} />
       </Route>

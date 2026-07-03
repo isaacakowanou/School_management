@@ -35,6 +35,10 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       const me = await login(email.trim(), password)
+      if (me.must_change_password) {
+        navigate('/change-password', { replace: true })
+        return
+      }
       const dest = from && isPathForRole(from, me.role) ? from : homePathForRole(me.role)
       navigate(dest, { replace: true })
     } catch (err) {

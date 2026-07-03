@@ -6,8 +6,9 @@ import { homePathForRole } from '../utils/roles.js'
 // Guards a route subtree. Requires authentication and, when `role` is given,
 // that the signed-in user has exactly that role. Wrong-role users are sent to
 // their own area's home (so a parent can't reach admin pages and vice versa).
+// Users with must_change_password=true are always redirected to /change-password.
 export default function RequireRole({ role, children }) {
-  const { isAuthenticated, bootstrapping, role: currentRole } = useAuth()
+  const { isAuthenticated, bootstrapping, role: currentRole, user } = useAuth()
   const location = useLocation()
 
   if (bootstrapping) {
@@ -20,6 +21,10 @@ export default function RequireRole({ role, children }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />
+  }
+
+  if (user?.must_change_password && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />
   }
 
   if (role && currentRole !== role) {

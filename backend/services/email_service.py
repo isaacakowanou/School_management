@@ -225,6 +225,78 @@ def send_report_available_email(
     }
 
 
+def _build_account_created_body(name: str, email: str, temp_password: str, app_base_url: str) -> str:
+    return "\n".join(
+        [
+            f"Dear {name},",
+            "",
+            "Your account has been created for GGFK School Management.",
+            "",
+            f"Email:    {email}",
+            f"Password: {temp_password}",
+            "",
+            f"Please log in at {app_base_url.rstrip('/')} and change your password immediately.",
+            "",
+            "Best regards,",
+            "School Administration",
+        ]
+    )
+
+
+def send_account_created_email(
+    name: str,
+    to_email: str,
+    temp_password: str,
+    config: dict | None = None,
+) -> dict:
+    config = config or _get_email_config()
+    provider = config["provider"]
+    subject = "Your GGFK account has been created"
+    body = _build_account_created_body(name, to_email, temp_password, config["app_base_url"])
+    secrets = _config_secrets(config)
+    clean_to_email = (to_email or "").strip()
+
+    if not clean_to_email:
+        return {
+            "email": None,
+            "sent": False,
+            "success": False,
+            "provider": provider,
+            "provider_message_id": None,
+            "error": "Email address is missing",
+        }
+
+    try:
+        if provider == "resend":
+            provider_message_id = _send_resend_email(
+                config,
+                to_email=clean_to_email,
+                subject=subject,
+                body=body,
+            )
+        else:
+            _send_smtp_email(config, to_email=clean_to_email, subject=subject, body=body)
+            provider_message_id = None
+    except Exception as exc:
+        return {
+            "email": clean_to_email,
+            "sent": False,
+            "success": False,
+            "provider": provider,
+            "provider_message_id": None,
+            "error": _sanitize_error(exc, secrets),
+        }
+
+    return {
+        "email": clean_to_email,
+        "sent": True,
+        "success": True,
+        "provider": provider,
+        "provider_message_id": provider_message_id,
+        "error": None,
+    }
+
+
 def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> list[dict]:
     config = _get_email_config()
     report_card = db.get(ReportCard, report_card_id)

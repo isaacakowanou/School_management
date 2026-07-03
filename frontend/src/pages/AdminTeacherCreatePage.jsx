@@ -6,7 +6,6 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 const EMPTY_FORM = {
   name: '',
   email: '',
-  password: '',
   employeeNumber: '',
 }
 
@@ -15,6 +14,8 @@ export default function AdminTeacherCreatePage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [created, setCreated] = useState(null) // { name, email, tempPassword }
+  const [copied, setCopied] = useState(false)
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -24,22 +25,88 @@ export default function AdminTeacherCreatePage() {
     event.preventDefault()
     setError(null)
 
-    if (!form.name.trim() || !form.email.trim() || !form.password.trim() || !form.employeeNumber.trim()) {
-      setError('Name, email, password, and employee number are required.')
+    if (!form.name.trim() || !form.email.trim() || !form.employeeNumber.trim()) {
+      setError('Name, email, and employee number are required.')
       return
     }
 
     setSaving(true)
     try {
-      await createTeacher(form)
-      navigate('/admin/teachers', {
-        state: { message: 'Teacher created.' },
-      })
+      const data = await createTeacher(form)
+      setCreated({ name: data.name, email: data.email, tempPassword: data.temp_password })
     } catch (err) {
       setError(err.message)
     } finally {
       setSaving(false)
     }
+  }
+
+  function copyPassword() {
+    navigator.clipboard.writeText(created.tempPassword).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  if (created) {
+    return (
+      <section className="admin-page">
+        <div className="card admin-form">
+          <h2 className="page-title">Teacher account created</h2>
+          <p className="muted" style={{ marginBottom: '1rem' }}>
+            {created.name} &lt;{created.email}&gt; has been added. A temporary password was generated below.
+            Share it with the teacher — <strong>it will not be shown again</strong>.
+          </p>
+
+          <div
+            className="field"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}
+          >
+            <code
+              style={{
+                flex: 1,
+                padding: '0.5rem 0.75rem',
+                background: 'var(--color-surface-alt, #f5f5f5)',
+                borderRadius: '6px',
+                fontSize: '1rem',
+                letterSpacing: '0.05em',
+                wordBreak: 'break-all',
+              }}
+            >
+              {created.tempPassword}
+            </code>
+            <button type="button" className="btn btn-ghost" onClick={copyPassword}>
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+
+          <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+            The teacher will be required to change this password on first login.
+          </p>
+
+          <div className="grade-actions" style={{ marginTop: '1.5rem' }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                setCreated(null)
+                setCopied(false)
+                setForm(EMPTY_FORM)
+              }}
+            >
+              Add another teacher
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => navigate('/admin/teachers')}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </section>
+    )
   }
 
   return (
@@ -51,7 +118,7 @@ export default function AdminTeacherCreatePage() {
       <div className="report-header">
         <div>
           <h2 className="page-title">Add teacher</h2>
-          <p className="muted">Create a teacher account for course access.</p>
+          <p className="muted">A temporary password will be generated and emailed to the teacher.</p>
         </div>
       </div>
 
@@ -74,17 +141,6 @@ export default function AdminTeacherCreatePage() {
             type="email"
             value={form.email}
             onChange={(event) => updateField('email', event.target.value)}
-            disabled={saving}
-            required
-          />
-        </label>
-
-        <label className="field">
-          <span>Password</span>
-          <input
-            type="password"
-            value={form.password}
-            onChange={(event) => updateField('password', event.target.value)}
             disabled={saving}
             required
           />

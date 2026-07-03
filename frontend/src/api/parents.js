@@ -5,6 +5,14 @@ export function getCurrentParent() {
   return apiGet('/parents/me')
 }
 
+// PUT /api/v1/parents/me -> { id, user_id, name, email, phone }
+export function updateCurrentParent({ name, phone }) {
+  const body = {}
+  if (name !== undefined) body.name = name.trim()
+  if (phone !== undefined) body.phone = (phone || '').trim() || null
+  return apiPut('/parents/me', body)
+}
+
 // GET /api/v1/parents/{parent_id}/students -> [{ id, first_name, last_name, grade_level, student_number }]
 export function getParentStudents(parentId) {
   return apiGet(`/parents/${parentId}/students`)
@@ -15,13 +23,12 @@ export function listParents() {
   return apiGet('/parents')
 }
 
-// POST /api/v1/parents (admin)
-export function createParent({ name, email, password, phone }) {
+// POST /api/v1/parents (admin) -> { id, user_id, name, email, phone, temp_password }
+export function createParent({ name, email, phone }) {
   const trimmedPhone = (phone || '').trim()
   return apiPost('/parents', {
     name: name.trim(),
     email: email.trim(),
-    password: password.trim(),
     phone: trimmedPhone || null,
   })
 }

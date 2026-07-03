@@ -3,7 +3,13 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+
+def _validate_password_strength(value: str) -> str:
+    if len(value) < 8:
+        raise ValueError("Password must be at least 8 characters")
+    return value
 
 
 class SchoolLevel(str, Enum):
@@ -53,6 +59,11 @@ class UserCreate(BaseModel):
     password: str
     role: str
 
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _validate_password_strength(v)
+
 
 class UserUpdate(BaseModel):
     name: str | None = None
@@ -61,11 +72,21 @@ class UserUpdate(BaseModel):
     role: str | None = None
 
 
+class ChangePasswordRequest(BaseModel):
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _validate_password_strength(v)
+
+
 class UserResponse(BaseModel):
     id: UUID
     name: str
     email: str
     role: str
+    must_change_password: bool = False
 
 
 class StatusResponse(BaseModel):
@@ -261,13 +282,17 @@ class LinkedParentResponse(BaseModel):
 class ParentCreate(BaseModel):
     name: str
     email: str
-    password: str
     phone: str | None = None
 
 
 class ParentUpdate(BaseModel):
     name: str | None = None
     email: str | None = None
+    phone: str | None = None
+
+
+class ParentSelfUpdate(BaseModel):
+    name: str | None = None
     phone: str | None = None
 
 
@@ -279,10 +304,13 @@ class ParentResponse(BaseModel):
     phone: str | None = None
 
 
+class ParentCreateResponse(ParentResponse):
+    temp_password: str
+
+
 class TeacherCreate(BaseModel):
     name: str
     email: str
-    password: str
     employee_number: str
 
 
@@ -298,6 +326,10 @@ class TeacherResponse(BaseModel):
     name: str
     email: str
     employee_number: str
+
+
+class TeacherCreateResponse(TeacherResponse):
+    temp_password: str
 
 
 class CourseResponse(BaseModel):

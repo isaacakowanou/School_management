@@ -2,7 +2,7 @@ import { Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 
 export default function Layout() {
-  const { user, logout, homePath } = useAuth()
+  const { user, role, logout, homePath } = useAuth()
 
   return (
     <div className="app">
@@ -12,6 +12,11 @@ export default function Layout() {
         </Link>
         <div className="topbar-right">
           {user && <span className="parent-name">{user.name}</span>}
+          {role === 'parent' && (
+            <Link to="/settings" className="btn btn-ghost">
+              Settings
+            </Link>
+          )}
           <button type="button" className="btn btn-ghost" onClick={logout}>
             Log out
           </button>

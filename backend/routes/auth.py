@@ -6,10 +6,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from auth import create_access_token, get_current_user, verify_password
+from auth import create_access_token, get_current_user, hash_password, verify_password
 from database import get_db
+from limiter import limiter
 from models import User
-from schemas import UserResponse
+from schemas import ChangePasswordRequest, UserResponse
 
 
 router = APIRouter(tags=["auth"])
@@ -20,6 +21,7 @@ class LoginResponse(BaseModel):
     token_type: str
     role: str
     user_id: UUID
+    must_change_password: bool
 
 
 async def read_login_credentials(request: Request) -> tuple[str, str]:
@@ -63,6 +65,7 @@ async def read_login_credentials(request: Request) -> tuple[str, str]:
 
 
 @router.post("/login", response_model=LoginResponse)
+@limiter.limit("5/minute")
 async def login(request: Request, db: Session = Depends(get_db)) -> LoginResponse:
     email, password = await read_login_credentials(request)
 
@@ -80,6 +83,7 @@ async def login(request: Request, db: Session = Depends(get_db)) -> LoginRespons
         token_type="bearer",
         role=user.role,
         user_id=user.id,
+        must_change_password=user.must_change_password,
     )
 
 
@@ -90,9 +94,22 @@ def me(current_user: User = Depends(get_current_user)) -> UserResponse:
         name=current_user.name,
         email=current_user.email,
         role=current_user.role,
+        must_change_password=current_user.must_change_password,
     )
 
 
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    current_user.password_hash = hash_password(payload.new_password)
+    current_user.must_change_password = False
+    db.commit()
+    return {"status": "ok", "message": "Password changed successfully"}
+
+
 @router.post("/logout")
-def logout() -> dict[str, str]:
+def logout(_: User = Depends(get_current_user)) -> dict[str, str]:
     return {"status": "ok", "message": "Logged out"}

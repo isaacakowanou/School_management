@@ -1,6 +1,9 @@
 import config  # noqa: F401
 from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from limiter import limiter
 from routes.audit_logs import router as audit_logs_router
 from routes.ai import router as ai_router
 from routes.auth import router as auth_router
@@ -23,6 +26,8 @@ app = FastAPI(
     title="School AI Grade & Report-Card Management System",
     version="0.1.0",
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(auth_router, prefix="/api/v1/auth")
 app.include_router(audit_logs_router, prefix="/api/v1")

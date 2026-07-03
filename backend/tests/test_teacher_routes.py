@@ -91,7 +91,6 @@ class TeacherRouteTests(unittest.TestCase):
         return {
             "name": "New Teacher",
             "email": email,
-            "password": "new-teacher-password",
             "employee_number": employee_number,
         }
 
@@ -107,31 +106,37 @@ class TeacherRouteTests(unittest.TestCase):
         self.assertEqual(data["name"], "New Teacher")
         self.assertEqual(data["email"], "new-teacher@example.test")
         self.assertEqual(data["employee_number"], "TCH-NEW-001")
+        self.assertIn("temp_password", data)
+        self.assertGreater(len(data["temp_password"]), 0)
 
         user = self.db.scalar(select(User).where(User.email == "new-teacher@example.test"))
         self.assertIsNotNone(user)
         self.assertEqual(user.name, "New Teacher")
         self.assertEqual(user.role, "teacher")
+        self.assertTrue(user.must_change_password)
 
         teacher = self.db.scalar(select(Teacher).where(Teacher.user_id == user.id))
         self.assertIsNotNone(teacher)
         self.assertEqual(str(teacher.id), data["id"])
 
-    def test_created_teacher_can_log_in_with_raw_password(self):
+    def test_created_teacher_can_log_in_with_temp_password(self):
         response = self.client.post(
             "/api/v1/teachers",
             json=self._teacher_payload(email="login-teacher@example.test", employee_number="TCH-LOGIN"),
             headers=self._headers(self.admin_user.email),
         )
         self.assertEqual(response.status_code, 201)
+        temp_password = response.json()["temp_password"]
 
         login_response = self.client.post(
             "/api/v1/auth/login",
-            json={"email": "login-teacher@example.test", "password": "new-teacher-password"},
+            json={"email": "login-teacher@example.test", "password": temp_password},
         )
 
         self.assertEqual(login_response.status_code, 200)
-        self.assertIn("access_token", login_response.json())
+        login_data = login_response.json()
+        self.assertIn("access_token", login_data)
+        self.assertTrue(login_data["must_change_password"])
 
     def test_create_teacher_trims_required_fields(self):
         response = self.client.post(
@@ -139,7 +144,6 @@ class TeacherRouteTests(unittest.TestCase):
             json={
                 "name": "  Trimmed Teacher  ",
                 "email": "  trimmed-teacher@example.test  ",
-                "password": "  trimmed-password  ",
                 "employee_number": "  TCH-TRIM  ",
             },
             headers=self._headers(self.admin_user.email),
@@ -190,7 +194,6 @@ class TeacherRouteTests(unittest.TestCase):
             json={
                 "name": " ",
                 "email": "empty-teacher@example.test",
-                "password": "new-teacher-password",
                 "employee_number": "TCH-EMPTY",
             },
             headers=self._headers(self.admin_user.email),

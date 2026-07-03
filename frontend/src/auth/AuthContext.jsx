@@ -10,7 +10,7 @@ const AuthContext = createContext(null)
 const ALLOWED_ROLES = ['parent', 'admin', 'teacher']
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null) // { id, name, email, role }
+  const [user, setUser] = useState(null) // { id, name, email, role, must_change_password }
   const [parent, setParent] = useState(null) // Parent row; parents only
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   // While true, we don't yet know if the stored token is valid.
@@ -104,6 +104,12 @@ export function AuthProvider({ children }) {
     [loadSession],
   )
 
+  const refreshUser = useCallback(async () => {
+    const me = await authApi.getMe()
+    setUser(me)
+    return me
+  }, [])
+
   const role = user?.role ?? null
   const value = {
     user,
@@ -115,6 +121,7 @@ export function AuthProvider({ children }) {
     bootstrapping,
     login,
     logout,
+    refreshUser,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

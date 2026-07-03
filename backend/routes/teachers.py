@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -9,7 +10,8 @@ from audit import create_audit_log
 from auth import get_current_user, hash_password, require_admin
 from database import get_db
 from models import Course, Grade, Teacher, User
-from schemas import CourseResponse, StatusResponse, TeacherCreate, TeacherResponse, TeacherUpdate
+from schemas import CourseResponse, StatusResponse, TeacherCreate, TeacherCreateResponse, TeacherResponse, TeacherUpdate
+from services.email_service import send_account_created_email
 from utils import to_course_response
 
 
@@ -64,15 +66,14 @@ def list_teachers(
     return [to_teacher_response(teacher) for teacher in teachers]
 
 
-@router.post("", response_model=TeacherResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TeacherCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_teacher(
     payload: TeacherCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-) -> TeacherResponse:
+) -> TeacherCreateResponse:
     name = clean_required_text(payload.name, "name")
     email = clean_required_text(payload.email, "email")
-    password = clean_required_text(payload.password, "password")
     employee_number = clean_required_text(payload.employee_number, "employee_number")
 
     existing_user = db.scalar(select(User).where(User.email == email))
@@ -84,11 +85,13 @@ def create_teacher(
     if existing_employee_number is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee number already exists")
 
+    temp_password = secrets.token_urlsafe(9)
     user = User(
         name=name,
         email=email,
-        password_hash=hash_password(password),
+        password_hash=hash_password(temp_password),
         role="teacher",
+        must_change_password=True,
     )
     teacher = Teacher(user=user, employee_number=employee_number)
     db.add_all([user, teacher])
@@ -109,7 +112,20 @@ def create_teacher(
     )
     db.commit()
     db.refresh(teacher)
-    return to_teacher_response(teacher)
+
+    try:
+        send_account_created_email(name=name, to_email=email, temp_password=temp_password)
+    except Exception:
+        pass
+
+    return TeacherCreateResponse(
+        id=teacher.id,
+        user_id=teacher.user_id,
+        name=user.name,
+        email=user.email,
+        employee_number=teacher.employee_number,
+        temp_password=temp_password,
+    )
 
 
 @router.get("/{teacher_id}", response_model=TeacherResponse)

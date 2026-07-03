@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -9,7 +10,8 @@ from audit import create_audit_log
 from auth import get_current_user, hash_password, require_admin, require_parent
 from database import get_db
 from models import Parent, Student, StudentParent, User
-from schemas import ParentCreate, ParentResponse, ParentUpdate, StatusResponse, StudentResponse
+from schemas import ParentCreate, ParentCreateResponse, ParentResponse, ParentSelfUpdate, ParentUpdate, StatusResponse, StudentResponse
+from services.email_service import send_account_created_email
 from utils import to_student_response
 
 
@@ -64,15 +66,14 @@ def list_parents(
     return [to_parent_response(parent) for parent in parents]
 
 
-@router.post("", response_model=ParentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ParentCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_parent(
     payload: ParentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-) -> ParentResponse:
+) -> ParentCreateResponse:
     name = clean_required_text(payload.name, "name")
     email = clean_required_text(payload.email, "email")
-    password = clean_required_text(payload.password, "password")
     phone = payload.phone.strip() if payload.phone is not None else None
     if phone == "":
         phone = None
@@ -81,11 +82,13 @@ def create_parent(
     if existing_user is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
+    temp_password = secrets.token_urlsafe(9)
     user = User(
         name=name,
         email=email,
-        password_hash=hash_password(password),
+        password_hash=hash_password(temp_password),
         role="parent",
+        must_change_password=True,
     )
     parent = Parent(user=user, phone=phone)
     db.add_all([user, parent])
@@ -106,7 +109,20 @@ def create_parent(
     )
     db.commit()
     db.refresh(parent)
-    return to_parent_response(parent)
+
+    try:
+        send_account_created_email(name=name, to_email=email, temp_password=temp_password)
+    except Exception:
+        pass
+
+    return ParentCreateResponse(
+        id=parent.id,
+        user_id=parent.user_id,
+        name=user.name,
+        email=user.email,
+        phone=parent.phone,
+        temp_password=temp_password,
+    )
 
 
 @router.get("/me", response_model=ParentResponse)
@@ -117,6 +133,28 @@ def get_current_parent_profile(
     parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id, Parent.deleted_at.is_(None)))
     if parent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
+    return to_parent_response(parent)
+
+
+@router.put("/me", response_model=ParentResponse)
+def update_current_parent_profile(
+    payload: ParentSelfUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_parent),
+) -> ParentResponse:
+    parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id, Parent.deleted_at.is_(None)))
+    if parent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
+
+    updated_fields = payload.model_fields_set
+    if payload.name is not None:
+        parent.user.name = clean_required_text(payload.name, "name")
+    if "phone" in updated_fields:
+        phone = payload.phone.strip() if payload.phone is not None else ""
+        parent.phone = phone or None
+
+    db.commit()
+    db.refresh(parent)
     return to_parent_response(parent)
 
 

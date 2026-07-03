@@ -34,7 +34,7 @@ def store_report_warnings(db: Session, report_card_id: UUID, warnings: list[dict
 
 def get_student_or_404(db: Session, student_id: UUID) -> Student:
     student = db.get(Student, student_id)
-    if student is None:
+    if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
     return student
 
@@ -47,9 +47,11 @@ def teacher_can_check_student(db: Session, current_user: User, student_id: UUID)
     enrollment = db.scalar(
         select(Enrollment)
         .join(Course, Enrollment.course_id == Course.id)
+        .join(Student, Enrollment.student_id == Student.id)
         .where(
             Enrollment.student_id == student_id,
             Course.teacher_id == teacher.id,
+            Student.deleted_at.is_(None),
         )
     )
     return enrollment is not None

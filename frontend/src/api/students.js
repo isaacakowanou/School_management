@@ -5,6 +5,11 @@ export function listStudents() {
   return apiGet('/students')
 }
 
+// GET /api/v1/students/trash (admin) -> soft-deleted students
+export function listDeletedStudents() {
+  return apiGet('/students/trash')
+}
+
 // POST /api/v1/students (admin)
 export function createStudent({ firstName, lastName, studentNumber, gradeLevel, schoolLevel, classId }) {
   return apiPost('/students', {
@@ -20,6 +25,16 @@ export function createStudent({ firstName, lastName, studentNumber, gradeLevel, 
 // GET /api/v1/students/{student_id}
 export function getStudent(studentId) {
   return apiGet(`/students/${studentId}`)
+}
+
+// DELETE /api/v1/students/{student_id} (admin) -> moves student to Trash
+export function deleteStudent(studentId) {
+  return apiDelete(`/students/${studentId}`)
+}
+
+// POST /api/v1/students/{student_id}/restore (admin)
+export function restoreStudent(studentId) {
+  return apiPost(`/students/${studentId}/restore`)
 }
 
 // PUT /api/v1/students/{student_id} (admin)

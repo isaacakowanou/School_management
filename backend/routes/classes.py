@@ -59,7 +59,10 @@ def _counts_for_classes(db: Session, class_ids: list[UUID]) -> tuple[dict, dict]
         return {}, {}
     student_rows = db.execute(
         select(Student.class_id, func.count(Student.id))
-        .where(Student.class_id.in_(class_ids))
+        .where(
+            Student.class_id.in_(class_ids),
+            Student.deleted_at.is_(None),
+        )
         .group_by(Student.class_id)
     ).all()
     course_rows = db.execute(
@@ -228,7 +231,12 @@ def _compute_class_enrollment_plan(db: Session, school_class: Class) -> dict:
     path can insert only the missing ones.
     """
     student_ids = list(
-        db.scalars(select(Student.id).where(Student.class_id == school_class.id)).all()
+        db.scalars(
+            select(Student.id).where(
+                Student.class_id == school_class.id,
+                Student.deleted_at.is_(None),
+            )
+        ).all()
     )
     course_ids = list(
         db.scalars(

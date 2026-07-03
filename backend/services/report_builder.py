@@ -40,7 +40,7 @@ class ReportCardStaleness:
 
 def build_report_card_data(db: Session, student_id: UUID, term: str, school_year: str) -> dict:
     student = db.get(Student, student_id)
-    if student is None:
+    if student is None or student.deleted_at is not None:
         raise ValueError("Student not found")
 
     course_results = db.scalars(

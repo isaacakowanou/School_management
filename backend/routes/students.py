@@ -1,8 +1,8 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from audit import create_audit_log
@@ -10,6 +10,7 @@ from auth import get_current_user, require_admin
 from database import get_db
 from models import Course, Enrollment, Parent, Student, StudentParent, Teacher, User
 from schemas import (
+    DeletedStudentResponse,
     LinkedParentResponse,
     StatusResponse,
     StudentCreate,
@@ -36,6 +37,13 @@ def to_linked_parent_response(link: StudentParent) -> LinkedParentResponse:
 
 def get_student_or_404(db: Session, student_id: UUID) -> Student:
     student = db.get(Student, student_id)
+    if student is None or student.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+    return student
+
+
+def get_any_student_or_404(db: Session, student_id: UUID) -> Student:
+    student = db.get(Student, student_id)
     if student is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
     return student
@@ -53,9 +61,11 @@ def teacher_can_read_student(db: Session, current_user: User, student_id: UUID) 
         select(Enrollment)
         .join(Course, Enrollment.course_id == Course.id)
         .join(Teacher, Course.teacher_id == Teacher.id)
+        .join(Student, Enrollment.student_id == Student.id)
         .where(
             Enrollment.student_id == student_id,
             Teacher.user_id == current_user.id,
+            Student.deleted_at.is_(None),
         )
     )
     return enrollment is not None
@@ -76,8 +86,34 @@ def list_students(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[StudentResponse]:
-    students = db.scalars(select(Student).order_by(Student.last_name, Student.first_name)).all()
+    students = db.scalars(
+        select(Student)
+        .where(Student.deleted_at.is_(None))
+        .order_by(Student.last_name, Student.first_name)
+    ).all()
     return [to_student_response(student) for student in students]
+
+
+@router.get("/trash", response_model=list[DeletedStudentResponse])
+def list_deleted_students(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> list[DeletedStudentResponse]:
+    students = db.scalars(
+        select(Student)
+        .options(joinedload(Student.school_class))
+        .where(Student.deleted_at.is_not(None))
+        .order_by(Student.deleted_at.desc(), Student.last_name, Student.first_name)
+    ).all()
+    return [
+        DeletedStudentResponse(
+            **to_student_response(student).model_dump(),
+            class_name=student.school_class.name_fr if student.school_class else None,
+            deleted_at=student.deleted_at,
+        )
+        for student in students
+        if student.deleted_at is not None
+    ]
 
 
 @router.post("", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)
@@ -217,20 +253,57 @@ def update_student(
 def delete_student(
     student_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     student = get_student_or_404(db, student_id)
-    db.delete(student)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Student cannot be deleted because related records still exist",
-        ) from exc
+    deleted_at = datetime.now(timezone.utc)
+    old_value = {
+        "first_name": student.first_name,
+        "last_name": student.last_name,
+        "grade_level": student.grade_level,
+        "school_level": student.school_level,
+        "student_number": student.student_number,
+        "class_id": student.class_id,
+        "deleted_at": student.deleted_at,
+    }
+    student.deleted_at = deleted_at
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="student_deleted",
+        entity_type="student",
+        entity_id=student.id,
+        old_value=old_value,
+        new_value={**old_value, "deleted_at": deleted_at},
+    )
+    db.commit()
 
-    return StatusResponse(status="ok", message="Student deleted")
+    return StatusResponse(status="ok", message="Student moved to Trash")
+
+
+@router.post("/{student_id}/restore", response_model=StatusResponse)
+def restore_student(
+    student_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> StatusResponse:
+    student = get_any_student_or_404(db, student_id)
+    if student.deleted_at is None:
+        return StatusResponse(status="ok", message="Student is already active")
+
+    old_value = {"deleted_at": student.deleted_at}
+    student.deleted_at = None
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="student_restored",
+        entity_type="student",
+        entity_id=student.id,
+        old_value=old_value,
+        new_value={"deleted_at": None},
+    )
+    db.commit()
+    return StatusResponse(status="ok", message="Student restored")
 
 
 @router.get("/{student_id}/parents", response_model=list[LinkedParentResponse])

@@ -35,7 +35,7 @@ def get_course_or_404(db: Session, course_id: UUID) -> Course:
 
 def get_student_or_404(db: Session, student_id: UUID) -> Student:
     student = db.get(Student, student_id)
-    if student is None:
+    if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
     return student
 
@@ -106,8 +106,12 @@ def list_course_grades(
     grades = db.scalars(
         select(Grade)
         .join(Grade.grade_item)
+        .join(Grade.student)
         .options(contains_eager(Grade.grade_item))
-        .where(GradeItem.course_id == course_id)
+        .where(
+            GradeItem.course_id == course_id,
+            Student.deleted_at.is_(None),
+        )
         .order_by(Grade.created_at)
     ).all()
     return [to_grade_response(grade) for grade in grades]
@@ -170,6 +174,8 @@ def update_grade(
     current_user: User = Depends(get_current_user),
 ) -> GradeResponse:
     grade = get_grade_or_404(db, grade_id)
+    if grade.student.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade not found")
     grade_item = grade.grade_item
     get_writable_teacher_for_course(db, current_user, grade_item.course)
 
@@ -197,6 +203,8 @@ def delete_grade(
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     grade = get_grade_or_404(db, grade_id)
+    if grade.student.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade not found")
     create_audit_log(
         db=db,
         actor_user_id=current_user.id,

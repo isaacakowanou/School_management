@@ -13,6 +13,7 @@ import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import AdminReportsPage from './pages/AdminReportsPage.jsx'
 import AdminReportDetailPage from './pages/AdminReportDetailPage.jsx'
 import AdminStudentsPage from './pages/AdminStudentsPage.jsx'
+import AdminStudentTrashPage from './pages/AdminStudentTrashPage.jsx'
 import AdminParentsPage from './pages/AdminParentsPage.jsx'
 import AdminTeachersPage from './pages/AdminTeachersPage.jsx'
 import AdminCoursesPage from './pages/AdminCoursesPage.jsx'
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/admin/reports/:reportId" element={<AdminReportDetailPage />} />
         <Route path="/admin/students" element={<AdminStudentsPage />} />
         <Route path="/admin/students/new" element={<AdminStudentCreatePage />} />
+        <Route path="/admin/students/trash" element={<AdminStudentTrashPage />} />
         <Route path="/admin/students/:studentId" element={<AdminStudentDetailPage />} />
         <Route path="/admin/teachers" element={<AdminTeachersPage />} />
         <Route path="/admin/teachers/new" element={<AdminTeacherCreatePage />} />

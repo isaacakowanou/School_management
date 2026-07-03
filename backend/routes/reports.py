@@ -18,6 +18,7 @@ from models import (
     ReportCardCourse,
     ReportConductItem,
     ReportWorkHabitItem,
+    Student,
     StudentParent,
     User,
 )
@@ -203,9 +204,12 @@ def parent_can_access_student(db: Session, current_user: User, student_id: UUID)
         return False
 
     student_link = db.scalar(
-        select(StudentParent).where(
+        select(StudentParent)
+        .join(Student, StudentParent.student_id == Student.id)
+        .where(
             StudentParent.parent_id == parent.id,
             StudentParent.student_id == student_id,
+            Student.deleted_at.is_(None),
         )
     )
     return student_link is not None
@@ -214,17 +218,25 @@ def parent_can_access_student(db: Session, current_user: User, student_id: UUID)
 def parent_can_access_report(db: Session, current_user: User, report_card: ReportCard) -> bool:
     return (
         report_card.status in PARENT_VISIBLE_STATUSES
+        and report_card.student.deleted_at is None
         and parent_can_access_student(db, current_user, report_card.student_id)
     )
 
 
 def ensure_can_view_report(db: Session, current_user: User, report_card: ReportCard) -> None:
     if current_user.role == "admin":
+        if report_card.student.deleted_at is not None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
         return
     if current_user.role == "parent" and parent_can_access_report(db, current_user, report_card):
         return
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
+def ensure_report_student_active(report_card: ReportCard) -> None:
+    if report_card.student.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
 
 
 def ensure_report_is_draft(report_card: ReportCard) -> None:
@@ -353,7 +365,9 @@ def list_reports(
 ) -> list[AdminReportListItem]:
     report_cards = db.scalars(
         select(ReportCard)
+        .join(ReportCard.student)
         .options(joinedload(ReportCard.student))
+        .where(Student.deleted_at.is_(None))
     ).all()
     latest_by_key = _latest_course_result_times_by_report_key(db)
     needs_review_by_report_id = {
@@ -392,6 +406,7 @@ def get_admin_report(
     _: User = Depends(require_admin),
 ) -> AdminReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
+    ensure_report_student_active(report_card)
     return to_admin_report_card_response(report_card)
 
 
@@ -404,8 +419,12 @@ def list_student_reports(
     if current_user.role == "admin":
         report_cards = db.scalars(
             select(ReportCard)
+            .join(ReportCard.student)
             .options(selectinload(ReportCard.courses))
-            .where(ReportCard.student_id == student_id)
+            .where(
+                ReportCard.student_id == student_id,
+                Student.deleted_at.is_(None),
+            )
             .order_by(ReportCard.created_at.desc())
         ).all()
         return [to_report_card_response(report_card) for report_card in report_cards]
@@ -413,10 +432,12 @@ def list_student_reports(
     if current_user.role == "parent" and parent_can_access_student(db, current_user, student_id):
         report_cards = db.scalars(
             select(ReportCard)
+            .join(ReportCard.student)
             .options(selectinload(ReportCard.courses))
             .where(
                 ReportCard.student_id == student_id,
                 ReportCard.status.in_(PARENT_VISIBLE_STATUSES),
+                Student.deleted_at.is_(None),
             )
             .order_by(ReportCard.created_at.desc())
         ).all()
@@ -433,6 +454,7 @@ def review_report_card(
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
+    ensure_report_student_active(report_card)
     ensure_report_is_draft(report_card)
     old_summary, new_summary = update_report_summary(report_card, payload)
     log_summary_edit_if_needed(db, current_user.id, report_card, payload, old_summary, new_summary)
@@ -450,6 +472,7 @@ def update_report_summary_route(
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
+    ensure_report_student_active(report_card)
     old_summary, new_summary = update_report_summary(report_card, payload)
     log_summary_edit_if_needed(db, current_user.id, report_card, payload, old_summary, new_summary)
 
@@ -465,6 +488,7 @@ def approve_report_card(
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
+    ensure_report_student_active(report_card)
     ensure_report_is_draft(report_card)
 
     approved_at = datetime.now(timezone.utc)
@@ -497,6 +521,7 @@ def send_report_card(
     current_user: User = Depends(require_admin),
 ) -> ReportSendResponse:
     report_card = get_report_card_or_404(db, report_id)
+    ensure_report_student_active(report_card)
     ensure_report_can_be_sent(report_card)
     was_already_sent = report_card.status == "sent"
     old_status = report_card.status
@@ -571,6 +596,7 @@ def get_report_staleness(
     _: User = Depends(require_admin),
 ) -> ReportCardStalenessResponse:
     report_card = get_report_card_or_404(db, report_id)
+    ensure_report_student_active(report_card)
     staleness = get_report_card_staleness(db, report_card)
     return ReportCardStalenessResponse(
         is_stale=staleness.is_stale,
@@ -589,6 +615,7 @@ def regenerate_report_card(
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
+    ensure_report_student_active(report_card)
     try:
         report_data = build_report_card_data(
             db,
@@ -704,6 +731,7 @@ def update_report_details(
     on any status (draft/approved/sent).
     """
     report_card = get_report_card_or_404(db, report_id)
+    ensure_report_student_active(report_card)
     old_value = _report_details_snapshot(report_card)
 
     # Comments: nullable Text. An explicit value (including null) sets or clears;

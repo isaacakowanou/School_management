@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, contains_eager, joinedload
 from audit import create_audit_log
 from auth import get_current_user, hash_password, require_admin, require_parent
 from database import get_db
-from models import Parent, StudentParent, User
+from models import Parent, Student, StudentParent, User
 from schemas import ParentCreate, ParentResponse, ParentUpdate, StudentResponse
 from utils import to_student_response
 
@@ -194,7 +194,11 @@ def list_parent_students(
 
     links = db.scalars(
         select(StudentParent)
+        .join(StudentParent.student)
         .options(joinedload(StudentParent.student))
-        .where(StudentParent.parent_id == parent_id)
+        .where(
+            StudentParent.parent_id == parent_id,
+            Student.deleted_at.is_(None),
+        )
     ).all()
     return [to_student_response(link.student) for link in links]

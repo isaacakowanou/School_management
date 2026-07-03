@@ -197,6 +197,11 @@ class StudentResponse(BaseModel):
     class_id: UUID | None = None
 
 
+class DeletedStudentResponse(StudentResponse):
+    class_name: str | None = None
+    deleted_at: datetime
+
+
 class StudentParentLinkCreate(BaseModel):
     parent_id: UUID
     relationship: str | None = None

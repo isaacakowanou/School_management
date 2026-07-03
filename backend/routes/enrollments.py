@@ -32,7 +32,7 @@ def get_course_or_404(db: Session, course_id: UUID) -> Course:
 
 def get_student_or_404(db: Session, student_id: UUID) -> Student:
     student = db.get(Student, student_id)
-    if student is None:
+    if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
     return student
 
@@ -93,7 +93,10 @@ def list_course_students(
     students = db.scalars(
         select(Student)
         .join(Enrollment, Enrollment.student_id == Student.id)
-        .where(Enrollment.course_id == course_id)
+        .where(
+            Enrollment.course_id == course_id,
+            Student.deleted_at.is_(None),
+        )
         .order_by(Student.last_name, Student.first_name)
     ).all()
     return [to_student_response(student) for student in students]

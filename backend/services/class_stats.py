@@ -40,6 +40,7 @@ def compute_class_stats(db: Session, student: Student, term: str, school_year: s
         .join(Student, ReportCard.student_id == Student.id)
         .where(
             Student.class_id == student.class_id,
+            Student.deleted_at.is_(None),
             ReportCard.term == term,
             ReportCard.school_year == school_year,
         )

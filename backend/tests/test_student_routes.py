@@ -9,7 +9,21 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Parent, Student, StudentParent, User
+from models import (
+    AuditLog,
+    Base,
+    Course,
+    CourseResult,
+    Enrollment,
+    Grade,
+    GradeItem,
+    Parent,
+    ReportCard,
+    Student,
+    StudentParent,
+    Teacher,
+    User,
+)
 
 
 class StudentRouteTests(unittest.TestCase):
@@ -428,6 +442,230 @@ class StudentRouteTests(unittest.TestCase):
         self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
         self.assertEqual(audit_log.old_value["first_name"], "Link")
         self.assertEqual(audit_log.new_value["first_name"], "Updated")
+
+    def _create_student_academic_history(self, student_number: str = "SOFT-DELETE-STU-001"):
+        teacher = Teacher(user=self.teacher_user, employee_number=f"T-{student_number}")
+        student = Student(
+            first_name="Soft",
+            last_name="Deleted",
+            student_number=student_number,
+            grade_level="12",
+        )
+        self.db.add_all([teacher, student])
+        self.db.flush()
+        course = Course(
+            name=f"History {student_number}",
+            code=f"COURSE-{student_number}",
+            teacher=teacher,
+            grade_level="12",
+            term="1er Trimestre",
+            school_year="2026-2027",
+        )
+        self.db.add(course)
+        self.db.flush()
+        enrollment = Enrollment(student=student, course=course)
+        grade_item = GradeItem(
+            course=course,
+            title="Exam",
+            category="exam",
+            max_score=20,
+            weight=1,
+            term="1er Trimestre",
+        )
+        report_card = ReportCard(
+            student=student,
+            term="1er Trimestre",
+            school_year="2026-2027",
+            overall_average=18,
+            scale="20",
+            status="approved",
+        )
+        course_result = CourseResult(
+            student=student,
+            course=course,
+            term="1er Trimestre",
+            average=18,
+            letter_grade="A",
+            scale="20",
+        )
+        self.db.add_all([enrollment, grade_item, report_card, course_result])
+        self.db.flush()
+        grade = Grade(
+            student=student,
+            grade_item=grade_item,
+            score=18,
+            submitted_by_teacher=teacher,
+        )
+        link = StudentParent(student=student, parent=self.parent, relationship="Guardian")
+        self.db.add_all([grade, link])
+        self.db.commit()
+        return {
+            "student": student,
+            "teacher": teacher,
+            "course": course,
+            "enrollment": enrollment,
+            "grade_item": grade_item,
+            "grade": grade,
+            "course_result": course_result,
+            "report_card": report_card,
+            "link": link,
+        }
+
+    def test_admin_soft_deletes_student_and_preserves_academic_history(self):
+        records = self._create_student_academic_history()
+        student_id = records["student"].id
+
+        response = self.client.delete(
+            f"/api/v1/students/{student_id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["message"], "Student moved to Trash")
+        self.db.expire_all()
+        student = self.db.get(Student, student_id)
+        self.assertIsNotNone(student)
+        self.assertIsNotNone(student.deleted_at)
+        self.assertIsNotNone(self.db.get(Enrollment, records["enrollment"].id))
+        self.assertIsNotNone(self.db.get(Grade, records["grade"].id))
+        self.assertIsNotNone(self.db.get(CourseResult, records["course_result"].id))
+        self.assertIsNotNone(self.db.get(ReportCard, records["report_card"].id))
+        self.assertIsNotNone(self.db.get(StudentParent, records["link"].id))
+
+    def test_deleted_student_is_hidden_from_normal_list_and_detail(self):
+        student = self._create_student("SOFT-HIDDEN-STU-001")
+        delete_response = self.client.delete(
+            f"/api/v1/students/{student.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(delete_response.status_code, 200)
+
+        list_response = self.client.get("/api/v1/students", headers=self._headers(self.admin_user.email))
+        self.assertEqual(list_response.status_code, 200)
+        self.assertNotIn(str(student.id), {item["id"] for item in list_response.json()})
+
+        detail_response = self.client.get(
+            f"/api/v1/students/{student.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(detail_response.status_code, 404)
+
+    def test_deleted_student_appears_in_trash_and_can_be_restored(self):
+        student = self._create_student("SOFT-RESTORE-STU-001")
+        delete_response = self.client.delete(
+            f"/api/v1/students/{student.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(delete_response.status_code, 200)
+
+        trash_response = self.client.get("/api/v1/students/trash", headers=self._headers(self.admin_user.email))
+        self.assertEqual(trash_response.status_code, 200)
+        trashed = {item["id"]: item for item in trash_response.json()}
+        self.assertIn(str(student.id), trashed)
+        self.assertEqual(trashed[str(student.id)]["student_number"], "SOFT-RESTORE-STU-001")
+        self.assertIsNotNone(trashed[str(student.id)]["deleted_at"])
+
+        restore_response = self.client.post(
+            f"/api/v1/students/{student.id}/restore",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(restore_response.status_code, 200)
+        self.db.expire_all()
+        self.assertIsNone(self.db.get(Student, student.id).deleted_at)
+
+        list_response = self.client.get("/api/v1/students", headers=self._headers(self.admin_user.email))
+        self.assertIn(str(student.id), {item["id"] for item in list_response.json()})
+
+    def test_delete_and_restore_write_audit_logs(self):
+        student = self._create_student("SOFT-AUDIT-STU-001")
+
+        self.client.delete(
+            f"/api/v1/students/{student.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.client.post(
+            f"/api/v1/students/{student.id}/restore",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        delete_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "student_deleted",
+                AuditLog.entity_type == "student",
+                AuditLog.entity_id == student.id,
+            )
+        )
+        restore_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "student_restored",
+                AuditLog.entity_type == "student",
+                AuditLog.entity_id == student.id,
+            )
+        )
+        self.assertIsNotNone(delete_log)
+        self.assertIsNotNone(restore_log)
+        self.assertEqual(delete_log.actor_user_id, self.admin_user.id)
+        self.assertEqual(restore_log.actor_user_id, self.admin_user.id)
+
+    def test_non_admin_cannot_delete_or_restore_student(self):
+        for user in [self.teacher_user, self.parent_user]:
+            student = self._create_student(f"SOFT-NONADMIN-{user.role}")
+            with self.subTest(role=user.role):
+                delete_response = self.client.delete(
+                    f"/api/v1/students/{student.id}",
+                    headers=self._headers(user.email),
+                )
+                restore_response = self.client.post(
+                    f"/api/v1/students/{student.id}/restore",
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(delete_response.status_code, 403)
+                self.assertEqual(restore_response.status_code, 403)
+
+    def test_parent_reports_and_teacher_roster_exclude_deleted_student(self):
+        records = self._create_student_academic_history("SOFT-VISIBILITY-STU-001")
+        student = records["student"]
+        course = records["course"]
+
+        parent_before = self.client.get(
+            f"/api/v1/reports/student/{student.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_before.status_code, 200)
+        self.assertEqual(len(parent_before.json()), 1)
+
+        delete_response = self.client.delete(
+            f"/api/v1/students/{student.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(delete_response.status_code, 200)
+
+        parent_after = self.client.get(
+            f"/api/v1/reports/student/{student.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(parent_after.status_code, 403)
+
+        roster_response = self.client.get(
+            f"/api/v1/courses/{course.id}/students",
+            headers=self._headers(self.teacher_user.email),
+        )
+        self.assertEqual(roster_response.status_code, 200)
+        self.assertNotIn(str(student.id), {item["id"] for item in roster_response.json()})
+
+        grades_response = self.client.get(
+            f"/api/v1/courses/{course.id}/grades",
+            headers=self._headers(self.teacher_user.email),
+        )
+        self.assertEqual(grades_response.status_code, 200)
+        self.assertNotIn(str(student.id), {item["student_id"] for item in grades_response.json()})
+
+        reports_response = self.client.get(
+            "/api/v1/reports",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(reports_response.status_code, 200)
+        self.assertNotIn(str(student.id), {item["student_id"] for item in reports_response.json()})
 
     def test_admin_can_link_parent_to_student(self):
         student = self._create_student()

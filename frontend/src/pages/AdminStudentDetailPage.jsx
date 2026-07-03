@@ -28,6 +28,7 @@ function studentToForm(student) {
     gradeLevel: student?.grade_level || '',
     schoolLevel: student?.school_level || '',
     classId: student?.class_id || '',
+    educmasterNumber: student?.educmaster_number || '',
   }
 }
 
@@ -403,6 +404,16 @@ export default function AdminStudentDetailPage() {
               value={editForm.classId}
               onChange={(value) => updateEditField('classId', value)}
               disabled={savingEdit}
+            />
+          </label>
+
+          <label className="field">
+            <span>N° EducMaster (optional)</span>
+            <input
+              value={editForm.educmasterNumber}
+              onChange={(event) => updateEditField('educmasterNumber', event.target.value)}
+              disabled={savingEdit}
+              placeholder="Government-assigned"
             />
           </label>
 

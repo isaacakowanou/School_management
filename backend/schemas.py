@@ -237,7 +237,8 @@ class StudentCreate(BaseModel):
     last_name: str
     grade_level: str
     school_level: SchoolLevel | None = None
-    student_number: str
+    student_number: str | None = None
+    educmaster_number: str | None = None
     class_id: UUID | None = None
 
 
@@ -247,6 +248,7 @@ class StudentUpdate(BaseModel):
     grade_level: str | None = None
     school_level: SchoolLevel | None = None
     student_number: str | None = None
+    educmaster_number: str | None = None
     class_id: UUID | None = None
 
 
@@ -257,6 +259,7 @@ class StudentResponse(BaseModel):
     grade_level: str
     school_level: SchoolLevel | None = None
     student_number: str
+    educmaster_number: str | None = None
     class_id: UUID | None = None
 
 
@@ -311,7 +314,7 @@ class ParentCreateResponse(ParentResponse):
 class TeacherCreate(BaseModel):
     name: str
     email: str
-    employee_number: str
+    employee_number: str | None = None
 
 
 class TeacherUpdate(BaseModel):

@@ -69,6 +69,7 @@ class Student(Base):
     grade_level: Mapped[str] = mapped_column(String(50), nullable=False)
     school_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
     student_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    educmaster_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     class_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
     )

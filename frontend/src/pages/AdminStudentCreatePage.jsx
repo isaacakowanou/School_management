@@ -13,6 +13,7 @@ const EMPTY_FORM = {
   gradeLevel: '',
   schoolLevel: '',
   classId: '',
+  educmasterNumber: '',
 }
 
 export default function AdminStudentCreatePage() {
@@ -44,8 +45,8 @@ export default function AdminStudentCreatePage() {
     event.preventDefault()
     setError(null)
 
-    if (!form.firstName.trim() || !form.lastName.trim() || !form.studentNumber.trim() || !form.gradeLevel.trim()) {
-      setError('All fields are required.')
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.gradeLevel.trim()) {
+      setError('First name, last name, and grade level are required.')
       return
     }
 
@@ -104,7 +105,7 @@ export default function AdminStudentCreatePage() {
             value={form.studentNumber}
             onChange={(event) => updateField('studentNumber', event.target.value)}
             disabled={saving}
-            required
+            placeholder="Auto-generated if left blank"
           />
         </label>
 
@@ -143,6 +144,16 @@ export default function AdminStudentCreatePage() {
             value={form.classId}
             onChange={(value) => updateField('classId', value)}
             disabled={saving}
+          />
+        </label>
+
+        <label className="field">
+          <span>N° EducMaster (optional)</span>
+          <input
+            value={form.educmasterNumber}
+            onChange={(event) => updateField('educmasterNumber', event.target.value)}
+            disabled={saving}
+            placeholder="Government-assigned, leave blank if unknown"
           />
         </label>
 

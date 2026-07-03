@@ -75,7 +75,7 @@
 <table class="block">
   <tr>
     <td style="width: 24%;"><span class="bold">Student /Élève:</span> {{ r.student.full_name }}</td>
-    <td style="width: 31%;"><span class="bold">N° Educmaster:</span> </td>
+    <td style="width: 31%;"><span class="bold">N° Educmaster:</span> {{ r.student.educmaster_number or '' }}</td>
     <td style="width: 25%;"><span class="bold">GRADE/CLASSE:</span>
       {% if r.school_class %}{{ r.school_class.name_fr }}{% if r.school_class.name_en %}/{{ r.school_class.name_en }}{% endif %}{% else %}—{% endif %}
     </td>

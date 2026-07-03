@@ -317,6 +317,7 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
             "last_name": student.last_name,
             "full_name": f"{student.first_name} {student.last_name}",
             "student_number": student.student_number,
+            "educmaster_number": student.educmaster_number,
             "grade_level": student.grade_level,
         },
         "term": report_card.term,

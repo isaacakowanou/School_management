@@ -25,15 +25,15 @@ export default function AdminTeacherCreatePage() {
     event.preventDefault()
     setError(null)
 
-    if (!form.name.trim() || !form.email.trim() || !form.employeeNumber.trim()) {
-      setError('Name, email, and employee number are required.')
+    if (!form.name.trim() || !form.email.trim()) {
+      setError('Name and email are required.')
       return
     }
 
     setSaving(true)
     try {
       const data = await createTeacher(form)
-      setCreated({ name: data.name, email: data.email, tempPassword: data.temp_password })
+      setCreated({ name: data.name, email: data.email, employeeNumber: data.employee_number, tempPassword: data.temp_password })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -54,7 +54,7 @@ export default function AdminTeacherCreatePage() {
         <div className="card admin-form">
           <h2 className="page-title">Teacher account created</h2>
           <p className="muted" style={{ marginBottom: '1rem' }}>
-            {created.name} &lt;{created.email}&gt; has been added. A temporary password was generated below.
+            {created.name} &lt;{created.email}&gt; has been added (employee #{created.employeeNumber}). A temporary password was generated below.
             Share it with the teacher — <strong>it will not be shown again</strong>.
           </p>
 
@@ -152,7 +152,7 @@ export default function AdminTeacherCreatePage() {
             value={form.employeeNumber}
             onChange={(event) => updateField('employeeNumber', event.target.value)}
             disabled={saving}
-            required
+            placeholder="Auto-generated if left blank"
           />
         </label>
 

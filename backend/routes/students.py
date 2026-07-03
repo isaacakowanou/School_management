@@ -84,6 +84,25 @@ def clean_required_text(value: str, field_name: str) -> str:
     return cleaned
 
 
+def generate_student_number(db: Session, year: int) -> str:
+    prefix = f"STU-{year}-"
+    last = db.scalar(
+        select(Student.student_number)
+        .where(Student.student_number.like(f"{prefix}%"))
+        .order_by(Student.student_number.desc())
+        .limit(1)
+    )
+    try:
+        n = int(last[len(prefix):]) + 1 if last else 1
+    except (ValueError, TypeError):
+        n = 1
+    while True:
+        candidate = f"{prefix}{n:04d}"
+        if not db.scalar(select(Student).where(Student.student_number == candidate)):
+            return candidate
+        n += 1
+
+
 @router.get("", response_model=list[StudentResponse])
 def list_students(
     db: Session = Depends(get_db),
@@ -128,12 +147,18 @@ def create_student(
     first_name = clean_required_text(payload.first_name, "first_name")
     last_name = clean_required_text(payload.last_name, "last_name")
     grade_level = clean_required_text(payload.grade_level, "grade_level")
-    student_number = clean_required_text(payload.student_number, "student_number")
     school_level = payload.school_level.value if payload.school_level is not None else None
 
-    existing_student = db.scalar(select(Student).where(Student.student_number == student_number))
-    if existing_student is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Student number already exists")
+    raw_number = (payload.student_number or "").strip()
+    if raw_number:
+        existing_student = db.scalar(select(Student).where(Student.student_number == raw_number))
+        if existing_student is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Student number already exists")
+        student_number = raw_number
+    else:
+        student_number = generate_student_number(db, datetime.now(timezone.utc).year)
+
+    educmaster_number = (payload.educmaster_number or "").strip() or None
 
     if payload.class_id is not None:
         get_class_or_404(db, payload.class_id)
@@ -144,6 +169,7 @@ def create_student(
         grade_level=grade_level,
         school_level=school_level,
         student_number=student_number,
+        educmaster_number=educmaster_number,
         class_id=payload.class_id,
     )
     db.add(student)
@@ -161,6 +187,7 @@ def create_student(
             "grade_level": student.grade_level,
             "school_level": student.school_level,
             "student_number": student.student_number,
+            "educmaster_number": student.educmaster_number,
             "class_id": student.class_id,
         },
     )
@@ -198,6 +225,7 @@ def update_student(
         "grade_level": student.grade_level,
         "school_level": student.school_level,
         "student_number": student.student_number,
+        "educmaster_number": student.educmaster_number,
         "class_id": student.class_id,
     }
 
@@ -215,14 +243,13 @@ def update_student(
         student.last_name = clean_required_text(payload.last_name, "last_name")
     if payload.grade_level is not None:
         student.grade_level = clean_required_text(payload.grade_level, "grade_level")
-    # school_level is nullable: an explicit null clears it, while omitting the
-    # key leaves it unchanged. The `is not None` guard used for the required
-    # fields above can't express "clear", so key off whether the client actually
-    # sent the field.
+    # Nullable fields: explicit null clears, omitting leaves unchanged.
     if "school_level" in payload.model_fields_set:
         student.school_level = (
             payload.school_level.value if payload.school_level is not None else None
         )
+    if "educmaster_number" in payload.model_fields_set:
+        student.educmaster_number = (payload.educmaster_number or "").strip() or None
     if "class_id" in payload.model_fields_set:
         if payload.class_id is not None:
             get_class_or_404(db, payload.class_id)
@@ -234,6 +261,7 @@ def update_student(
         "grade_level": student.grade_level,
         "school_level": student.school_level,
         "student_number": student.student_number,
+        "educmaster_number": student.educmaster_number,
         "class_id": student.class_id,
     }
     if new_value != old_value:

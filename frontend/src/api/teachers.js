@@ -10,7 +10,7 @@ export function createTeacher({ name, email, employeeNumber }) {
   return apiPost('/teachers', {
     name: name.trim(),
     email: email.trim(),
-    employee_number: employeeNumber.trim(),
+    employee_number: employeeNumber.trim() || null,
   })
 }
 

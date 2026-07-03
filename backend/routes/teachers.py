@@ -51,6 +51,25 @@ def clean_required_text(value: str, field_name: str) -> str:
     return cleaned
 
 
+def generate_employee_number(db: Session, year: int) -> str:
+    prefix = f"TCH-{year}-"
+    last = db.scalar(
+        select(Teacher.employee_number)
+        .where(Teacher.employee_number.like(f"{prefix}%"))
+        .order_by(Teacher.employee_number.desc())
+        .limit(1)
+    )
+    try:
+        n = int(last[len(prefix):]) + 1 if last else 1
+    except (ValueError, TypeError):
+        n = 1
+    while True:
+        candidate = f"{prefix}{n:04d}"
+        if not db.scalar(select(Teacher).where(Teacher.employee_number == candidate)):
+            return candidate
+        n += 1
+
+
 @router.get("", response_model=list[TeacherResponse])
 def list_teachers(
     db: Session = Depends(get_db),
@@ -74,16 +93,21 @@ def create_teacher(
 ) -> TeacherCreateResponse:
     name = clean_required_text(payload.name, "name")
     email = clean_required_text(payload.email, "email")
-    employee_number = clean_required_text(payload.employee_number, "employee_number")
 
     existing_user = db.scalar(select(User).where(User.email == email))
     if existing_user is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
-    existing_employee_number = db.scalar(
-        select(Teacher).where(Teacher.employee_number == employee_number)
-    )
-    if existing_employee_number is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee number already exists")
+
+    raw_number = (payload.employee_number or "").strip()
+    if raw_number:
+        existing_employee_number = db.scalar(
+            select(Teacher).where(Teacher.employee_number == raw_number)
+        )
+        if existing_employee_number is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee number already exists")
+        employee_number = raw_number
+    else:
+        employee_number = generate_employee_number(db, datetime.now(timezone.utc).year)
 
     temp_password = secrets.token_urlsafe(9)
     user = User(

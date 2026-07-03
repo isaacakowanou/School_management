@@ -1,14 +1,15 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, contains_eager
 
 from audit import create_audit_log
 from auth import get_current_user, hash_password, require_admin
 from database import get_db
-from models import Course, Teacher, User
-from schemas import CourseResponse, TeacherCreate, TeacherResponse, TeacherUpdate
+from models import Course, Grade, Teacher, User
+from schemas import CourseResponse, StatusResponse, TeacherCreate, TeacherResponse, TeacherUpdate
 from utils import to_course_response
 
 
@@ -27,7 +28,7 @@ def to_teacher_response(teacher: Teacher) -> TeacherResponse:
 
 def get_teacher_or_404(db: Session, teacher_id: UUID) -> Teacher:
     teacher = db.get(Teacher, teacher_id)
-    if teacher is None:
+    if teacher is None or teacher.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
     return teacher
 
@@ -57,6 +58,7 @@ def list_teachers(
         select(Teacher)
         .join(Teacher.user)
         .options(contains_eager(Teacher.user))
+        .where(Teacher.deleted_at.is_(None))
         .order_by(User.name)
     ).all()
     return [to_teacher_response(teacher) for teacher in teachers]
@@ -179,6 +181,50 @@ def update_teacher(
     return to_teacher_response(teacher)
 
 
+@router.delete("/{teacher_id}", response_model=StatusResponse)
+def delete_teacher(
+    teacher_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> StatusResponse:
+    teacher = get_teacher_or_404(db, teacher_id)
+    course_count = db.scalar(
+        select(func.count(Course.id)).where(Course.teacher_id == teacher_id, Course.deleted_at.is_(None))
+    )
+    submitted_grade_count = db.scalar(
+        select(func.count(Grade.id)).where(Grade.submitted_by_teacher_id == teacher_id, Grade.deleted_at.is_(None))
+    )
+    if course_count or submitted_grade_count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Teacher has courses or submitted grades",
+                "course_count": course_count,
+                "submitted_grade_count": submitted_grade_count,
+            },
+        )
+
+    user = teacher.user
+    old_value = {
+        "user_id": teacher.user_id,
+        "name": user.name,
+        "email": user.email,
+        "employee_number": teacher.employee_number,
+    }
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="teacher_deleted",
+        entity_type="teacher",
+        entity_id=teacher.id,
+        old_value=old_value,
+        new_value=None,
+    )
+    teacher.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    return StatusResponse(status="ok", message="Teacher moved to Trash")
+
+
 @router.get("/{teacher_id}/courses", response_model=list[CourseResponse])
 def list_teacher_courses(
     teacher_id: UUID,
@@ -189,5 +235,7 @@ def list_teacher_courses(
     if not can_read_teacher(current_user, teacher):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
-    courses = db.scalars(select(Course).where(Course.teacher_id == teacher_id).order_by(Course.name)).all()
+    courses = db.scalars(
+        select(Course).where(Course.teacher_id == teacher_id, Course.deleted_at.is_(None)).order_by(Course.name)
+    ).all()
     return [to_course_response(course) for course in courses]

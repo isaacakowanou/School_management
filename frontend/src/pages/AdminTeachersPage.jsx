@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { listTeachers } from '../api/teachers.js'
+import { deleteTeacher, listTeachers } from '../api/teachers.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -10,7 +10,14 @@ export default function AdminTeachersPage() {
   const navigate = useNavigate()
   const [teachers, setTeachers] = useState(null)
   const [error, setError] = useState(null)
-  const [notice] = useState(location.state?.message || null)
+  const [notice, setNotice] = useState(location.state?.message || null)
+  const [deletingId, setDeletingId] = useState(null)
+
+  async function refresh() {
+    const data = await listTeachers()
+    setTeachers(data)
+    return data
+  }
 
   useEffect(() => {
     if (location.state?.message) {
@@ -22,7 +29,7 @@ export default function AdminTeachersPage() {
     let cancelled = false
     setError(null)
     setTeachers(null)
-    listTeachers()
+    refresh()
       .then((data) => {
         if (!cancelled) setTeachers(data)
       })
@@ -33,6 +40,29 @@ export default function AdminTeachersPage() {
       cancelled = true
     }
   }, [])
+
+  async function handleDelete(teacher) {
+    if (!window.confirm(`Move teacher "${teacher.name}" to Trash? This is only allowed when the teacher has no courses or submitted grades.`)) return
+    setError(null)
+    setNotice(null)
+    setDeletingId(teacher.id)
+    try {
+      await deleteTeacher(teacher.id)
+      await refresh()
+      setNotice('Teacher deleted.')
+    } catch (err) {
+      if (err.status === 409 && err.detail && typeof err.detail === 'object') {
+        setError(
+          `Cannot delete "${teacher.name}": ${err.detail.course_count} course(s) and ` +
+            `${err.detail.submitted_grade_count} submitted grade(s) are still linked.`,
+        )
+      } else {
+        setError(err.message)
+      }
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <section className="admin-page">
@@ -71,6 +101,15 @@ export default function AdminTeachersPage() {
                     <Link className="back-link" to={`/admin/teachers/${teacher.id}`}>
                       Open →
                     </Link>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-small"
+                      onClick={() => handleDelete(teacher)}
+                      disabled={deletingId === teacher.id}
+                      style={{ marginLeft: 8 }}
+                    >
+                      {deletingId === teacher.id ? 'Deleting...' : 'Delete'}
+                    </button>
                   </td>
                 </tr>
               ))}

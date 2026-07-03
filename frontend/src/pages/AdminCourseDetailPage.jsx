@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  deleteCourse,
   enrollStudentInCourse,
   getCourse,
   listCourseStudents,
@@ -9,7 +10,7 @@ import {
 } from '../api/courses.js'
 import { listStudents } from '../api/students.js'
 import { getTeacher, listTeachers } from '../api/teachers.js'
-import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
+import { createGradeItem, deleteGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
 import { listClasses } from '../api/classes.js'
 import { listSubjects } from '../api/subjects.js'
@@ -96,6 +97,7 @@ function gradeItemToForm(gradeItem) {
 
 export default function AdminCourseDetailPage() {
   const { courseId } = useParams()
+  const navigate = useNavigate()
   const [course, setCourse] = useState(null)
   const [teacher, setTeacher] = useState(null)
   const [allTeachers, setAllTeachers] = useState([])
@@ -120,10 +122,13 @@ export default function AdminCourseDetailPage() {
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState(null)
   const [editMessage, setEditMessage] = useState(null)
+  const [deletingCourse, setDeletingCourse] = useState(false)
+  const [courseDeleteError, setCourseDeleteError] = useState(null)
   const [editingGradeItemId, setEditingGradeItemId] = useState(null)
   const [editGradeItemForm, setEditGradeItemForm] = useState(gradeItemToForm(null))
   const [savingGradeItemEdit, setSavingGradeItemEdit] = useState(false)
   const [gradeItemEditError, setGradeItemEditError] = useState(null)
+  const [deletingGradeItemId, setDeletingGradeItemId] = useState(null)
 
   const refreshCourseResults = useCallback(async () => {
     try {
@@ -197,10 +202,13 @@ export default function AdminCourseDetailPage() {
     setSavingEdit(false)
     setEditError(null)
     setEditMessage(null)
+    setDeletingCourse(false)
+    setCourseDeleteError(null)
     setEditingGradeItemId(null)
     setEditGradeItemForm(gradeItemToForm(null))
     setSavingGradeItemEdit(false)
     setGradeItemEditError(null)
+    setDeletingGradeItemId(null)
 
     async function load() {
       let courseData
@@ -329,6 +337,30 @@ export default function AdminCourseDetailPage() {
       setEditError(err.message)
     } finally {
       setSavingEdit(false)
+    }
+  }
+
+  async function handleDeleteCourse() {
+    if (!window.confirm(`Move course "${course.name}" to Trash? This is only allowed when the course has no enrolled students, grade items, grades, results, or report snapshots.`)) return
+    setCourseDeleteError(null)
+    setEditMessage(null)
+    setDeletingCourse(true)
+    try {
+      await deleteCourse(courseId)
+      navigate('/admin/courses', { replace: true, state: { message: 'Course deleted.' } })
+    } catch (err) {
+      if (err.status === 409 && err.detail && typeof err.detail === 'object') {
+        setCourseDeleteError(
+          `Cannot delete this course: ${err.detail.enrollment_count} enrollment(s), ` +
+            `${err.detail.grade_item_count} grade item(s), ${err.detail.grade_count} grade(s), ` +
+            `${err.detail.course_result_count} course result(s), and ` +
+            `${err.detail.report_snapshot_count} report snapshot(s) are linked.`,
+        )
+      } else {
+        setCourseDeleteError(err.message)
+      }
+    } finally {
+      setDeletingCourse(false)
     }
   }
 
@@ -469,6 +501,30 @@ export default function AdminCourseDetailPage() {
     }
   }
 
+  async function handleDeleteGradeItem(item) {
+    if (!window.confirm(`Move grade item "${item.title}" to Trash? This is only allowed when no grades have been submitted for it.`)) return
+    setGradeItemError(null)
+    setGradeItemMessage(null)
+    setGradeItemEditError(null)
+    setDeletingGradeItemId(item.id)
+    try {
+      await deleteGradeItem(item.id)
+      const refreshed = await listGradeItems(courseId)
+      setGradeItems(refreshed)
+      setEditingGradeItemId(null)
+      setEditGradeItemForm(gradeItemToForm(null))
+      setGradeItemMessage('Grade item deleted.')
+    } catch (err) {
+      if (err.status === 409 && err.detail && typeof err.detail === 'object') {
+        setGradeItemError(`Cannot delete "${item.title}": ${err.detail.grade_count} submitted grade(s) are linked.`)
+      } else {
+        setGradeItemError(err.message)
+      }
+    } finally {
+      setDeletingGradeItemId(null)
+    }
+  }
+
   if (error) {
     return (
       <section className="admin-page">
@@ -531,9 +587,18 @@ export default function AdminCourseDetailPage() {
           >
             Edit
           </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={handleDeleteCourse}
+            disabled={deletingCourse}
+          >
+            {deletingCourse ? 'Deleting...' : 'Delete'}
+          </button>
         </div>
       )}
       {editMessage && <p className="grade-summary">{editMessage}</p>}
+      {courseDeleteError && <ErrorBanner message={courseDeleteError} />}
       {showEditForm && (
         <form className="card admin-form" onSubmit={handleEditCourse}>
           <label className="field">
@@ -808,6 +873,7 @@ export default function AdminCourseDetailPage() {
         </div>
       )}
       {gradeItemMessage && <p className="grade-summary">{gradeItemMessage}</p>}
+      {gradeItemError && !showGradeItemForm && <ErrorBanner message={gradeItemError} />}
       <div className="state state-empty weight-summary">
         <strong>{weightSummary}</strong>
         <p>Weights should add up to 1.00, for example 0.30 = 30%.</p>
@@ -934,7 +1000,7 @@ export default function AdminCourseDetailPage() {
                       <button
                         type="button"
                         className="btn btn-ghost"
-                        disabled={savingGradeItemEdit}
+                        disabled={savingGradeItemEdit || deletingGradeItemId === item.id}
                         onClick={() => {
                           setShowGradeItemForm(false)
                           setGradeItemError(null)
@@ -945,6 +1011,15 @@ export default function AdminCourseDetailPage() {
                         }}
                       >
                         Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={savingGradeItemEdit || deletingGradeItemId === item.id}
+                        onClick={() => handleDeleteGradeItem(item)}
+                        style={{ marginLeft: 8 }}
+                      >
+                        {deletingGradeItemId === item.id ? 'Deleting...' : 'Delete'}
                       </button>
                     </td>
                   </tr>

@@ -303,6 +303,15 @@ a.card:active {
   background: #f0f2f5;
 }
 
+.btn-danger {
+  background: #b42318;
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #912018;
+}
+
 .btn-small {
   padding: 6px 10px;
   font-size: 0.85rem;
@@ -409,6 +418,82 @@ a.card:active {
 .admin-form {
   max-width: 560px;
   margin-top: 18px;
+}
+
+.admin-form label {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.admin-form input,
+.admin-form select {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
+
+.admin-form input:focus,
+.admin-form select:focus {
+  outline: 2px solid #c7d4f5;
+  border-color: var(--accent);
+}
+
+.danger-search-results {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.danger-search-result {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.danger-search-result:hover,
+.danger-search-result-selected {
+  border-color: var(--accent);
+  background: #f5f8ff;
+}
+
+.danger-search-result span,
+.danger-selected strong {
+  font-weight: 700;
+}
+
+.danger-search-result small,
+.danger-selected small {
+  color: var(--muted);
+}
+
+.danger-selected {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #b7c7ec;
+  border-radius: 8px;
+  background: #f5f8ff;
+}
+
+.danger-selected span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
 }
 
 /* ---- States ---- */

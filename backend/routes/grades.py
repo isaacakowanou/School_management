@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -28,7 +29,7 @@ def to_grade_response(grade: Grade) -> GradeResponse:
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
     course = db.get(Course, course_id)
-    if course is None:
+    if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
     return course
 
@@ -42,14 +43,14 @@ def get_student_or_404(db: Session, student_id: UUID) -> Student:
 
 def get_grade_item_or_404(db: Session, grade_item_id: UUID) -> GradeItem:
     grade_item = db.get(GradeItem, grade_item_id)
-    if grade_item is None:
+    if grade_item is None or grade_item.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade item not found")
     return grade_item
 
 
 def get_grade_or_404(db: Session, grade_id: UUID) -> Grade:
     grade = db.get(Grade, grade_id)
-    if grade is None:
+    if grade is None or grade.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade not found")
     return grade
 
@@ -80,6 +81,7 @@ def ensure_student_enrolled(db: Session, student_id: UUID, course_id: UUID) -> N
         select(Enrollment).where(
             Enrollment.student_id == student_id,
             Enrollment.course_id == course_id,
+            Enrollment.deleted_at.is_(None),
         )
     )
     if enrollment is None:
@@ -110,6 +112,8 @@ def list_course_grades(
         .options(contains_eager(Grade.grade_item))
         .where(
             GradeItem.course_id == course_id,
+            GradeItem.deleted_at.is_(None),
+            Grade.deleted_at.is_(None),
             Student.deleted_at.is_(None),
         )
         .order_by(Grade.created_at)
@@ -135,6 +139,7 @@ def create_grade(
         select(Grade).where(
             Grade.student_id == student.id,
             Grade.grade_item_id == grade_item.id,
+            Grade.deleted_at.is_(None),
         )
     )
     if existing_grade is not None:
@@ -218,6 +223,6 @@ def delete_grade(
             "submitted_by_teacher_id": grade.submitted_by_teacher_id,
         },
     )
-    db.delete(grade)
+    grade.deleted_at = datetime.now(timezone.utc)
     db.commit()
-    return StatusResponse(status="ok", message="Grade deleted")
+    return StatusResponse(status="ok", message="Grade moved to Trash")

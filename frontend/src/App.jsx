@@ -27,6 +27,8 @@ import AdminCourseCreatePage from './pages/AdminCourseCreatePage.jsx'
 import AdminCourseDetailPage from './pages/AdminCourseDetailPage.jsx'
 import AdminClassesPage from './pages/AdminClassesPage.jsx'
 import AdminSubjectsPage from './pages/AdminSubjectsPage.jsx'
+import AdminDangerZonePage from './pages/AdminDangerZonePage.jsx'
+import AdminTrashPage from './pages/AdminTrashPage.jsx'
 
 export default function App() {
   return (
@@ -84,6 +86,8 @@ export default function App() {
         <Route path="/admin/courses/:courseId" element={<AdminCourseDetailPage />} />
         <Route path="/admin/classes" element={<AdminClassesPage />} />
         <Route path="/admin/subjects" element={<AdminSubjectsPage />} />
+        <Route path="/admin/danger-zone" element={<AdminDangerZonePage />} />
+        <Route path="/admin/trash" element={<AdminTrashPage />} />
         <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
       </Route>
 

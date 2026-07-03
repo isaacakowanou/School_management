@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './client.js'
+import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/teachers (admin) -> [{ id, user_id, name, email, employee_number }]
 export function listTeachers() {
@@ -32,4 +32,9 @@ export function updateTeacher(teacherId, { name, email, employeeNumber }) {
 // GET /api/v1/teachers/{teacher_id}/courses -> CourseResponse[]
 export function getTeacherCourses(teacherId) {
   return apiGet(`/teachers/${teacherId}/courses`)
+}
+
+// DELETE /api/v1/teachers/{teacher_id} (admin). Blocks when courses or submitted grades exist.
+export function deleteTeacher(teacherId) {
+  return apiDelete(`/teachers/${teacherId}`)
 }

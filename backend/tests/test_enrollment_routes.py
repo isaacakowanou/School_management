@@ -216,7 +216,8 @@ class EnrollmentRouteTests(unittest.TestCase):
                 Enrollment.course_id == self.course.id,
             )
         )
-        self.assertIsNone(enrollment)
+        self.assertIsNotNone(enrollment)
+        self.assertIsNotNone(enrollment.deleted_at)
 
     def test_non_admin_cannot_unenroll_student_from_course(self):
         for user in [self.teacher_user, self.parent_user]:

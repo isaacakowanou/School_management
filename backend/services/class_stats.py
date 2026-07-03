@@ -43,6 +43,7 @@ def compute_class_stats(db: Session, student: Student, term: str, school_year: s
             Student.deleted_at.is_(None),
             ReportCard.term == term,
             ReportCard.school_year == school_year,
+            ReportCard.deleted_at.is_(None),
         )
     ).all()
 

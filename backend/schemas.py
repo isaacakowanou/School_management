@@ -73,6 +73,48 @@ class StatusResponse(BaseModel):
     message: str
 
 
+class DangerZonePreviewResponse(BaseModel):
+    entity_type: str
+    entity_id: UUID
+    target_label: str
+    counts: dict[str, int]
+    warnings: list[str] = []
+
+
+class DangerZoneSearchResult(BaseModel):
+    id: UUID
+    label: str
+    subtitle: str
+    entity_type: str
+
+
+class DangerZoneDeleteRequest(BaseModel):
+    entity_type: str
+    entity_id: UUID
+    confirmation: str
+    reason: str | None = None
+
+
+class DangerZoneDeleteResponse(BaseModel):
+    status: str
+    batch_id: UUID
+    target_label: str
+    counts: dict[str, int]
+
+
+class DangerZoneBatchResponse(BaseModel):
+    id: UUID
+    entity_type: str
+    entity_id: UUID
+    target_label: str
+    reason: str | None = None
+    deleted_by_user_id: UUID
+    deleted_at: datetime
+    restored_at: datetime | None = None
+    restored_by_user_id: UUID | None = None
+    counts: dict[str, int]
+
+
 class ClassCreate(BaseModel):
     name_fr: str
     name_en: str | None = None

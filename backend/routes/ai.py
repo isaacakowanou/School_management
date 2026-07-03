@@ -51,6 +51,8 @@ def teacher_can_check_student(db: Session, current_user: User, student_id: UUID)
         .where(
             Enrollment.student_id == student_id,
             Course.teacher_id == teacher.id,
+            Enrollment.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
             Student.deleted_at.is_(None),
         )
     )
@@ -63,6 +65,7 @@ def get_latest_draft_report_card_or_404(db: Session, student_id: UUID) -> Report
         .where(
             ReportCard.student_id == student_id,
             ReportCard.status == "draft",
+            ReportCard.deleted_at.is_(None),
         )
         .order_by(ReportCard.created_at.desc())
     )

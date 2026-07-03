@@ -36,7 +36,7 @@ def to_course_result_response(course_result: CourseResult) -> CourseResultRespon
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
     course = db.get(Course, course_id)
-    if course is None:
+    if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
     return course
 
@@ -63,7 +63,7 @@ def get_teacher_course_ids(db: Session, current_user: User) -> list[UUID]:
     if teacher is None:
         return []
 
-    return list(db.scalars(select(Course.id).where(Course.teacher_id == teacher.id)).all())
+    return list(db.scalars(select(Course.id).where(Course.teacher_id == teacher.id, Course.deleted_at.is_(None))).all())
 
 
 def validate_course_grade_items(grade_items: list[GradeItem]) -> None:
@@ -87,7 +87,9 @@ def validate_course_grade_items(grade_items: list[GradeItem]) -> None:
 
 def get_course_grade_items(db: Session, course: Course) -> list[GradeItem]:
     grade_items = db.scalars(
-        select(GradeItem).where(GradeItem.course_id == course.id).order_by(GradeItem.created_at)
+        select(GradeItem)
+        .where(GradeItem.course_id == course.id, GradeItem.deleted_at.is_(None))
+        .order_by(GradeItem.created_at)
     ).all()
     validate_course_grade_items(list(grade_items))
     return list(grade_items)
@@ -100,6 +102,7 @@ def get_enrolled_students_for_course(db: Session, course: Course) -> list[Studen
             .join(Enrollment, Enrollment.student_id == Student.id)
             .where(
                 Enrollment.course_id == course.id,
+                Enrollment.deleted_at.is_(None),
                 Student.deleted_at.is_(None),
             )
             .order_by(Student.last_name, Student.first_name)
@@ -119,6 +122,7 @@ def get_selected_enrolled_students(db: Session, course: Course, student_ids: lis
             .where(
                 Enrollment.course_id == course.id,
                 Student.id.in_(unique_student_ids),
+                Enrollment.deleted_at.is_(None),
                 Student.deleted_at.is_(None),
             )
             .order_by(Student.last_name, Student.first_name)
@@ -151,6 +155,8 @@ def calculate_results_for_students(
             .where(
                 Grade.student_id == student.id,
                 GradeItem.course_id == course.id,
+                Grade.deleted_at.is_(None),
+                GradeItem.deleted_at.is_(None),
             )
         ).all()
         grades_by_item_id = {grade.grade_item_id: grade for grade in grades}
@@ -187,6 +193,7 @@ def calculate_results_for_students(
                 CourseResult.student_id == student.id,
                 CourseResult.course_id == course.id,
                 CourseResult.term == course.term,
+                CourseResult.deleted_at.is_(None),
             )
         )
 
@@ -314,7 +321,9 @@ def list_student_course_results(
 
     if current_user.role == "admin":
         course_results = db.scalars(
-            select(CourseResult).where(CourseResult.student_id == student_id).order_by(CourseResult.term)
+            select(CourseResult)
+            .where(CourseResult.student_id == student_id, CourseResult.deleted_at.is_(None))
+            .order_by(CourseResult.term)
         ).all()
         return [to_course_result_response(course_result) for course_result in course_results]
 
@@ -327,6 +336,7 @@ def list_student_course_results(
             select(Enrollment).where(
                 Enrollment.student_id == student_id,
                 Enrollment.course_id.in_(teacher_course_ids),
+                Enrollment.deleted_at.is_(None),
             )
         )
         if is_enrolled_in_teacher_course is None:
@@ -337,6 +347,7 @@ def list_student_course_results(
             .where(
                 CourseResult.student_id == student_id,
                 CourseResult.course_id.in_(teacher_course_ids),
+                CourseResult.deleted_at.is_(None),
             )
             .order_by(CourseResult.term)
         ).all()
@@ -360,6 +371,7 @@ def list_course_results(
         .join(Student, CourseResult.student_id == Student.id)
         .where(
             CourseResult.course_id == course.id,
+            CourseResult.deleted_at.is_(None),
             Student.deleted_at.is_(None),
         )
         .order_by(CourseResult.term, CourseResult.student_id)

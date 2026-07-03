@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { getTeacher, getTeacherCourses, updateTeacher } from '../api/teachers.js'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { deleteTeacher, getTeacher, getTeacherCourses, updateTeacher } from '../api/teachers.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -15,12 +15,14 @@ function teacherToForm(teacher) {
 
 export default function AdminTeacherDetailPage() {
   const { teacherId } = useParams()
+  const navigate = useNavigate()
   const [teacher, setTeacher] = useState(null)
   const [courses, setCourses] = useState([])
   const [error, setError] = useState(null)
   const [showEditForm, setShowEditForm] = useState(false)
   const [editForm, setEditForm] = useState(teacherToForm(null))
   const [savingEdit, setSavingEdit] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [editError, setEditError] = useState(null)
   const [editMessage, setEditMessage] = useState(null)
 
@@ -32,6 +34,7 @@ export default function AdminTeacherDetailPage() {
     setShowEditForm(false)
     setEditForm(teacherToForm(null))
     setSavingEdit(false)
+    setDeleting(false)
     setEditError(null)
     setEditMessage(null)
 
@@ -95,6 +98,28 @@ export default function AdminTeacherDetailPage() {
     }
   }
 
+  async function handleDeleteTeacher() {
+    if (!window.confirm(`Move teacher "${teacher.name}" to Trash? This is only allowed when the teacher has no courses or submitted grades.`)) return
+    setEditError(null)
+    setEditMessage(null)
+    setDeleting(true)
+    try {
+      await deleteTeacher(teacherId)
+      navigate('/admin/teachers', { replace: true, state: { message: 'Teacher deleted.' } })
+    } catch (err) {
+      if (err.status === 409 && err.detail && typeof err.detail === 'object') {
+        setEditError(
+          `Cannot delete this teacher: ${err.detail.course_count} course(s) and ` +
+            `${err.detail.submitted_grade_count} submitted grade(s) are still linked.`,
+        )
+      } else {
+        setEditError(err.message)
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (error) {
     return (
       <section className="admin-page">
@@ -137,9 +162,18 @@ export default function AdminTeacherDetailPage() {
           >
             Edit
           </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={handleDeleteTeacher}
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
         </div>
       )}
       {editMessage && <p className="grade-summary">{editMessage}</p>}
+      {editError && !showEditForm && <ErrorBanner message={editError} />}
       {showEditForm && (
         <form className="card admin-form" onSubmit={handleEditTeacher}>
           <label className="field">

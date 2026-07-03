@@ -25,14 +25,20 @@ def _warning(
 
 def check_course_grade_data(db: Session, course_id: UUID) -> list[dict]:
     course = db.get(Course, course_id)
-    if course is None:
+    if course is None or course.deleted_at is not None:
         raise ValueError("Course not found")
 
     warnings = []
     grade_items = db.scalars(
-        select(GradeItem).where(GradeItem.course_id == course.id).order_by(GradeItem.created_at)
+        select(GradeItem)
+        .where(GradeItem.course_id == course.id, GradeItem.deleted_at.is_(None))
+        .order_by(GradeItem.created_at)
     ).all()
-    enrollments = db.scalars(select(Enrollment).where(Enrollment.course_id == course.id)).all()
+    enrollments = db.scalars(
+        select(Enrollment)
+        .join(Student, Enrollment.student_id == Student.id)
+        .where(Enrollment.course_id == course.id, Enrollment.deleted_at.is_(None), Student.deleted_at.is_(None))
+    ).all()
 
     total_weight = sum(item.weight for item in grade_items)
     if grade_items and not WEIGHT_TOLERANCE_MIN <= total_weight <= WEIGHT_TOLERANCE_MAX:
@@ -49,7 +55,7 @@ def check_course_grade_data(db: Session, course_id: UUID) -> list[dict]:
     grades = db.scalars(
         select(Grade)
         .join(GradeItem, Grade.grade_item_id == GradeItem.id)
-        .where(GradeItem.course_id == course.id)
+        .where(GradeItem.course_id == course.id, GradeItem.deleted_at.is_(None), Grade.deleted_at.is_(None))
     ).all()
     grades_by_student_item = {(grade.student_id, grade.grade_item_id): grade for grade in grades}
 
@@ -104,6 +110,7 @@ def check_course_grade_data(db: Session, course_id: UUID) -> list[dict]:
                     CourseResult.student_id == student.id,
                     CourseResult.course_id == course.id,
                     CourseResult.term == course.term,
+                    CourseResult.deleted_at.is_(None),
                 )
             )
             if course_result is None:
@@ -125,7 +132,7 @@ def check_course_grade_data(db: Session, course_id: UUID) -> list[dict]:
 
 def check_report_card_data(db: Session, report_card_id: UUID) -> list[dict]:
     report_card = db.get(ReportCard, report_card_id)
-    if report_card is None:
+    if report_card is None or report_card.deleted_at is not None:
         raise ValueError("Report card not found")
 
     warnings = []

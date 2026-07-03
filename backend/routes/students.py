@@ -51,7 +51,7 @@ def get_any_student_or_404(db: Session, student_id: UUID) -> Student:
 
 def get_parent_or_404(db: Session, parent_id: UUID) -> Parent:
     parent = db.get(Parent, parent_id)
-    if parent is None:
+    if parent is None or parent.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
     return parent
 
@@ -65,6 +65,9 @@ def teacher_can_read_student(db: Session, current_user: User, student_id: UUID) 
         .where(
             Enrollment.student_id == student_id,
             Teacher.user_id == current_user.id,
+            Enrollment.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+            Teacher.deleted_at.is_(None),
             Student.deleted_at.is_(None),
         )
     )
@@ -316,7 +319,7 @@ def list_student_parents(
     links = db.scalars(
         select(StudentParent)
         .options(joinedload(StudentParent.parent).joinedload(Parent.user))
-        .where(StudentParent.student_id == student_id)
+        .where(StudentParent.student_id == student_id, StudentParent.deleted_at.is_(None), Parent.deleted_at.is_(None))
     ).all()
     return [to_linked_parent_response(link) for link in links]
 
@@ -338,6 +341,7 @@ def link_student_parent(
         select(StudentParent).where(
             StudentParent.student_id == student.id,
             StudentParent.parent_id == parent.id,
+            StudentParent.deleted_at.is_(None),
         )
     )
     if existing_link is not None:
@@ -376,6 +380,7 @@ def unlink_student_parent(
         select(StudentParent).where(
             StudentParent.student_id == student_id,
             StudentParent.parent_id == parent_id,
+            StudentParent.deleted_at.is_(None),
         )
     )
     if link is None:
@@ -395,6 +400,6 @@ def unlink_student_parent(
         old_value=old_value,
         new_value=None,
     )
-    db.delete(link)
+    link.deleted_at = datetime.now(timezone.utc)
     db.commit()
     return StatusResponse(status="ok", message="Parent unlinked from student")

@@ -171,6 +171,7 @@ def _latest_course_result_times_by_report_key(db: Session) -> dict[tuple[UUID, s
             func.max(CourseResult.calculated_at).label("latest_calculated_at"),
         )
         .join(Course, CourseResult.course_id == Course.id)
+        .where(CourseResult.deleted_at.is_(None), Course.deleted_at.is_(None))
         .group_by(CourseResult.student_id, CourseResult.term, Course.school_year)
     ).all()
     return {
@@ -200,7 +201,7 @@ def to_admin_report_list_item(report_card: ReportCard, *, needs_review: bool) ->
 
 def parent_can_access_student(db: Session, current_user: User, student_id: UUID) -> bool:
     parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id))
-    if parent is None:
+    if parent is None or parent.deleted_at is not None:
         return False
 
     student_link = db.scalar(
@@ -209,6 +210,7 @@ def parent_can_access_student(db: Session, current_user: User, student_id: UUID)
         .where(
             StudentParent.parent_id == parent.id,
             StudentParent.student_id == student_id,
+            StudentParent.deleted_at.is_(None),
             Student.deleted_at.is_(None),
         )
     )
@@ -218,6 +220,7 @@ def parent_can_access_student(db: Session, current_user: User, student_id: UUID)
 def parent_can_access_report(db: Session, current_user: User, report_card: ReportCard) -> bool:
     return (
         report_card.status in PARENT_VISIBLE_STATUSES
+        and report_card.deleted_at is None
         and report_card.student.deleted_at is None
         and parent_can_access_student(db, current_user, report_card.student_id)
     )
@@ -225,7 +228,7 @@ def parent_can_access_report(db: Session, current_user: User, report_card: Repor
 
 def ensure_can_view_report(db: Session, current_user: User, report_card: ReportCard) -> None:
     if current_user.role == "admin":
-        if report_card.student.deleted_at is not None:
+        if report_card.deleted_at is not None or report_card.student.deleted_at is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
         return
     if current_user.role == "parent" and parent_can_access_report(db, current_user, report_card):
@@ -235,7 +238,7 @@ def ensure_can_view_report(db: Session, current_user: User, report_card: ReportC
 
 
 def ensure_report_student_active(report_card: ReportCard) -> None:
-    if report_card.student.deleted_at is not None:
+    if report_card.deleted_at is not None or report_card.student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
 
 
@@ -367,7 +370,7 @@ def list_reports(
         select(ReportCard)
         .join(ReportCard.student)
         .options(joinedload(ReportCard.student))
-        .where(Student.deleted_at.is_(None))
+        .where(ReportCard.deleted_at.is_(None), Student.deleted_at.is_(None))
     ).all()
     latest_by_key = _latest_course_result_times_by_report_key(db)
     needs_review_by_report_id = {
@@ -423,6 +426,7 @@ def list_student_reports(
             .options(selectinload(ReportCard.courses))
             .where(
                 ReportCard.student_id == student_id,
+                ReportCard.deleted_at.is_(None),
                 Student.deleted_at.is_(None),
             )
             .order_by(ReportCard.created_at.desc())
@@ -437,6 +441,7 @@ def list_student_reports(
             .where(
                 ReportCard.student_id == student_id,
                 ReportCard.status.in_(PARENT_VISIBLE_STATUSES),
+                ReportCard.deleted_at.is_(None),
                 Student.deleted_at.is_(None),
             )
             .order_by(ReportCard.created_at.desc())

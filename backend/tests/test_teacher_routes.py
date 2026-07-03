@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Teacher, User
+from models import AuditLog, Base, Course, Grade, GradeItem, Student, Teacher, User
 
 
 class TeacherRouteTests(unittest.TestCase):
@@ -227,6 +227,99 @@ class TeacherRouteTests(unittest.TestCase):
                 "employee_number": "TCH-AUDIT",
             },
         )
+
+    def test_admin_delete_teacher_blocked_when_courses_exist(self):
+        course = Course(
+            name="Teacher Course",
+            code="TDEL-COURSE",
+            teacher=self.existing_teacher,
+            grade_level="12",
+            term="1er Trimestre",
+            school_year="2026-2027",
+        )
+        self.db.add(course)
+        self.db.commit()
+
+        response = self.client.delete(
+            f"/api/v1/teachers/{self.existing_teacher.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["course_count"], 1)
+        self.assertIsNotNone(self.db.get(Teacher, self.existing_teacher.id))
+
+    def test_admin_delete_teacher_blocked_when_submitted_grades_exist(self):
+        other_user = self._create_user(
+            name="Other Teacher",
+            email="teacher-grade-owner@example.test",
+            role="teacher",
+        )
+        self.db.flush()
+        course_teacher = Teacher(user=other_user, employee_number="TCH-GRADE-OWNER")
+        self.db.add(course_teacher)
+        self.db.flush()
+        course = Course(
+            name="Past Course",
+            code="TDEL-GRADE",
+            teacher=course_teacher,
+            grade_level="12",
+            term="1er Trimestre",
+            school_year="2026-2027",
+        )
+        student = Student(first_name="Ada", last_name="Lovelace", student_number="TDEL-STU", grade_level="12")
+        self.db.add_all([course, student])
+        self.db.flush()
+        grade_item = GradeItem(course=course, title="Exam", category="Exam", max_score=20, weight=1, term="1er Trimestre")
+        self.db.add(grade_item)
+        self.db.flush()
+        grade = Grade(student=student, grade_item=grade_item, score=18, submitted_by_teacher=self.existing_teacher)
+        self.db.add(grade)
+        self.db.commit()
+
+        response = self.client.delete(
+            f"/api/v1/teachers/{self.existing_teacher.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["submitted_grade_count"], 1)
+
+    def test_admin_can_delete_teacher_with_no_courses_or_grades_and_audits(self):
+        response = self.client.post(
+            "/api/v1/teachers",
+            json=self._teacher_payload(email="delete-teacher@example.test", employee_number="TCH-DELETE"),
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(response.status_code, 201)
+        teacher_id = UUID(response.json()["id"])
+
+        delete_response = self.client.delete(
+            f"/api/v1/teachers/{teacher_id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(delete_response.status_code, 200)
+        self.db.expire_all()
+        self.assertIsNotNone(self.db.get(Teacher, teacher_id).deleted_at)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "teacher_deleted",
+                AuditLog.entity_type == "teacher",
+                AuditLog.entity_id == teacher_id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+
+    def test_non_admin_cannot_delete_teacher(self):
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.delete(
+                    f"/api/v1/teachers/{self.existing_teacher.id}",
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
 
     def test_admin_can_update_teacher(self):
         response = self.client.put(

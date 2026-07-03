@@ -188,7 +188,8 @@ class ClassRouteTests(unittest.TestCase):
         cls = self._create_class()
         r = self.client.delete(f"/api/v1/classes/{cls['id']}", headers=self._admin())
         self.assertEqual(r.status_code, 200)
-        self.assertIsNone(self.db.get(Class, UUID(cls["id"])))
+        self.db.expire_all()
+        self.assertIsNotNone(self.db.get(Class, UUID(cls["id"])).deleted_at)
 
     def test_delete_guard_fires_when_students_assigned(self):
         cls = self._create_class()

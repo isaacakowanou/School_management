@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Course, Teacher, User
+from models import AuditLog, Base, Course, CourseResult, Enrollment, GradeItem, Student, Teacher, User
 
 
 class CourseRouteTests(unittest.TestCase):
@@ -252,6 +252,89 @@ class CourseRouteTests(unittest.TestCase):
                 "subject_id": None,
             },
         )
+
+    def test_course_delete_blocked_when_dependent_academic_data_exists(self):
+        student = Student(first_name="Ada", last_name="Lovelace", student_number="CDEL-STU", grade_level="12")
+        self.db.add(student)
+        self.db.flush()
+        self.db.add(Enrollment(student=student, course=self.existing_course))
+        self.db.add(
+            CourseResult(
+                student=student,
+                course=self.existing_course,
+                term="1er Trimestre",
+                average=18,
+                letter_grade="A",
+                scale="20",
+            )
+        )
+        self.db.commit()
+
+        response = self.client.delete(
+            f"/api/v1/courses/{self.existing_course.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["enrollment_count"], 1)
+        self.assertEqual(response.json()["detail"]["course_result_count"], 1)
+        self.assertIsNotNone(self.db.get(Course, self.existing_course.id))
+
+    def test_course_delete_blocked_when_grade_items_exist(self):
+        grade_item = GradeItem(
+            course=self.existing_course,
+            title="Exam",
+            category="Exam",
+            max_score=20,
+            weight=1,
+            term="1er Trimestre",
+        )
+        self.db.add(grade_item)
+        self.db.commit()
+
+        response = self.client.delete(
+            f"/api/v1/courses/{self.existing_course.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["grade_item_count"], 1)
+
+    def test_admin_can_delete_safe_empty_course_and_audits(self):
+        response = self.client.post(
+            "/api/v1/courses",
+            json=self._course_payload("SAFE-DELETE-101"),
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(response.status_code, 201)
+        course_id = UUID(response.json()["id"])
+
+        delete_response = self.client.delete(
+            f"/api/v1/courses/{course_id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(delete_response.status_code, 200)
+        self.db.expire_all()
+        self.assertIsNotNone(self.db.get(Course, course_id).deleted_at)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "course_deleted",
+                AuditLog.entity_type == "course",
+                AuditLog.entity_id == course_id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+
+    def test_non_admin_cannot_delete_course(self):
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.delete(
+                    f"/api/v1/courses/{self.existing_course.id}",
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
 
     def test_admin_can_update_course(self):
         response = self.client.put(

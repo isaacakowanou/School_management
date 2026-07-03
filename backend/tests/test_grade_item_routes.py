@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Course, GradeItem, Teacher, User
+from models import AuditLog, Base, Course, Grade, GradeItem, Student, Teacher, User
 
 
 class GradeItemRouteTests(unittest.TestCase):
@@ -283,6 +283,57 @@ class GradeItemRouteTests(unittest.TestCase):
                 "due_date": None,
             },
         )
+
+    def test_admin_can_delete_grade_item_without_grades_and_audits(self):
+        grade_item = self._create_grade_item("Delete Me")
+        grade_item_id = grade_item.id
+
+        response = self.client.delete(
+            f"/api/v1/grade-items/{grade_item_id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.db.expire_all()
+        self.assertIsNotNone(self.db.get(GradeItem, grade_item_id).deleted_at)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "grade_item_deleted",
+                AuditLog.entity_type == "grade_item",
+                AuditLog.entity_id == grade_item_id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+
+    def test_grade_item_delete_blocked_when_grades_exist(self):
+        grade_item = self._create_grade_item("Has Grades")
+        student = Student(first_name="Ada", last_name="Lovelace", student_number="GIDEL-STU", grade_level="12")
+        self.db.add(student)
+        self.db.flush()
+        grade = Grade(student=student, grade_item=grade_item, score=18, submitted_by_teacher=self.teacher)
+        self.db.add(grade)
+        self.db.commit()
+
+        response = self.client.delete(
+            f"/api/v1/grade-items/{grade_item.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["grade_count"], 1)
+        self.assertIsNotNone(self.db.get(GradeItem, grade_item.id))
+
+    def test_non_admin_cannot_delete_grade_item(self):
+        grade_item = self._create_grade_item("Admin Only Delete")
+
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.delete(
+                    f"/api/v1/grade-items/{grade_item.id}",
+                    headers=self._headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
 
     def test_create_grade_item_audit_log_serializes_due_date_as_iso_string(self):
         payload = self._grade_item_payload("Project")

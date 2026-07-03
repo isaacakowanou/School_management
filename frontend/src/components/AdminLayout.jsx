@@ -12,6 +12,8 @@ const NAV_ITEMS = [
   { to: '/admin/courses', label: 'Courses', end: false },
   { to: '/admin/classes', label: 'Classes', end: false },
   { to: '/admin/subjects', label: 'Subjects', end: false },
+  { to: '/admin/trash', label: 'Trash', end: false },
+  { to: '/admin/danger-zone', label: 'Danger Zone', end: false },
   { to: '/admin/audit-logs', label: 'Audit logs', end: false },
 ]
 

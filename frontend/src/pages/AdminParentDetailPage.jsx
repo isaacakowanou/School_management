@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { getParent, getParentStudents, updateParent } from '../api/parents.js'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { deleteParent, getParent, getParentStudents, updateParent } from '../api/parents.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -15,12 +15,14 @@ function parentToForm(parent) {
 
 export default function AdminParentDetailPage() {
   const { parentId } = useParams()
+  const navigate = useNavigate()
   const [parent, setParent] = useState(null)
   const [students, setStudents] = useState([])
   const [error, setError] = useState(null)
   const [showEditForm, setShowEditForm] = useState(false)
   const [editForm, setEditForm] = useState(parentToForm(null))
   const [savingEdit, setSavingEdit] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [editError, setEditError] = useState(null)
   const [editMessage, setEditMessage] = useState(null)
 
@@ -32,6 +34,7 @@ export default function AdminParentDetailPage() {
     setShowEditForm(false)
     setEditForm(parentToForm(null))
     setSavingEdit(false)
+    setDeleting(false)
     setEditError(null)
     setEditMessage(null)
 
@@ -95,6 +98,25 @@ export default function AdminParentDetailPage() {
     }
   }
 
+  async function handleDeleteParent() {
+    if (!window.confirm(`Move parent "${parent.name}" to Trash? This is only allowed when the parent is not linked to active students.`)) return
+    setEditError(null)
+    setEditMessage(null)
+    setDeleting(true)
+    try {
+      await deleteParent(parentId)
+      navigate('/admin/parents', { replace: true, state: { message: 'Parent deleted.' } })
+    } catch (err) {
+      if (err.status === 409 && err.detail && typeof err.detail === 'object') {
+        setEditError(`Cannot delete this parent: linked to ${err.detail.active_student_count} active student(s).`)
+      } else {
+        setEditError(err.message)
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (error) {
     return (
       <section className="admin-page">
@@ -138,9 +160,18 @@ export default function AdminParentDetailPage() {
           >
             Edit
           </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={handleDeleteParent}
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
         </div>
       )}
       {editMessage && <p className="grade-summary">{editMessage}</p>}
+      {editError && !showEditForm && <ErrorBanner message={editError} />}
       {showEditForm && (
         <form className="card admin-form" onSubmit={handleEditParent}>
           <label className="field">

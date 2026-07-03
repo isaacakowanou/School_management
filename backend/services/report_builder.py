@@ -50,6 +50,8 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
             CourseResult.student_id == student.id,
             CourseResult.term == term,
             Course.school_year == school_year,
+            CourseResult.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
         )
         .order_by(Course.name, Course.code)
     ).all()
@@ -194,7 +196,9 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
     code_by_course_id: dict = {}
     language_by_course_id: dict = {}
     if course_ids:
-        for course in db.scalars(select(Course).where(Course.id.in_(course_ids))).all():
+        for course in db.scalars(
+            select(Course).where(Course.id.in_(course_ids), Course.deleted_at.is_(None))
+        ).all():
             code_by_course_id[course.id] = course.code
             language_by_course_id[course.id] = course.language_group
 
@@ -258,6 +262,7 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
             ReportCard.student_id == student.id,
             ReportCard.school_year == report_card.school_year,
             ReportCard.id != report_card.id,
+            ReportCard.deleted_at.is_(None),
         )
     ).all()
     for prior in prior_reports:

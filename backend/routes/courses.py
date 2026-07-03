@@ -2,13 +2,12 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from audit import create_audit_log
 from auth import get_current_user, require_admin
 from database import get_db
-from models import Class, Course, Subject, Teacher, User
+from models import Class, Course, CourseResult, Enrollment, Grade, GradeItem, ReportCardCourse, Subject, Teacher, User
 from schemas import (
     CourseCloneYearRequest,
     CourseCloneYearResponse,
@@ -26,14 +25,14 @@ router = APIRouter(tags=["courses"])
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
     course = db.get(Course, course_id)
-    if course is None:
+    if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
     return course
 
 
 def get_teacher_or_404(db: Session, teacher_id: UUID) -> Teacher:
     teacher = db.get(Teacher, teacher_id)
-    if teacher is None:
+    if teacher is None or teacher.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
     return teacher
 
@@ -85,7 +84,7 @@ def list_courses(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CourseResponse]:
-    query = select(Course).order_by(Course.name, Course.code)
+    query = select(Course).where(Course.deleted_at.is_(None)).order_by(Course.name, Course.code)
     if school_year is not None:
         query = query.where(Course.school_year == school_year)
 
@@ -188,11 +187,14 @@ def clone_year(
 
     source_courses = db.scalars(
         select(Course).where(Course.school_year == source_year).order_by(Course.name, Course.code)
+        .where(Course.deleted_at.is_(None))
     ).all()
     if not source_courses:
         raise HTTPException(status_code=422, detail="Source year has no courses to clone")
 
-    target_count = db.scalar(select(func.count(Course.id)).where(Course.school_year == target_year))
+    target_count = db.scalar(
+        select(func.count(Course.id)).where(Course.school_year == target_year, Course.deleted_at.is_(None))
+    )
     if target_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -396,17 +398,53 @@ def update_course(
 def delete_course(
     course_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     course = get_course_or_404(db, course_id)
-    db.delete(course)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
+    enrollment_count = db.scalar(select(func.count(Enrollment.id)).where(Enrollment.course_id == course_id))
+    grade_item_count = db.scalar(select(func.count(GradeItem.id)).where(GradeItem.course_id == course_id))
+    course_result_count = db.scalar(select(func.count(CourseResult.id)).where(CourseResult.course_id == course_id))
+    report_snapshot_count = db.scalar(
+        select(func.count(ReportCardCourse.id)).where(ReportCardCourse.course_id == course_id)
+    )
+    grade_count = db.scalar(
+        select(func.count(Grade.id))
+        .join(GradeItem, Grade.grade_item_id == GradeItem.id)
+        .where(GradeItem.course_id == course_id)
+    )
+    if enrollment_count or grade_item_count or course_result_count or report_snapshot_count or grade_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Course cannot be deleted because related records still exist",
-        ) from exc
+            detail={
+                "message": "Course has roster, grade, result, or report data",
+                "enrollment_count": enrollment_count,
+                "grade_item_count": grade_item_count,
+                "grade_count": grade_count,
+                "course_result_count": course_result_count,
+                "report_snapshot_count": report_snapshot_count,
+            },
+        )
 
-    return StatusResponse(status="ok", message="Course deleted")
+    old_value = {
+        "name": course.name,
+        "code": course.code,
+        "teacher_id": course.teacher_id,
+        "grade_level": course.grade_level,
+        "term": course.term,
+        "school_year": course.school_year,
+        "language_group": course.language_group,
+        "class_id": course.class_id,
+        "subject_id": course.subject_id,
+    }
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="course_deleted",
+        entity_type="course",
+        entity_id=course.id,
+        old_value=old_value,
+        new_value=None,
+    )
+    course.deleted_at = func.now()
+    db.commit()
+    return StatusResponse(status="ok", message="Course moved to Trash")

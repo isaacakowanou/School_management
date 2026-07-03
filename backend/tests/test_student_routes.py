@@ -792,7 +792,8 @@ class StudentRouteTests(unittest.TestCase):
                 StudentParent.parent_id == self.parent.id,
             )
         )
-        self.assertIsNone(removed_link)
+        self.assertIsNotNone(removed_link)
+        self.assertIsNotNone(removed_link.deleted_at)
 
     def test_non_admin_cannot_unlink_parent_from_student(self):
         student = self._create_student("UNLINK-STU-NONADMIN")

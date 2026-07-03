@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './client.js'
+import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/parents/me -> { id, user_id, name, email, phone }
 export function getCurrentParent() {
@@ -39,4 +39,9 @@ export function updateParent(parentId, { name, email, phone }) {
     email: email.trim(),
     phone: trimmedPhone || null,
   })
+}
+
+// DELETE /api/v1/parents/{parent_id} (admin). Blocks when linked to active students.
+export function deleteParent(parentId) {
+  return apiDelete(`/parents/${parentId}`)
 }

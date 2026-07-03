@@ -1,14 +1,13 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from audit import create_audit_log
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
-from models import Course, GradeItem, User
+from models import Course, Grade, GradeItem, User
 from schemas import GradeItemCreate, GradeItemResponse, GradeItemUpdate, StatusResponse
 from utils import get_current_teacher
 
@@ -31,14 +30,14 @@ def to_grade_item_response(grade_item: GradeItem) -> GradeItemResponse:
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
     course = db.get(Course, course_id)
-    if course is None:
+    if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
     return course
 
 
 def get_grade_item_or_404(db: Session, grade_item_id: UUID) -> GradeItem:
     grade_item = db.get(GradeItem, grade_item_id)
-    if grade_item is None:
+    if grade_item is None or grade_item.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade item not found")
     return grade_item
 
@@ -100,7 +99,9 @@ def list_grade_items(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
     grade_items = db.scalars(
-        select(GradeItem).where(GradeItem.course_id == course_id).order_by(GradeItem.created_at, GradeItem.title)
+        select(GradeItem)
+        .where(GradeItem.course_id == course_id, GradeItem.deleted_at.is_(None))
+        .order_by(GradeItem.created_at, GradeItem.title)
     ).all()
     return [to_grade_item_response(grade_item) for grade_item in grade_items]
 
@@ -201,20 +202,31 @@ def update_grade_item(
 def delete_grade_item(
     grade_item_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     grade_item = get_grade_item_or_404(db, grade_item_id)
-    if not can_manage_course_grade_items(db, current_user, grade_item.course):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
-
-    db.delete(grade_item)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
+    grade_count = db.scalar(
+        select(func.count(Grade.id)).where(Grade.grade_item_id == grade_item_id, Grade.deleted_at.is_(None))
+    )
+    if grade_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Grade item cannot be deleted because related records still exist",
-        ) from exc
+            detail={
+                "message": "Grade item has submitted grades",
+                "grade_count": grade_count,
+            },
+        )
 
-    return StatusResponse(status="ok", message="Grade item deleted")
+    old_value = grade_item_audit_value(grade_item)
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="grade_item_deleted",
+        entity_type="grade_item",
+        entity_id=grade_item.id,
+        old_value=old_value,
+        new_value=None,
+    )
+    grade_item.deleted_at = func.now()
+    db.commit()
+    return StatusResponse(status="ok", message="Grade item moved to Trash")

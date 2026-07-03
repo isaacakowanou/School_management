@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Parent, User
+from models import AuditLog, Base, Parent, Student, StudentParent, User
 
 
 class CurrentParentRouteTests(unittest.TestCase):
@@ -248,6 +248,52 @@ class CurrentParentRouteTests(unittest.TestCase):
                 "phone": "555-0199",
             },
         )
+
+    def test_admin_delete_parent_blocked_when_linked_to_active_student(self):
+        student = Student(first_name="Active", last_name="Student", student_number="PDEL-ACTIVE", grade_level="12")
+        self.db.add(student)
+        self.db.flush()
+        self.db.add(StudentParent(student=student, parent=self.parent, relationship="Guardian"))
+        self.db.commit()
+
+        response = self.client.delete(
+            f"/api/v1/parents/{self.parent.id}",
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["active_student_count"], 1)
+        self.assertIsNotNone(self.db.get(Parent, self.parent.id))
+
+    def test_admin_can_delete_unlinked_parent_and_audits(self):
+        parent_id = self.parent.id
+
+        response = self.client.delete(
+            f"/api/v1/parents/{parent_id}",
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.db.expire_all()
+        self.assertIsNotNone(self.db.get(Parent, parent_id).deleted_at)
+        audit_log = self.db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "parent_deleted",
+                AuditLog.entity_type == "parent",
+                AuditLog.entity_id == parent_id,
+            )
+        )
+        self.assertIsNotNone(audit_log)
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+
+    def test_non_admin_cannot_delete_parent(self):
+        for user in [self.teacher_user, self.parent_user]:
+            with self.subTest(role=user.role):
+                response = self.client.delete(
+                    f"/api/v1/parents/{self.parent.id}",
+                    headers=self._auth_headers(user.email),
+                )
+                self.assertEqual(response.status_code, 403)
 
     def test_admin_can_update_parent(self):
         response = self.client.put(

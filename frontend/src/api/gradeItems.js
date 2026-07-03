@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './client.js'
+import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
 import { isCanonicalTerm } from '../constants/terms.js'
 
 // GET /api/v1/courses/{course_id}/grade-items
@@ -32,4 +32,9 @@ export function updateGradeItem(gradeItemId, { title, category, maxScore, weight
   }
   if (isCanonicalTerm(term.trim())) body.term = term.trim()
   return apiPut(`/grade-items/${gradeItemId}`, body)
+}
+
+// DELETE /api/v1/grade-items/{grade_item_id} (admin). Blocks when grades exist.
+export function deleteGradeItem(gradeItemId) {
+  return apiDelete(`/grade-items/${gradeItemId}`)
 }

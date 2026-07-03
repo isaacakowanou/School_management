@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -68,6 +69,7 @@ def _counts_for_classes(db: Session, class_ids: list[UUID]) -> tuple[dict, dict]
     course_rows = db.execute(
         select(Course.class_id, func.count(Course.id))
         .where(Course.class_id.in_(class_ids))
+        .where(Course.deleted_at.is_(None))
         .group_by(Course.class_id)
     ).all()
     return dict(student_rows), dict(course_rows)
@@ -108,7 +110,7 @@ def list_classes(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[ClassResponse]:
-    query = select(Class)
+    query = select(Class).where(Class.deleted_at.is_(None))
     if school_year is not None:
         query = query.where(Class.school_year == school_year)
     if school_level is not None:
@@ -180,7 +182,9 @@ def bulk_create_classes(
 
     existing_keys = {
         normalize_class_name(name)
-        for name in db.scalars(select(Class.name_fr).where(Class.school_year == school_year)).all()
+        for name in db.scalars(
+            select(Class.name_fr).where(Class.school_year == school_year, Class.deleted_at.is_(None))
+        ).all()
     }
 
     created: list[str] = []
@@ -243,6 +247,7 @@ def _compute_class_enrollment_plan(db: Session, school_class: Class) -> dict:
             select(Course.id).where(
                 Course.class_id == school_class.id,
                 Course.school_year == school_class.school_year,
+                Course.deleted_at.is_(None),
             )
         ).all()
     )
@@ -254,6 +259,7 @@ def _compute_class_enrollment_plan(db: Session, school_class: Class) -> dict:
                 select(Enrollment.student_id, Enrollment.course_id).where(
                     Enrollment.student_id.in_(student_ids),
                     Enrollment.course_id.in_(course_ids),
+                    Enrollment.deleted_at.is_(None),
                 )
             ).all()
         }
@@ -424,8 +430,12 @@ def delete_class(
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     school_class = get_class_or_404(db, class_id)
-    student_count = db.scalar(select(func.count(Student.id)).where(Student.class_id == class_id))
-    course_count = db.scalar(select(func.count(Course.id)).where(Course.class_id == class_id))
+    student_count = db.scalar(
+        select(func.count(Student.id)).where(Student.class_id == class_id, Student.deleted_at.is_(None))
+    )
+    course_count = db.scalar(
+        select(func.count(Course.id)).where(Course.class_id == class_id, Course.deleted_at.is_(None))
+    )
     if student_count or course_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -445,6 +455,6 @@ def delete_class(
         old_value=_class_snapshot(school_class),
         new_value=None,
     )
-    db.delete(school_class)
+    school_class.deleted_at = datetime.now(timezone.utc)
     db.commit()
-    return StatusResponse(status="ok", message="Class deleted")
+    return StatusResponse(status="ok", message="Class moved to Trash")

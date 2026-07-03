@@ -7,6 +7,7 @@ from routes.auth import router as auth_router
 from routes.classes import router as classes_router
 from routes.course_results import router as course_results_router
 from routes.courses import router as courses_router
+from routes.danger_zone import router as danger_zone_router
 from routes.enrollments import router as enrollments_router
 from routes.grade_items import router as grade_items_router
 from routes.grades import router as grades_router
@@ -29,6 +30,7 @@ app.include_router(ai_router, prefix="/api/v1/ai")
 app.include_router(classes_router, prefix="/api/v1/classes")
 app.include_router(course_results_router, prefix="/api/v1")
 app.include_router(courses_router, prefix="/api/v1/courses")
+app.include_router(danger_zone_router, prefix="/api/v1")
 app.include_router(enrollments_router, prefix="/api/v1")
 app.include_router(grade_items_router, prefix="/api/v1")
 app.include_router(grades_router, prefix="/api/v1")

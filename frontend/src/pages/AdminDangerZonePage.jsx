@@ -1,0 +1,253 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  moveDangerZoneToTrash,
+  previewDangerZoneDelete,
+  searchDangerZoneTargets,
+} from '../api/dangerZone.js'
+import ErrorBanner from '../components/ErrorBanner.jsx'
+
+const ENTITY_TYPES = ['student', 'parent', 'teacher', 'class', 'course', 'grade_item', 'report']
+
+function CountsTable({ counts }) {
+  const rows = Object.entries(counts || {})
+  if (rows.length === 0) return <p className="muted">No dependent records found.</p>
+  return (
+    <div className="table-scroll">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Table</th>
+            <th className="num">Records moved</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([table, count]) => (
+            <tr key={table}>
+              <td>{table}</td>
+              <td className="num">{count}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+export default function AdminDangerZonePage() {
+  const [entityType, setEntityType] = useState('student')
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [selected, setSelected] = useState(null)
+  const [reason, setReason] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [error, setError] = useState(null)
+  const [notice, setNotice] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [searching, setSearching] = useState(false)
+
+  const targetConfirmation = preview ? `MOVE ${preview.target_label} TO TRASH` : ''
+  const canDelete =
+    preview &&
+    (confirmation.trim() === 'MOVE TO TRASH' || confirmation.trim() === targetConfirmation)
+
+  useEffect(() => {
+    setSelected(null)
+    setPreview(null)
+    setConfirmation('')
+    setResults([])
+  }, [entityType])
+
+  useEffect(() => {
+    let cancelled = false
+    const trimmed = query.trim()
+    setError(null)
+    setPreview(null)
+    setConfirmation('')
+    if (!trimmed) {
+      setResults([])
+      setSearching(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setSearching(true)
+    const timer = window.setTimeout(() => {
+      searchDangerZoneTargets(entityType, trimmed)
+        .then((data) => {
+          if (!cancelled) setResults(data)
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err.message)
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false)
+        })
+    }, 250)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [entityType, query])
+
+  function handleSelect(result) {
+    setSelected(result)
+    setPreview(null)
+    setConfirmation('')
+    setNotice(null)
+  }
+
+  async function handlePreview(event) {
+    event.preventDefault()
+    if (!selected) return
+    setError(null)
+    setNotice(null)
+    setPreview(null)
+    setConfirmation('')
+    setLoading(true)
+    try {
+      const data = await previewDangerZoneDelete(entityType, selected.id)
+      setPreview(data)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleMoveToTrash() {
+    setError(null)
+    setNotice(null)
+    setLoading(true)
+    try {
+      const result = await moveDangerZoneToTrash({
+        entity_type: entityType,
+        entity_id: selected.id,
+        confirmation,
+        reason: reason.trim() || null,
+      })
+      setNotice(`${result.target_label} moved to Trash. Batch ${result.batch_id}.`)
+      setPreview(null)
+      setSelected(null)
+      setQuery('')
+      setResults([])
+      setReason('')
+      setConfirmation('')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <section className="admin-page">
+      <div className="report-header">
+        <div>
+          <h2 className="page-title">Owner Danger Zone</h2>
+          <p className="muted">Recoverable cleanup only. Records are moved to Trash as one restoreable batch.</p>
+        </div>
+        <Link to="/admin/trash" className="btn btn-ghost">
+          Trash
+        </Link>
+      </div>
+
+      {notice && <p className="grade-summary">{notice}</p>}
+      {error && <ErrorBanner message={error} />}
+
+      <form className="admin-form" onSubmit={handlePreview}>
+        <label>
+          Entity type
+          <select
+            value={entityType}
+            onChange={(event) => {
+              setEntityType(event.target.value)
+              setQuery('')
+            }}
+          >
+            {ENTITY_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Search records
+          <input
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setSelected(null)
+            }}
+            placeholder="Type stress, math, 6ème..."
+          />
+        </label>
+        {searching && <p className="muted">Searching...</p>}
+        {!searching && query.trim() && results.length === 0 && <p className="muted">No matches.</p>}
+        {results.length > 0 && (
+          <div className="danger-search-results">
+            {results.map((result) => (
+              <button
+                type="button"
+                key={result.id}
+                className={`danger-search-result${selected?.id === result.id ? ' danger-search-result-selected' : ''}`}
+                onClick={() => handleSelect(result)}
+              >
+                <span>{result.label}</span>
+                <small>{result.subtitle}</small>
+              </button>
+            ))}
+          </div>
+        )}
+        {selected && (
+          <div className="danger-selected">
+            <span>Selected</span>
+            <strong>{selected.label}</strong>
+            <small>{selected.subtitle}</small>
+          </div>
+        )}
+        <label>
+          Note
+          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Demo cleanup" />
+        </label>
+        <button type="submit" className="btn btn-primary" disabled={loading || !selected}>
+          {loading ? 'Checking...' : 'Preview'}
+        </button>
+      </form>
+
+      {preview && (
+        <div className="admin-form">
+          <h3>Preview</h3>
+          <p>
+            <strong>{preview.target_label}</strong>
+          </p>
+          <p className="muted">This moves the selected data and dependencies to Trash. It does not permanently delete academic history.</p>
+          <CountsTable counts={preview.counts} />
+          {preview.warnings?.length > 0 && (
+            <ul>
+              {preview.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          )}
+          <label>
+            Confirmation
+            <input
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              placeholder={targetConfirmation}
+            />
+          </label>
+          <p className="muted">Type MOVE TO TRASH or {targetConfirmation}</p>
+          <button type="button" className="btn btn-danger" disabled={!canDelete || loading} onClick={handleMoveToTrash}>
+            Move to Trash
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}

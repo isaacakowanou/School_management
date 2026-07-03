@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +26,7 @@ def to_enrollment_response(enrollment: Enrollment) -> EnrollmentResponse:
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
     course = db.get(Course, course_id)
-    if course is None:
+    if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
     return course
 
@@ -49,7 +50,7 @@ def can_read_course_students(db: Session, current_user: User, course: Course) ->
 
 def get_enrollment_or_404(db: Session, enrollment_id: UUID) -> Enrollment:
     enrollment = db.get(Enrollment, enrollment_id)
-    if enrollment is None:
+    if enrollment is None or enrollment.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
     return enrollment
 
@@ -59,6 +60,7 @@ def get_course_student_enrollment_or_404(db: Session, course_id: UUID, student_i
         select(Enrollment).where(
             Enrollment.course_id == course_id,
             Enrollment.student_id == student_id,
+            Enrollment.deleted_at.is_(None),
         )
     )
 
@@ -77,7 +79,7 @@ def delete_enrollment_with_audit(db: Session, current_user: User, enrollment: En
         old_value=old_value,
         new_value=None,
     )
-    db.delete(enrollment)
+    enrollment.deleted_at = datetime.now(timezone.utc)
 
 
 @router.get("/courses/{course_id}/students", response_model=list[StudentResponse])
@@ -95,6 +97,7 @@ def list_course_students(
         .join(Enrollment, Enrollment.student_id == Student.id)
         .where(
             Enrollment.course_id == course_id,
+            Enrollment.deleted_at.is_(None),
             Student.deleted_at.is_(None),
         )
         .order_by(Student.last_name, Student.first_name)
@@ -133,6 +136,7 @@ def create_enrollment(
         select(Enrollment).where(
             Enrollment.student_id == student.id,
             Enrollment.course_id == course.id,
+            Enrollment.deleted_at.is_(None),
         )
     )
     if existing_enrollment is not None:

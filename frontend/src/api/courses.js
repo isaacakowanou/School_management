@@ -66,6 +66,11 @@ export function updateCourse(courseId, { name, code, teacherId, gradeLevel, term
   return apiPut(`/courses/${courseId}`, body)
 }
 
+// DELETE /api/v1/courses/{course_id} (admin). Blocks when roster, grade, result, or report data exists.
+export function deleteCourse(courseId) {
+  return apiDelete(`/courses/${courseId}`)
+}
+
 // POST /api/v1/courses/clone-year (admin). Duplicates all courses from one
 // school year into another (no grade items, no enrollments). 409 if the
 // target year already has courses.

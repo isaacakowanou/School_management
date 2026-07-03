@@ -8,14 +8,14 @@ from schemas import CourseResponse, StudentResponse
 
 def get_report_card_or_404(db: Session, report_id) -> ReportCard:
     report_card = db.get(ReportCard, report_id)
-    if report_card is None:
+    if report_card is None or report_card.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
     return report_card
 
 
 def get_class_or_404(db: Session, class_id) -> Class:
     school_class = db.get(Class, class_id)
-    if school_class is None:
+    if school_class is None or school_class.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
     return school_class
 
@@ -28,7 +28,7 @@ def get_subject_or_404(db: Session, subject_id) -> Subject:
 
 
 def get_current_teacher(db: Session, current_user: User) -> Teacher | None:
-    return db.scalar(select(Teacher).where(Teacher.user_id == current_user.id))
+    return db.scalar(select(Teacher).where(Teacher.user_id == current_user.id, Teacher.deleted_at.is_(None)))
 
 
 def to_student_response(student: Student) -> StudentResponse:

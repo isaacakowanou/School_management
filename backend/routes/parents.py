@@ -1,14 +1,15 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from audit import create_audit_log
 from auth import get_current_user, hash_password, require_admin, require_parent
 from database import get_db
 from models import Parent, Student, StudentParent, User
-from schemas import ParentCreate, ParentResponse, ParentUpdate, StudentResponse
+from schemas import ParentCreate, ParentResponse, ParentUpdate, StatusResponse, StudentResponse
 from utils import to_student_response
 
 
@@ -27,7 +28,7 @@ def to_parent_response(parent: Parent) -> ParentResponse:
 
 def get_parent_or_404(db: Session, parent_id: UUID) -> Parent:
     parent = db.get(Parent, parent_id)
-    if parent is None:
+    if parent is None or parent.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
     return parent
 
@@ -57,6 +58,7 @@ def list_parents(
         select(Parent)
         .join(Parent.user)
         .options(contains_eager(Parent.user))
+        .where(Parent.deleted_at.is_(None))
         .order_by(User.name)
     ).all()
     return [to_parent_response(parent) for parent in parents]
@@ -112,7 +114,7 @@ def get_current_parent_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_parent),
 ) -> ParentResponse:
-    parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id))
+    parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id, Parent.deleted_at.is_(None)))
     if parent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
     return to_parent_response(parent)
@@ -182,6 +184,59 @@ def update_parent(
     return to_parent_response(parent)
 
 
+@router.delete("/{parent_id}", response_model=StatusResponse)
+def delete_parent(
+    parent_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> StatusResponse:
+    parent = get_parent_or_404(db, parent_id)
+    active_student_count = db.scalar(
+        select(func.count(StudentParent.id))
+        .join(Student, StudentParent.student_id == Student.id)
+        .where(
+            StudentParent.parent_id == parent_id,
+            StudentParent.deleted_at.is_(None),
+            Student.deleted_at.is_(None),
+        )
+    )
+    if active_student_count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Parent is linked to active students",
+                "active_student_count": active_student_count,
+            },
+        )
+
+    stale_links = db.scalars(
+        select(StudentParent).where(StudentParent.parent_id == parent_id, StudentParent.deleted_at.is_(None))
+    ).all()
+    user = parent.user
+    old_value = {
+        "user_id": parent.user_id,
+        "name": user.name,
+        "email": user.email,
+        "phone": parent.phone,
+        "removed_inactive_student_link_count": len(stale_links),
+    }
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="parent_deleted",
+        entity_type="parent",
+        entity_id=parent.id,
+        old_value=old_value,
+        new_value=None,
+    )
+    deleted_at = datetime.now(timezone.utc)
+    for link in stale_links:
+        link.deleted_at = deleted_at
+    parent.deleted_at = deleted_at
+    db.commit()
+    return StatusResponse(status="ok", message="Parent moved to Trash")
+
+
 @router.get("/{parent_id}/students", response_model=list[StudentResponse])
 def list_parent_students(
     parent_id: UUID,
@@ -198,6 +253,7 @@ def list_parent_students(
         .options(joinedload(StudentParent.student))
         .where(
             StudentParent.parent_id == parent_id,
+            StudentParent.deleted_at.is_(None),
             Student.deleted_at.is_(None),
         )
     ).all()

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { listParents } from '../api/parents.js'
+import { deleteParent, listParents } from '../api/parents.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -10,7 +10,14 @@ export default function AdminParentsPage() {
   const navigate = useNavigate()
   const [parents, setParents] = useState(null)
   const [error, setError] = useState(null)
-  const [notice] = useState(location.state?.message || null)
+  const [notice, setNotice] = useState(location.state?.message || null)
+  const [deletingId, setDeletingId] = useState(null)
+
+  async function refresh() {
+    const data = await listParents()
+    setParents(data)
+    return data
+  }
 
   useEffect(() => {
     if (location.state?.message) {
@@ -22,7 +29,7 @@ export default function AdminParentsPage() {
     let cancelled = false
     setError(null)
     setParents(null)
-    listParents()
+    refresh()
       .then((data) => {
         if (!cancelled) setParents(data)
       })
@@ -33,6 +40,26 @@ export default function AdminParentsPage() {
       cancelled = true
     }
   }, [])
+
+  async function handleDelete(parent) {
+    if (!window.confirm(`Move parent "${parent.name}" to Trash? This is only allowed when the parent is not linked to active students.`)) return
+    setError(null)
+    setNotice(null)
+    setDeletingId(parent.id)
+    try {
+      await deleteParent(parent.id)
+      await refresh()
+      setNotice('Parent deleted.')
+    } catch (err) {
+      if (err.status === 409 && err.detail && typeof err.detail === 'object') {
+        setError(`Cannot delete "${parent.name}": linked to ${err.detail.active_student_count} active student(s).`)
+      } else {
+        setError(err.message)
+      }
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <section className="admin-page">
@@ -71,6 +98,15 @@ export default function AdminParentsPage() {
                     <Link className="back-link" to={`/admin/parents/${parent.id}`}>
                       Open →
                     </Link>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-small"
+                      onClick={() => handleDelete(parent)}
+                      disabled={deletingId === parent.id}
+                      style={{ marginLeft: 8 }}
+                    >
+                      {deletingId === parent.id ? 'Deleting...' : 'Delete'}
+                    </button>
                   </td>
                 </tr>
               ))}

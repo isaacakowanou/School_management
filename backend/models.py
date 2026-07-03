@@ -43,6 +43,10 @@ class Class(Base):
     stream: Mapped[str | None] = mapped_column(String(20), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     school_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -65,6 +69,9 @@ class Student(Base):
         Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -86,6 +93,10 @@ class Parent(Base):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True
     )
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -103,6 +114,10 @@ class StudentParent(Base):
     student_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("students.id"), nullable=False)
     parent_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("parents.id"), nullable=False)
     relationship: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
 
     student: Mapped["Student"] = orm_relationship(back_populates="parent_links")
     parent: Mapped["Parent"] = orm_relationship(back_populates="student_links")
@@ -116,6 +131,10 @@ class Teacher(Base):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True
     )
     employee_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -183,6 +202,10 @@ class Course(Base):
     subject_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -204,6 +227,10 @@ class Enrollment(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("students.id"), nullable=False)
     course_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("courses.id"), nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     student: Mapped["Student"] = orm_relationship(back_populates="enrollments")
@@ -221,6 +248,10 @@ class GradeItem(Base):
     weight: Mapped[float] = mapped_column(Float, nullable=False)
     term: Mapped[str] = mapped_column(String(50), nullable=False)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -240,6 +271,10 @@ class Grade(Base):
     score: Mapped[float] = mapped_column(Float, nullable=False)
     submitted_by_teacher_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("teachers.id"), nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -266,6 +301,10 @@ class CourseResult(Base):
     # nullable-first); the ORM always supplies a value.
     scale: Mapped[str] = mapped_column(String(10), nullable=True, default="20", server_default="20")
     calculated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
 
     student: Mapped["Student"] = orm_relationship(back_populates="course_results")
     course: Mapped["Course"] = orm_relationship(back_populates="course_results")
@@ -305,6 +344,10 @@ class ReportCard(Base):
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -333,6 +376,10 @@ class ReportCardCourse(Base):
     course_name: Mapped[str] = mapped_column(String(200), nullable=False)
     average: Mapped[float] = mapped_column(Float, nullable=False)
     letter_grade: Mapped[str] = mapped_column(String(5), nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
 
     report_card: Mapped["ReportCard"] = orm_relationship(back_populates="courses")
     course: Mapped["Course"] = orm_relationship(back_populates="report_card_courses")
@@ -349,6 +396,10 @@ class ReportConductItem(Base):
     # Reuses the BISC 9-letter grade codes; nullable so an unassessed item can be
     # stored, though the write path only persists assessed (non-null) rows.
     letter_grade: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
 
     report_card: Mapped["ReportCard"] = orm_relationship(back_populates="conduct_items")
 
@@ -362,6 +413,10 @@ class ReportWorkHabitItem(Base):
     )
     item_key: Mapped[str] = mapped_column(String(50), nullable=False)
     letter_grade: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
 
     report_card: Mapped["ReportCard"] = orm_relationship(back_populates="work_habit_items")
 
@@ -377,8 +432,27 @@ class AIWarning(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
 
     report_card: Mapped["ReportCard"] = orm_relationship(back_populates="ai_warnings")
+
+
+class DeletionBatch(Base):
+    __tablename__ = "deletion_batches"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    target_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deleted_by_user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    restored_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    counts_json: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
 class AuditLog(Base):

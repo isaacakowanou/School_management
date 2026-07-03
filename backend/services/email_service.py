@@ -228,14 +228,18 @@ def send_report_available_email(
 def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> list[dict]:
     config = _get_email_config()
     report_card = db.get(ReportCard, report_card_id)
-    if report_card is None:
+    if report_card is None or report_card.deleted_at is not None or report_card.student.deleted_at is not None:
         raise ValueError("Report card not found")
 
     report_link = _build_report_link(config["app_base_url"], report_card.id)
     parents = db.scalars(
         select(Parent)
         .join(StudentParent, StudentParent.parent_id == Parent.id)
-        .where(StudentParent.student_id == report_card.student_id)
+        .where(
+            StudentParent.student_id == report_card.student_id,
+            StudentParent.deleted_at.is_(None),
+            Parent.deleted_at.is_(None),
+        )
     ).all()
 
     results = []

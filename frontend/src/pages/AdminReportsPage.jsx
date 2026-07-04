@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { listReports } from '../api/reports.js'
 import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
@@ -7,30 +8,18 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 
-const STATUS_OPTIONS = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'draft', label: 'Draft' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'sent', label: 'Sent' },
-]
+const STATUS_KEYS = ['all', 'draft', 'approved', 'sent']
 
-const STATUS_HELP = {
-  draft: 'parents cannot see it yet',
-  approved: 'parents can see it',
-  sent: 'parents can see it and were notified',
-}
+const STATUS_HELP_KEYS = ['draft', 'approved', 'sent']
 
-const NEEDS_REVIEW_COPY =
-  'grades changed after approval/sending; admin must regenerate and approve again'
-
-function ReportStatus({ report }) {
+function ReportStatus({ report, t }) {
   if (report.needs_review) {
     const previousStatus =
-      report.status === 'sent' ? 'Previously sent' : 'Previously approved'
+      report.status === 'sent' ? t('reports.previouslySent') : t('reports.previouslyApproved')
     return (
       <div className="report-status-cell">
-        <span className="badge badge-review" title={NEEDS_REVIEW_COPY}>
-          Needs review
+        <span className="badge badge-review" title={t('reports.needsReviewCopy')}>
+          {t('reports.needsReview')}
         </span>
         {(report.status === 'approved' || report.status === 'sent') && (
           <span className="status-secondary">{previousStatus}</span>
@@ -41,7 +30,7 @@ function ReportStatus({ report }) {
 
   return (
     <div className="report-status-cell">
-      <span title={STATUS_HELP[report.status] || report.status}>
+      <span title={t(`reports.statusHelp${report.status.charAt(0).toUpperCase() + report.status.slice(1)}`) || report.status}>
         <StatusBadge status={report.status} />
       </span>
     </div>
@@ -49,6 +38,7 @@ function ReportStatus({ report }) {
 }
 
 export default function AdminReportsPage() {
+  const { t } = useTranslation()
   const [reports, setReports] = useState(null)
   const [error, setError] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -104,28 +94,47 @@ export default function AdminReportsPage() {
     })
   }, [reports, statusFilter, needsReviewOnly])
 
+  const statusLabel = (key) => {
+    const map = {
+      all: t('reports.statusAll'),
+      draft: t('reports.statusDraft'),
+      approved: t('reports.statusApproved'),
+      sent: t('reports.statusSent'),
+    }
+    return map[key] ?? key
+  }
+
+  const statusHelpText = (key) => {
+    const map = {
+      draft: t('reports.statusHelpDraft'),
+      approved: t('reports.statusHelpApproved'),
+      sent: t('reports.statusHelpSent'),
+    }
+    return map[key] ?? ''
+  }
+
   return (
     <section className="admin-page">
-      <h2 className="page-title">Reports</h2>
-      <p className="muted">Reports needing review appear first, then newest reports.</p>
+      <h2 className="page-title">{t('nav.reports')}</h2>
+      <p className="muted">{t('reports.subtitle')}</p>
 
       {error && <ErrorBanner message={error} />}
-      {!error && reports === null && <Spinner label="Loading reports…" />}
+      {!error && reports === null && <Spinner label={t('reports.loading')} />}
 
       {!error && reports && (
         <>
           <div className="filters">
             <label className="field">
-              <span>Status</span>
+              <span>{t('common.status')}</span>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="grade-input"
                 style={{ width: 'auto', textAlign: 'left' }}
               >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
+                {STATUS_KEYS.map((key) => (
+                  <option key={key} value={key}>
+                    {statusLabel(key)}
                   </option>
                 ))}
               </select>
@@ -136,32 +145,32 @@ export default function AdminReportsPage() {
                 checked={needsReviewOnly}
                 onChange={(e) => setNeedsReviewOnly(e.target.checked)}
               />
-              <span>Needs review only</span>
+              <span>{t('reports.needsReviewOnly')}</span>
             </label>
           </div>
           <div className="status-help" aria-label="Report status meanings">
-            {Object.entries(STATUS_HELP).map(([status, help]) => (
-              <span key={status} className="status-help-item">
-                <StatusBadge status={status} /> {help}
+            {STATUS_HELP_KEYS.map((key) => (
+              <span key={key} className="status-help-item">
+                <StatusBadge status={key} /> {statusHelpText(key)}
               </span>
             ))}
             <span className="status-help-item">
-              <span className="badge badge-review">Needs review</span> {NEEDS_REVIEW_COPY}
+              <span className="badge badge-review">{t('reports.needsReview')}</span> {t('reports.needsReviewCopy')}
             </span>
           </div>
 
           {filtered.length === 0 ? (
-            <Empty message="No reports match this filter." />
+            <Empty message={t('reports.empty')} />
           ) : (
             <div className="table-scroll reports-table-scroll">
               <table className="table reports-table">
                 <thead>
                   <tr>
-                    <th>Student</th>
-                    <th>Term</th>
-                    <th>School year</th>
-                    <th>Status</th>
-                    <th className="num">Average</th>
+                    <th>{t('reports.student')}</th>
+                    <th>{t('reports.term')}</th>
+                    <th>{t('reports.schoolYear')}</th>
+                    <th>{t('common.status')}</th>
+                    <th className="num">{t('reports.average')}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -170,7 +179,7 @@ export default function AdminReportsPage() {
                     <tr key={report.id}>
                       <td>
                         <div className="student-cell-main">
-                          {report.student_name || 'Unknown student'}
+                          {report.student_name || t('reports.unknownStudent')}
                         </div>
                         <div className="student-cell-meta">
                           #{report.student_number || report.student_id}
@@ -179,12 +188,12 @@ export default function AdminReportsPage() {
                       <td className="nowrap">{report.term}</td>
                       <td className="nowrap">{report.school_year}</td>
                       <td>
-                        <ReportStatus report={report} />
+                        <ReportStatus report={report} t={t} />
                       </td>
                       <td className="num">{formatReportAverage(report.bilingual_average ?? report.overall_average, report.scale)}</td>
                       <td className="nowrap">
                         <Link className="back-link" to={`/admin/reports/${report.id}`}>
-                          Open →
+                          {t('common.open')}
                         </Link>
                       </td>
                     </tr>

@@ -1,27 +1,25 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 export default function AdminDashboardPage() {
+  const { t } = useTranslation()
+
   return (
     <section className="admin-page">
-      <h2 className="page-title">Admin dashboard</h2>
-      <p className="muted">
-        Manage report cards and review activity across the school. Use the links below or the
-        sidebar to get started.
-      </p>
+      <h2 className="page-title">{t('adminDashboard.title')}</h2>
+      <p className="muted">{t('adminDashboard.subtitle')}</p>
 
       <ul className="card-list">
         <li>
           <Link className="card student-card" to="/admin/reports">
-            <div className="student-name">Reports</div>
-            <div className="muted">
-              Review, check, summarize, approve, and send student report cards.
-            </div>
+            <div className="student-name">{t('nav.reports')}</div>
+            <div className="muted">{t('adminDashboard.reportsDescription')}</div>
           </Link>
         </li>
         <li>
           <Link className="card student-card" to="/admin/audit-logs">
-            <div className="student-name">Audit logs</div>
-            <div className="muted">Trace grade changes, approvals, and report sending.</div>
+            <div className="student-name">{t('nav.auditLogs')}</div>
+            <div className="muted">{t('adminDashboard.auditLogsDescription')}</div>
           </Link>
         </li>
       </ul>

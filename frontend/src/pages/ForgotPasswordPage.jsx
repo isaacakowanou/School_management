@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { forgotPassword, resetPassword } from '../api/auth.js'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import LanguageSwitcher from '../components/LanguageSwitcher.jsx'
 
 export default function ForgotPasswordPage() {
-  const [step, setStep] = useState(1) // 1 = enter identifier, 2 = enter OTP + new password
+  const { t } = useTranslation()
+  const [step, setStep] = useState(1)
   const [identifier, setIdentifier] = useState('')
   const [otp, setOtp] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -53,12 +55,12 @@ export default function ForgotPasswordPage() {
           <LanguageSwitcher />
         </div>
         <div className="card login-card">
-          <h1 className="login-title">Password reset</h1>
+          <h1 className="login-title">{t('forgotPassword.successTitle')}</h1>
           <p className="muted" style={{ marginBottom: '1.25rem' }}>
-            Your password has been updated. You can now sign in with your new password.
+            {t('forgotPassword.successMessage')}
           </p>
           <Link to="/login" className="btn btn-primary" style={{ display: 'block', textAlign: 'center' }}>
-            Back to sign in
+            {t('forgotPassword.backToSignIn')}
           </Link>
         </div>
       </div>
@@ -72,16 +74,13 @@ export default function ForgotPasswordPage() {
       </div>
       {step === 1 ? (
         <form className="card login-card" onSubmit={handleRequestOtp}>
-          <h1 className="login-title">Forgot password?</h1>
-          <p className="login-sub">
-            Enter your phone number (parents) or employee number (teachers). If an account exists,
-            you will receive a one-time code by SMS.
-          </p>
+          <h1 className="login-title">{t('forgotPassword.title')}</h1>
+          <p className="login-sub">{t('forgotPassword.subtitle')}</p>
 
           {error && <ErrorBanner message={error} />}
 
           <label className="field">
-            <span>Phone or employee number</span>
+            <span>{t('forgotPassword.identifierLabel')}</span>
             <input
               type="text"
               value={identifier}
@@ -93,27 +92,26 @@ export default function ForgotPasswordPage() {
           </label>
 
           <button type="submit" className="btn btn-primary" disabled={submitting || !identifier.trim()}>
-            {submitting ? 'Sending…' : 'Send code'}
+            {submitting ? t('forgotPassword.sending') : t('forgotPassword.sendCode')}
           </button>
 
           <p style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.875rem' }}>
             <Link to="/login" style={{ color: 'var(--color-primary, #2563eb)' }}>
-              Back to sign in
+              {t('forgotPassword.backToLogin')}
             </Link>
           </p>
         </form>
       ) : (
         <form className="card login-card" onSubmit={handleResetPassword}>
-          <h1 className="login-title">Enter your code</h1>
+          <h1 className="login-title">{t('forgotPassword.step2Title')}</h1>
           <p className="login-sub">
-            If an account exists for <strong>{identifier}</strong>, a code was sent by SMS. Enter it
-            below along with your new password.
+            {t('forgotPassword.step2Subtitle', { identifier })}
           </p>
 
           {error && <ErrorBanner message={error} />}
 
           <label className="field">
-            <span>One-time code</span>
+            <span>{t('forgotPassword.otpLabel')}</span>
             <input
               type="text"
               inputMode="numeric"
@@ -126,7 +124,7 @@ export default function ForgotPasswordPage() {
           </label>
 
           <label className="field">
-            <span>New password</span>
+            <span>{t('forgotPassword.newPasswordLabel')}</span>
             <div className="password-input-wrap">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -140,7 +138,7 @@ export default function ForgotPasswordPage() {
                 type="button"
                 className="password-toggle"
                 onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                 aria-pressed={showPassword}
               >
                 {showPassword ? (
@@ -160,7 +158,7 @@ export default function ForgotPasswordPage() {
           </label>
 
           <button type="submit" className="btn btn-primary" disabled={submitting || !otp.trim() || !newPassword}>
-            {submitting ? 'Resetting…' : 'Reset password'}
+            {submitting ? t('forgotPassword.resetting') : t('forgotPassword.resetButton')}
           </button>
 
           <p style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.875rem' }}>
@@ -169,7 +167,7 @@ export default function ForgotPasswordPage() {
               onClick={() => { setStep(1); setOtp(''); setError(null) }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary, #2563eb)', fontSize: 'inherit', padding: 0 }}
             >
-              Try a different identifier
+              {t('forgotPassword.tryDifferent')}
             </button>
           </p>
         </form>

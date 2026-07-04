@@ -1,37 +1,37 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/AuthContext.jsx'
 import LanguageSwitcher from './LanguageSwitcher.jsx'
 
-// Layout for the admin area only. Adds a left sidebar for navigation between
-// admin pages. Parent and teacher areas keep using the plain Layout (topbar only).
 const NAV_ITEMS = [
-  { to: '/admin', label: 'Dashboard', end: true },
-  { to: '/admin/reports', label: 'Reports', end: false },
-  { to: '/admin/students', label: 'Students', end: false },
-  { to: '/admin/teachers', label: 'Teachers', end: false },
-  { to: '/admin/parents', label: 'Parents', end: false },
-  { to: '/admin/courses', label: 'Courses', end: false },
-  { to: '/admin/classes', label: 'Classes', end: false },
-  { to: '/admin/subjects', label: 'Subjects', end: false },
-  { to: '/admin/trash', label: 'Trash', end: false },
-  { to: '/admin/danger-zone', label: 'Danger Zone', end: false },
-  { to: '/admin/audit-logs', label: 'Audit logs', end: false },
+  { to: '/admin', key: 'nav.dashboard', end: true },
+  { to: '/admin/reports', key: 'nav.reports', end: false },
+  { to: '/admin/students', key: 'nav.students', end: false },
+  { to: '/admin/teachers', key: 'nav.teachers', end: false },
+  { to: '/admin/parents', key: 'nav.parents', end: false },
+  { to: '/admin/courses', key: 'nav.courses', end: false },
+  { to: '/admin/classes', key: 'nav.classes', end: false },
+  { to: '/admin/subjects', key: 'nav.subjects', end: false },
+  { to: '/admin/trash', key: 'nav.trash', end: false },
+  { to: '/admin/danger-zone', key: 'nav.dangerZone', end: false },
+  { to: '/admin/audit-logs', key: 'nav.auditLogs', end: false },
 ]
 
 export default function AdminLayout() {
   const { user, logout, homePath } = useAuth()
+  const { t } = useTranslation()
 
   return (
     <div className="app">
       <header className="topbar">
         <Link to={homePath} className="brand">
-          School Reports
+          {t('common.schoolName')}
         </Link>
         <div className="topbar-right">
           {user && <span className="parent-name">{user.name}</span>}
           <LanguageSwitcher />
           <button type="button" className="btn btn-ghost" onClick={logout}>
-            Log out
+            {t('common.logout')}
           </button>
         </div>
       </header>
@@ -47,7 +47,7 @@ export default function AdminLayout() {
                 `admin-nav-link${isActive ? ' admin-nav-link-active' : ''}`
               }
             >
-              {item.label}
+              {t(item.key)}
             </NavLink>
           ))}
         </nav>

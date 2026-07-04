@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { deleteStudent, listStudents } from '../api/students.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -8,6 +9,7 @@ import Empty from '../components/Empty.jsx'
 export default function AdminStudentsPage() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [students, setStudents] = useState(null)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(location.state?.message || null)
@@ -43,7 +45,7 @@ export default function AdminStudentsPage() {
 
   async function handleDelete(student) {
     const name = `${student.first_name} ${student.last_name}`
-    if (!window.confirm(`Move ${name} to Trash? This hides the student from normal workflows and can be restored.`)) {
+    if (!window.confirm(t('students.confirmDelete', { name }))) {
       return
     }
     setError(null)
@@ -52,7 +54,7 @@ export default function AdminStudentsPage() {
     try {
       await deleteStudent(student.id)
       await refresh()
-      setNotice(`${name} moved to Trash.`)
+      setNotice(t('students.movedToTrash', { name }))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -64,31 +66,31 @@ export default function AdminStudentsPage() {
     <section className="admin-page">
       <div className="report-header">
         <div>
-          <h2 className="page-title">Students</h2>
-          <p className="muted">All students.</p>
+          <h2 className="page-title">{t('students.title')}</h2>
+          <p className="muted">{t('students.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <Link to="/admin/students/trash" className="btn btn-ghost">
-            Deleted students
+            {t('students.deletedStudents')}
           </Link>
           <Link to="/admin/students/new" className="btn btn-primary">
-            Add student
+            {t('students.addStudent')}
           </Link>
         </div>
       </div>
 
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
-      {!error && students === null && <Spinner label="Loading students…" />}
-      {!error && students && students.length === 0 && <Empty message="No students found." />}
+      {!error && students === null && <Spinner label={t('students.loading')} />}
+      {!error && students && students.length === 0 && <Empty message={t('students.empty')} />}
       {!error && students && students.length > 0 && (
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Student #</th>
-                <th>Class</th>
+                <th>{t('common.name')}</th>
+                <th>{t('students.studentNumber')}</th>
+                <th>{t('students.class')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -102,7 +104,7 @@ export default function AdminStudentsPage() {
                   <td className="nowrap">{student.class_name || '—'}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/students/${student.id}`}>
-                      Open →
+                      {t('common.open')}
                     </Link>
                     <button
                       type="button"
@@ -111,7 +113,7 @@ export default function AdminStudentsPage() {
                       disabled={deletingId === student.id}
                       style={{ marginLeft: 8 }}
                     >
-                      {deletingId === student.id ? 'Moving...' : 'Delete'}
+                      {deletingId === student.id ? t('students.moving') : t('common.delete')}
                     </button>
                   </td>
                 </tr>

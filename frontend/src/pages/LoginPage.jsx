@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/AuthContext.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import LanguageSwitcher from '../components/LanguageSwitcher.jsx'
 import { homePathForRole, isPathForRole } from '../utils/roles.js'
-
-const BACKEND_WAKEUP_MESSAGE = 'Backend is waking up. Please wait 30 seconds and try again.'
 
 function isBackendWakeupError(error) {
   return error?.status === 504 || error?.status === 0
@@ -15,6 +14,7 @@ export default function LoginPage() {
   const { login, isAuthenticated, bootstrapping, role, homePath } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useTranslation()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -22,9 +22,8 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
 
   const from = location.state?.from?.pathname
-  const passwordToggleLabel = showPassword ? 'Hide password' : 'Show password'
+  const passwordToggleLabel = showPassword ? t('login.hidePassword') : t('login.showPassword')
 
-  // Already signed in -> go to the right area (restore `from` only if it fits the role).
   if (!bootstrapping && isAuthenticated) {
     const dest = from && isPathForRole(from, role) ? from : homePath
     return <Navigate to={dest} replace />
@@ -43,7 +42,7 @@ export default function LoginPage() {
       const dest = from && isPathForRole(from, me.role) ? from : homePathForRole(me.role)
       navigate(dest, { replace: true })
     } catch (err) {
-      setError(isBackendWakeupError(err) ? BACKEND_WAKEUP_MESSAGE : err.message || 'Sign in failed. Please try again.')
+      setError(isBackendWakeupError(err) ? t('login.backendWakeup') : err.message || t('login.submit'))
     } finally {
       setSubmitting(false)
     }
@@ -55,13 +54,13 @@ export default function LoginPage() {
         <LanguageSwitcher />
       </div>
       <form className="card login-card" onSubmit={handleSubmit}>
-        <h1 className="login-title">School Reports</h1>
-        <p className="login-sub">Sign in to your account</p>
+        <h1 className="login-title">{t('login.title')}</h1>
+        <p className="login-sub">{t('login.subtitle')}</p>
 
         {error && <ErrorBanner message={error} />}
 
         <label className="field">
-          <span>Email / Employee number / Phone</span>
+          <span>{t('login.identifier')}</span>
           <input
             type="text"
             value={identifier}
@@ -72,7 +71,7 @@ export default function LoginPage() {
         </label>
 
         <label className="field">
-          <span>Password</span>
+          <span>{t('login.password')}</span>
           <div className="password-input-wrap">
             <input
               type={showPassword ? 'text' : 'password'}
@@ -140,12 +139,12 @@ export default function LoginPage() {
         </label>
 
         <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? 'Signing in…' : 'Sign in'}
+          {submitting ? t('login.submitting') : t('login.submit')}
         </button>
 
         <p style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.875rem' }}>
           <Link to="/forgot-password" style={{ color: 'var(--color-primary, #2563eb)' }}>
-            Forgot password?
+            {t('login.forgotPassword')}
           </Link>
         </p>
       </form>

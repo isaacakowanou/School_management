@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { getParentStudents } from '../api/parents.js'
 import Spinner from '../components/Spinner.jsx'
@@ -8,6 +9,7 @@ import Empty from '../components/Empty.jsx'
 
 export default function DashboardPage() {
   const { parentId, parent } = useAuth()
+  const { t } = useTranslation()
   const [students, setStudents] = useState(null)
   const [error, setError] = useState(null)
 
@@ -30,13 +32,13 @@ export default function DashboardPage() {
 
   return (
     <section>
-      <h2 className="page-title">My students</h2>
-      {parent && <p className="muted">Signed in as {parent.name}</p>}
+      <h2 className="page-title">{t('dashboard.title')}</h2>
+      {parent && <p className="muted">{t('dashboard.signedInAs', { name: parent.name })}</p>}
 
       {error && <ErrorBanner message={error} />}
-      {!error && students === null && <Spinner label="Loading students…" />}
+      {!error && students === null && <Spinner label={t('dashboard.loading')} />}
       {!error && students && students.length === 0 && (
-        <Empty message="No students are linked to your account yet." />
+        <Empty message={t('dashboard.empty')} />
       )}
       {!error && students && students.length > 0 && (
         <ul className="card-list">

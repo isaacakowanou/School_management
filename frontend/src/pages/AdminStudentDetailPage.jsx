@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   getStudent,
   getStudentParents,
@@ -37,6 +38,7 @@ function reportPeriodKey(period) {
 
 export default function AdminStudentDetailPage() {
   const { studentId } = useParams()
+  const { t } = useTranslation()
   const [student, setStudent] = useState(null)
   const [parents, setParents] = useState([])
   const [allParents, setAllParents] = useState([])
@@ -109,7 +111,6 @@ export default function AdminStudentDetailPage() {
         if (!cancelled) setError(err.message)
         return
       }
-      // Related sections are best-effort; one failing won't blank the page.
       const [linkedParents, studentReports, parentOptions, courseResults] = await Promise.allSettled([
         getStudentParents(studentId),
         getStudentReports(studentId),
@@ -195,7 +196,7 @@ export default function AdminStudentDetailPage() {
     setEditMessage(null)
 
     if (!editForm.firstName.trim() || !editForm.lastName.trim() || !editForm.studentNumber.trim()) {
-      setEditError('First name, last name, and student number are required.')
+      setEditError(t('students.errorAllRequired'))
       return
     }
 
@@ -205,7 +206,7 @@ export default function AdminStudentDetailPage() {
       const refreshed = await getStudent(studentId)
       setStudent(refreshed)
       setEditForm(studentToForm(refreshed))
-      setEditMessage('Student updated.')
+      setEditMessage(t('students.updated'))
       setShowEditForm(false)
     } catch (err) {
       setEditError(err.message)
@@ -220,7 +221,7 @@ export default function AdminStudentDetailPage() {
     setLinkMessage(null)
 
     if (!linkParentId) {
-      setLinkError('Choose a parent to link.')
+      setLinkError(t('students.chooseParent'))
       return
     }
 
@@ -233,7 +234,7 @@ export default function AdminStudentDetailPage() {
       const linked = await getStudentParents(studentId)
       setParents(linked)
       setRelationship('')
-      setLinkMessage('Parent linked.')
+      setLinkMessage(t('students.parentLinked'))
       setShowLinkParentForm(false)
     } catch (err) {
       setLinkError(err.message)
@@ -243,7 +244,9 @@ export default function AdminStudentDetailPage() {
   }
 
   async function handleUnlinkParent(parent) {
-    const confirmed = window.confirm(`Unlink ${parent.name} (${parent.email}) from this student?`)
+    const confirmed = window.confirm(
+      t('students.confirmUnlink', { name: parent.name, contact: parent.email || parent.phone || '—' }),
+    )
     if (!confirmed) return
 
     setLinkError(null)
@@ -253,7 +256,7 @@ export default function AdminStudentDetailPage() {
       await unlinkStudentParent(studentId, parent.id)
       const linked = await getStudentParents(studentId)
       setParents(linked)
-      setLinkMessage('Parent unlinked.')
+      setLinkMessage(t('students.parentUnlinked'))
     } catch (err) {
       setLinkError(err.message)
     } finally {
@@ -263,7 +266,7 @@ export default function AdminStudentDetailPage() {
 
   async function handleGenerateReport() {
     if (!selectedReportPeriodData) {
-      setReportError('Choose a term and school year to generate.')
+      setReportError(t('students.chooseTermError'))
       return
     }
 
@@ -274,7 +277,7 @@ export default function AdminStudentDetailPage() {
       await generateReport(studentId, selectedReportPeriodData)
       const refreshed = await getStudentReports(studentId)
       setReports(refreshed)
-      setReportMessage('Draft report generated.')
+      setReportMessage(t('students.reportGenerated'))
     } catch (err) {
       setReportError(err.message)
     } finally {
@@ -286,7 +289,7 @@ export default function AdminStudentDetailPage() {
     return (
       <section className="admin-page">
         <Link to="/admin/students" className="back-link">
-          ← Students
+          ← {t('students.title')}
         </Link>
         <ErrorBanner message={error} />
       </section>
@@ -296,7 +299,7 @@ export default function AdminStudentDetailPage() {
   if (!student) {
     return (
       <section className="admin-page">
-        <Spinner label="Loading student…" />
+        <Spinner label={t('students.loadingOne')} />
       </section>
     )
   }
@@ -304,7 +307,7 @@ export default function AdminStudentDetailPage() {
   return (
     <section className="admin-page">
       <Link to="/admin/students" className="back-link">
-        ← Students
+        ← {t('students.title')}
       </Link>
       <h2 className="page-title">
         {student.first_name} {student.last_name}
@@ -326,7 +329,7 @@ export default function AdminStudentDetailPage() {
               setShowEditForm(true)
             }}
           >
-            Edit
+            {t('common.edit')}
           </button>
         </div>
       )}
@@ -334,7 +337,7 @@ export default function AdminStudentDetailPage() {
       {showEditForm && (
         <form className="card admin-form" onSubmit={handleEditStudent}>
           <label className="field">
-            <span>First name</span>
+            <span>{t('students.firstName')}</span>
             <input
               value={editForm.firstName}
               onChange={(event) => updateEditField('firstName', event.target.value)}
@@ -344,7 +347,7 @@ export default function AdminStudentDetailPage() {
           </label>
 
           <label className="field">
-            <span>Last name</span>
+            <span>{t('students.lastName')}</span>
             <input
               value={editForm.lastName}
               onChange={(event) => updateEditField('lastName', event.target.value)}
@@ -354,7 +357,7 @@ export default function AdminStudentDetailPage() {
           </label>
 
           <label className="field">
-            <span>Student number</span>
+            <span>{t('students.studentNumber')}</span>
             <input
               value={editForm.studentNumber}
               onChange={(event) => updateEditField('studentNumber', event.target.value)}
@@ -364,7 +367,7 @@ export default function AdminStudentDetailPage() {
           </label>
 
           <label className="field">
-            <span>School level (optional)</span>
+            <span>{t('students.schoolLevel')}</span>
             <select
               className="grade-input"
               value={editForm.schoolLevel}
@@ -372,7 +375,7 @@ export default function AdminStudentDetailPage() {
               disabled={savingEdit}
               style={{ width: '100%', textAlign: 'left' }}
             >
-              <option value="">Not set</option>
+              <option value="">{t('common.notSet')}</option>
               {SCHOOL_LEVELS.map((level) => (
                 <option key={level.value} value={level.value}>
                   {level.label}
@@ -382,7 +385,7 @@ export default function AdminStudentDetailPage() {
           </label>
 
           <label className="field">
-            <span>Class / Classe (optional)</span>
+            <span>{t('students.classLabel')}</span>
             <ClassSelect
               classes={classes}
               value={editForm.classId}
@@ -392,28 +395,28 @@ export default function AdminStudentDetailPage() {
           </label>
 
           <label className="field">
-            <span>N° EducMaster (optional)</span>
+            <span>{t('students.educmaster')}</span>
             <input
               value={editForm.educmasterNumber}
               onChange={(event) => updateEditField('educmasterNumber', event.target.value)}
               disabled={savingEdit}
-              placeholder="Government-assigned"
+              placeholder={t('students.educmasterShort')}
             />
           </label>
 
           <div className="grade-actions">
             <button type="submit" className="btn btn-primary" disabled={savingEdit}>
-              {savingEdit ? 'Saving...' : 'Save changes'}
+              {savingEdit ? t('common.saving') : t('common.saveChanges')}
             </button>
             <button type="button" className="btn btn-ghost" disabled={savingEdit} onClick={cancelEdit}>
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
           {editError && <ErrorBanner message={editError} />}
         </form>
       )}
 
-      <h3 className="section-title">Parents</h3>
+      <h3 className="section-title">{t('students.parentsSection')}</h3>
       {!showLinkParentForm && (
         <div className="grade-actions">
           <button
@@ -425,7 +428,7 @@ export default function AdminStudentDetailPage() {
               setShowLinkParentForm(true)
             }}
           >
-            Link parent
+            {t('students.linkParent')}
           </button>
         </div>
       )}
@@ -434,7 +437,7 @@ export default function AdminStudentDetailPage() {
       {showLinkParentForm && (
         <form className="card admin-form" onSubmit={handleLinkParent}>
           <label className="field">
-            <span>Parent</span>
+            <span>{t('nav.parents')}</span>
             <select
               className="grade-input"
               value={linkParentId}
@@ -444,7 +447,7 @@ export default function AdminStudentDetailPage() {
               style={{ width: '100%', textAlign: 'left' }}
             >
               {availableParents.length === 0 ? (
-                <option value="">No available parents</option>
+                <option value="">{t('students.noAvailableParents')}</option>
               ) : (
                 availableParents.map((parent) => (
                   <option key={parent.id} value={parent.id}>
@@ -456,7 +459,7 @@ export default function AdminStudentDetailPage() {
           </label>
 
           <label className="field">
-            <span>Relationship</span>
+            <span>{t('common.relationship', t('common.optional'))}</span>
             <select
               className="grade-input"
               value={relationship}
@@ -464,11 +467,11 @@ export default function AdminStudentDetailPage() {
               disabled={linking}
               style={{ width: '100%', textAlign: 'left' }}
             >
-              <option value="">Optional</option>
-              <option value="Mother">Mother</option>
-              <option value="Father">Father</option>
-              <option value="Guardian">Guardian</option>
-              <option value="Other">Other</option>
+              <option value="">{t('students.relationshipOptional')}</option>
+              <option value="Mother">{t('students.relationshipMother')}</option>
+              <option value="Father">{t('students.relationshipFather')}</option>
+              <option value="Guardian">{t('students.relationshipGuardian')}</option>
+              <option value="Other">{t('students.relationshipOther')}</option>
             </select>
           </label>
 
@@ -478,7 +481,7 @@ export default function AdminStudentDetailPage() {
               className="btn btn-primary"
               disabled={linking || availableParents.length === 0}
             >
-              {linking ? 'Linking...' : 'Link parent'}
+              {linking ? t('students.linking') : t('students.linkParent')}
             </button>
             <button
               type="button"
@@ -489,7 +492,7 @@ export default function AdminStudentDetailPage() {
                 setLinkError(null)
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
           {linkError && <ErrorBanner message={linkError} />}
@@ -497,16 +500,16 @@ export default function AdminStudentDetailPage() {
       )}
 
       {parents.length === 0 ? (
-        <Empty message="No parents linked to this student." />
+        <Empty message={t('students.noParents')} />
       ) : (
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Relationship</th>
+                <th>{t('common.name')}</th>
+                <th>{t('common.email')}</th>
+                <th>{t('common.phone')}</th>
+                <th>{t('common.relationship', t('common.optional'))}</th>
                 <th></th>
               </tr>
             </thead>
@@ -519,7 +522,7 @@ export default function AdminStudentDetailPage() {
                   <td className="nowrap">{parent.relationship || '—'}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/parents/${parent.id}`}>
-                      Open →
+                      {t('common.open')}
                     </Link>
                     <button
                       type="button"
@@ -527,7 +530,7 @@ export default function AdminStudentDetailPage() {
                       disabled={unlinkingParentId === parent.id}
                       onClick={() => handleUnlinkParent(parent)}
                     >
-                      {unlinkingParentId === parent.id ? 'Unlinking...' : 'Unlink'}
+                      {unlinkingParentId === parent.id ? t('students.unlinking') : t('students.unlink')}
                     </button>
                   </td>
                 </tr>
@@ -537,7 +540,7 @@ export default function AdminStudentDetailPage() {
         </div>
       )}
 
-      <h3 className="section-title">Reports</h3>
+      <h3 className="section-title">{t('nav.reports')}</h3>
       {reportMessage && <p className="grade-summary">{reportMessage}</p>}
       {reportError && <ErrorBanner message={reportError} />}
       {reports.length === 0 ? (
@@ -546,7 +549,7 @@ export default function AdminStudentDetailPage() {
             <div className="grade-actions">
               {reportPeriods.length > 1 && (
                 <label className="field" style={{ marginBottom: 0 }}>
-                  <span>Report period</span>
+                  <span>{t('students.reportPeriod')}</span>
                   <select
                     className="grade-input"
                     value={selectedReportPeriod}
@@ -568,15 +571,15 @@ export default function AdminStudentDetailPage() {
                 disabled={generatingReport || !selectedReportPeriodData}
                 onClick={handleGenerateReport}
               >
-                {generatingReport ? 'Generating...' : 'Generate report'}
+                {generatingReport ? t('students.generating') : t('students.generateReport')}
               </button>
             </div>
           )}
           <Empty
             message={
               reportPeriods.length > 0
-                ? 'No reports for this student yet.'
-                : 'No reports for this student. Calculate course results before generating a report.'
+                ? t('students.noReports')
+                : t('students.noReportsCourseResults')
             }
           />
         </>
@@ -585,10 +588,10 @@ export default function AdminStudentDetailPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Term</th>
-                <th>School year</th>
-                <th>Status</th>
-                <th className="num">Average</th>
+                <th>{t('students.term')}</th>
+                <th>{t('students.schoolYear')}</th>
+                <th>{t('common.status')}</th>
+                <th className="num">{t('students.average')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -603,7 +606,7 @@ export default function AdminStudentDetailPage() {
                   <td className="num">{formatReportAverage(report.bilingual_average ?? report.overall_average, report.scale)}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/reports/${report.id}`}>
-                      Open →
+                      {t('common.open')}
                     </Link>
                   </td>
                 </tr>

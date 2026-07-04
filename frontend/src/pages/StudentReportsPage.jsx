@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { getParentStudents } from '../api/parents.js'
 import { getStudentReports } from '../api/reports.js'
@@ -12,6 +13,7 @@ import StatusBadge from '../components/StatusBadge.jsx'
 export default function StudentReportsPage() {
   const { studentId } = useParams()
   const { parentId } = useAuth()
+  const { t } = useTranslation()
   const [student, setStudent] = useState(null)
   const [reports, setReports] = useState(null)
   const [error, setError] = useState(null)
@@ -23,7 +25,6 @@ export default function StudentReportsPage() {
     setStudent(null)
 
     async function load() {
-      // Reports are the primary content (already filtered to approved/sent by the API).
       try {
         const reportList = await getStudentReports(studentId)
         if (cancelled) return
@@ -32,7 +33,6 @@ export default function StudentReportsPage() {
         if (!cancelled) setError(err.message)
         return
       }
-      // Student name/details are best-effort (the reports payload has no name).
       if (parentId) {
         try {
           const students = await getParentStudents(parentId)
@@ -52,10 +52,10 @@ export default function StudentReportsPage() {
   return (
     <section>
       <Link to="/" className="back-link">
-        ← My students
+        {t('reports.myStudentsBack')}
       </Link>
       <h2 className="page-title">
-        {student ? `${student.first_name} ${student.last_name}` : 'Reports'}
+        {student ? `${student.first_name} ${student.last_name}` : t('nav.reports')}
       </h2>
       {student && (
         <p className="muted">
@@ -64,9 +64,9 @@ export default function StudentReportsPage() {
       )}
 
       {error && <ErrorBanner message={error} />}
-      {!error && reports === null && <Spinner label="Loading reports…" />}
+      {!error && reports === null && <Spinner label={t('reports.loading')} />}
       {!error && reports && reports.length === 0 && (
-        <Empty message="No published reports are available yet." />
+        <Empty message={t('reports.noPublished')} />
       )}
       {!error && reports && reports.length > 0 && (
         <ul className="card-list">
@@ -77,7 +77,7 @@ export default function StudentReportsPage() {
                   <div className="report-term">
                     {report.term} · {report.school_year}
                   </div>
-                  <div className="muted">Average {formatReportAverage(report.bilingual_average ?? report.overall_average, report.scale)}</div>
+                  <div className="muted">{t('reports.average')} {formatReportAverage(report.bilingual_average ?? report.overall_average, report.scale)}</div>
                 </div>
                 <StatusBadge status={report.status} />
               </Link>

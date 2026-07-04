@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   approveReport,
   downloadReportPdf,
@@ -37,19 +38,9 @@ function hasValue(value) {
   return value !== null && value !== undefined
 }
 
-function friendlyStaleReason(reason) {
-  if (!reason) return null
-  if (reason.includes('could not be built')) {
-    return 'The latest course results are incomplete or unavailable.'
-  }
-  if (reason.includes('course set changed')) {
-    return 'The courses on this report no longer match the latest course results.'
-  }
-  return 'One or more saved averages or letter grades no longer match the latest results.'
-}
-
 export default function AdminReportDetailPage() {
   const { reportId } = useParams()
+  const { t } = useTranslation()
 
   const [report, setReport] = useState(null)
   const [error, setError] = useState(null)
@@ -82,9 +73,10 @@ export default function AdminReportDetailPage() {
       return data
     } catch {
       setStaleness(null)
-      setStalenessError('Report loaded, but the freshness check is unavailable right now.')
+      setStalenessError(t('reports.stalenessUnavailable'))
       return null
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportId])
 
   const refreshReportView = useCallback(async () => {
@@ -140,7 +132,7 @@ export default function AdminReportDetailPage() {
       } catch {
         if (!cancelled) {
           setStaleness(null)
-          setStalenessError('Report loaded, but the freshness check is unavailable right now.')
+          setStalenessError(t('reports.stalenessUnavailable'))
         }
       }
     }
@@ -177,7 +169,7 @@ export default function AdminReportDetailPage() {
       if (successMessage) setActionMessage(successMessage)
       return result
     } catch (err) {
-      setActionError(err.message || 'Action failed.')
+      setActionError(err.message || t('common.actionFailed'))
       return null
     } finally {
       setPending(null)
@@ -192,21 +184,21 @@ export default function AdminReportDetailPage() {
       setWarnings(result)
       setActionMessage(
         result.length === 0
-          ? 'Checker found no issues.'
-          : `Checker found ${result.length} warning${result.length === 1 ? '' : 's'}.`,
+          ? t('reports.checkerNoIssues')
+          : t('reports.checkerResult', { count: result.length }),
       )
     }
   }
 
   async function handleGenerateSummary() {
     await runAction('summary', () => generateReportSummary(reportId), {
-      successMessage: 'AI summary generated.',
+      successMessage: t('reports.summaryGenerated'),
     })
   }
 
   async function handleSaveSummary() {
     await runAction('save', () => updateReportSummary(reportId, summaryDraft), {
-      successMessage: 'Summary saved.',
+      successMessage: t('reports.summarySaved'),
     })
   }
 
@@ -226,38 +218,35 @@ export default function AdminReportDetailPage() {
       principal_comment_en: comments.principal_comment_en.trim() || null,
     }
     await runAction('details', () => updateReportDetails(reportId, payload), {
-      successMessage: 'Conduct, work habits, and comments saved.',
+      successMessage: t('reports.detailsSaved'),
     })
   }
 
   async function handleApprove() {
     await runAction('approve', () => approveReport(reportId), {
-      successMessage: 'Report approved.',
+      successMessage: t('reports.reportApproved'),
     })
   }
 
   async function handleSend() {
     const isResend = report?.status === 'sent'
-    if (isResend && !window.confirm('This report was already sent. Send it again?')) {
+    if (isResend && !window.confirm(t('reports.confirmResend'))) {
       return
     }
 
     const result = await runAction('send', () => sendReport(reportId), {
-      successMessage: isResend ? 'Report resent to parents.' : 'Report sent to parents.',
+      successMessage: isResend ? t('reports.reportResent') : t('reports.reportSent'),
     })
     if (result) {
-      setActionMessage(
-        `${isResend ? 'Report resent' : 'Report sent'} · ${result.sent_count} delivered${
-          result.failed_count ? ` · ${result.failed_count} failed` : ''
-        }.`,
-      )
+      const statusLabel = isResend ? t('reports.reportResent') : t('reports.reportSent')
+      const failedPart = result.failed_count ? ` · ${result.failed_count} ${t('reports.failed')}` : ''
+      setActionMessage(`${statusLabel} · ${result.sent_count} ${t('reports.delivered')}${failedPart}`)
     }
   }
 
   async function handleRegenerate() {
     await runAction('regenerate', () => regenerateReport(reportId), {
-      successMessage:
-        'Report regenerated as a draft. Review and approve it again before parents can see it.',
+      successMessage: t('reports.regenerated'),
     })
   }
 
@@ -286,7 +275,7 @@ export default function AdminReportDetailPage() {
     return (
       <section className="admin-page">
         <Link to="/admin/reports" className="back-link">
-          ← Reports
+          ← {t('nav.reports')}
         </Link>
         <ErrorBanner message={error} />
       </section>
@@ -296,7 +285,7 @@ export default function AdminReportDetailPage() {
   if (!report) {
     return (
       <section className="admin-page">
-        <Spinner label="Loading report…" />
+        <Spinner label={t('reports.loadingOne')} />
       </section>
     )
   }
@@ -305,27 +294,33 @@ export default function AdminReportDetailPage() {
   const isApproved = report.status === 'approved'
   const isSent = report.status === 'sent'
   const busy = pending !== null
-  const staleReason = friendlyStaleReason(staleness?.reason)
-  const studentName = report.student_name || 'Unknown student'
+  const staleReason = staleness?.reason
+    ? staleness.reason.includes('could not be built')
+      ? t('reports.staleReasonIncomplete')
+      : staleness.reason.includes('course set changed')
+        ? t('reports.staleReasonCourseSet')
+        : t('reports.staleReasonGeneric')
+    : null
+  const studentName = report.student_name || t('reports.unknownStudent')
   const studentNumber = report.student_number || report.student_id
 
   return (
     <section className="admin-page">
       <Link to="/admin/reports" className="back-link">
-        ← Reports
+        ← {t('nav.reports')}
       </Link>
 
       <div className="report-header">
         <div>
-          <h2 className="page-title">Report card</h2>
+          <h2 className="page-title">{t('reports.reportCard')}</h2>
           <p className="muted">
             {report.term} · {report.school_year} · <StatusBadge status={report.status} />
           </p>
           <p className="muted">
-            Student: <strong>{studentName}</strong>
+            {t('reports.student')}: <strong>{studentName}</strong>
           </p>
           <p className="muted">
-            Student number: <span className="mono">{studentNumber}</span>
+            {t('reports.studentNumber')}: <span className="mono">{studentNumber}</span>
           </p>
         </div>
       </div>
@@ -333,7 +328,7 @@ export default function AdminReportDetailPage() {
       <div className="summary-row">
         <ReportAverages report={report} />
         <div className="stat">
-          <div className="stat-label">Status</div>
+          <div className="stat-label">{t('common.status')}</div>
           <div className="stat-value" style={{ fontSize: '1.1rem' }}>
             <StatusBadge status={report.status} />
           </div>
@@ -343,25 +338,22 @@ export default function AdminReportDetailPage() {
       {staleness?.is_stale && (
         <section className="stale-report-warning" aria-live="polite">
           <div>
-            <h3>Grades changed</h3>
-            <p>
-              Grades have changed since this report was generated. Regenerate it from the latest
-              grades, then review and approve again.
-            </p>
+            <h3>{t('reports.gradesChanged')}</h3>
+            <p>{t('reports.gradesChangedDesc')}</p>
             {staleReason && <p className="muted">{staleReason}</p>}
           </div>
 
           <div className="stale-report-values" aria-label="Snapshot and current values">
             <div>
-              <span>Snapshot overall average</span>
+              <span>{t('reports.snapshotAvg')}</span>
               <strong>{formatReportAverage(staleness.snapshot_overall_average, report.scale)}</strong>
             </div>
             <div>
-              <span>Current overall average</span>
+              <span>{t('reports.currentAvg')}</span>
               <strong>
                 {hasValue(staleness.current_overall_average)
                   ? formatScore20(staleness.current_overall_average)
-                  : 'Unavailable'}
+                  : t('reports.unavailable')}
               </strong>
             </div>
           </div>
@@ -372,13 +364,13 @@ export default function AdminReportDetailPage() {
             onClick={handleRegenerate}
             disabled={busy}
           >
-            {pending === 'regenerate' ? 'Regenerating…' : 'Regenerate from latest grades'}
+            {pending === 'regenerate' ? t('reports.regenerating') : t('reports.regenerate')}
           </button>
         </section>
       )}
 
       {/* ---- Workflow actions ---- */}
-      <h3 className="section-title">Actions</h3>
+      <h3 className="section-title">{t('reports.actionsSection')}</h3>
       <div className="grade-actions">
         {isDraft && (
           <>
@@ -388,7 +380,7 @@ export default function AdminReportDetailPage() {
               onClick={handleCheck}
               disabled={busy}
             >
-              {pending === 'check' ? 'Running checker…' : 'Run checker'}
+              {pending === 'check' ? t('reports.checking') : t('reports.check')}
             </button>
             <button
               type="button"
@@ -396,7 +388,7 @@ export default function AdminReportDetailPage() {
               onClick={handleGenerateSummary}
               disabled={busy}
             >
-              {pending === 'summary' ? 'Generating…' : 'Generate AI summary'}
+              {pending === 'summary' ? t('reports.generating') : t('reports.generateSummary')}
             </button>
             <button
               type="button"
@@ -404,7 +396,7 @@ export default function AdminReportDetailPage() {
               onClick={handleApprove}
               disabled={busy}
             >
-              {pending === 'approve' ? 'Approving…' : 'Approve report'}
+              {pending === 'approve' ? t('reports.approving') : t('reports.approve')}
             </button>
           </>
         )}
@@ -413,17 +405,17 @@ export default function AdminReportDetailPage() {
           <button type="button" className="btn btn-primary" onClick={handleSend} disabled={busy}>
             {pending === 'send'
               ? isSent
-                ? 'Resending…'
-                : 'Sending…'
+                ? t('reports.resending')
+                : t('reports.sending')
               : isSent
-                ? 'Resend report'
-                : 'Send report'}
+                ? t('reports.resend')
+                : t('reports.send')}
           </button>
         )}
 
         {(isApproved || isSent) && (
           <button type="button" className="btn btn-ghost" onClick={handleDownload} disabled={busy}>
-            {pending === 'pdf' ? 'Preparing…' : 'Download PDF'}
+            {pending === 'pdf' ? t('reports.preparing') : t('reports.downloadPdf')}
           </button>
         )}
       </div>
@@ -435,7 +427,7 @@ export default function AdminReportDetailPage() {
       {/* ---- AI warnings from checker ---- */}
       {warnings && warnings.length > 0 && (
         <>
-          <h3 className="section-title">Checker warnings</h3>
+          <h3 className="section-title">{t('reports.checkerWarningsSection')}</h3>
           <ul className="card-list">
             {warnings.map((w, i) => (
               <li key={i} className="card">
@@ -453,16 +445,16 @@ export default function AdminReportDetailPage() {
       )}
 
       {/* ---- Courses ---- */}
-      <h3 className="section-title">Courses</h3>
+      <h3 className="section-title">{t('reports.coursesSection')}</h3>
       {report.courses.length === 0 ? (
-        <Empty message="This report has no course rows." />
+        <Empty message={t('reports.noCourseRows')} />
       ) : (
         <table className="table">
           <thead>
             <tr>
-              <th>Course</th>
-              <th className="num">Average</th>
-              <th className="num">Grade</th>
+              <th>{t('reports.course')}</th>
+              <th className="num">{t('reports.average')}</th>
+              <th className="num">{t('reports.grade')}</th>
             </tr>
           </thead>
           <tbody>
@@ -482,8 +474,8 @@ export default function AdminReportDetailPage() {
       <table className="table">
         <thead>
           <tr>
-            <th>Item</th>
-            <th className="num">Grade</th>
+            <th>{t('reports.item')}</th>
+            <th className="num">{t('reports.grade')}</th>
           </tr>
         </thead>
         <tbody>
@@ -517,8 +509,8 @@ export default function AdminReportDetailPage() {
       <table className="table">
         <thead>
           <tr>
-            <th>Item</th>
-            <th className="num">Grade</th>
+            <th>{t('reports.item')}</th>
+            <th className="num">{t('reports.grade')}</th>
           </tr>
         </thead>
         <tbody>
@@ -548,7 +540,7 @@ export default function AdminReportDetailPage() {
       </table>
 
       {/* ---- Conduct / work-habit comments ---- */}
-      <h3 className="section-title">Comments</h3>
+      <h3 className="section-title">{t('reports.commentsSection')}</h3>
       {COMMENT_FIELDS.map(([field, label]) => (
         <label className="field" key={field}>
           <span>{label}</span>
@@ -562,19 +554,19 @@ export default function AdminReportDetailPage() {
       ))}
       <div className="grade-actions">
         <button type="button" className="btn btn-primary" onClick={handleSaveDetails} disabled={busy}>
-          {pending === 'details' ? 'Saving…' : 'Save conduct & comments'}
+          {pending === 'details' ? t('common.saving') : t('reports.saveDetails')}
         </button>
       </div>
 
       {/* ---- AI summary ---- */}
-      <h3 className="section-title">Parent summary</h3>
+      <h3 className="section-title">{t('reports.parentSummarySection')}</h3>
       <div>
         <textarea
           className="field"
           style={{ width: '100%', minHeight: 140, padding: '10px 12px' }}
           value={summaryDraft}
           onChange={(e) => setSummaryDraft(e.target.value)}
-          placeholder="Generate a summary above, or write one here…"
+          placeholder={t('reports.summaryPlaceholder')}
           disabled={busy}
         />
         <div className="grade-actions">
@@ -584,7 +576,7 @@ export default function AdminReportDetailPage() {
             onClick={handleSaveSummary}
             disabled={busy}
           >
-            {pending === 'save' ? 'Saving…' : 'Save summary'}
+            {pending === 'save' ? t('common.saving') : t('reports.saveSummary')}
           </button>
         </div>
       </div>

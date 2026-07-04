@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { getParentStudents } from '../api/parents.js'
 import { downloadReportPdf, getReport } from '../api/reports.js'
@@ -11,6 +12,7 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 export default function ReportDetailPage() {
   const { reportId } = useParams()
   const { parentId } = useAuth()
+  const { t } = useTranslation()
   const [report, setReport] = useState(null)
   const [student, setStudent] = useState(null)
   const [error, setError] = useState(null)
@@ -28,7 +30,6 @@ export default function ReportDetailPage() {
         const data = await getReport(reportId)
         if (cancelled) return
         setReport(data)
-        // Resolve the student's name (best-effort; report payload has only student_id).
         if (parentId) {
           try {
             const students = await getParentStudents(parentId)
@@ -74,7 +75,7 @@ export default function ReportDetailPage() {
     return (
       <section>
         <Link to="/" className="back-link">
-          ← My students
+          {t('reports.myStudentsBack')}
         </Link>
         <ErrorBanner message={error} />
       </section>
@@ -84,17 +85,17 @@ export default function ReportDetailPage() {
   if (!report) {
     return (
       <section>
-        <Spinner label="Loading report…" />
+        <Spinner label={t('reports.loadingOne')} />
       </section>
     )
   }
 
-  const studentName = student ? `${student.first_name} ${student.last_name}` : 'Report card'
+  const studentName = student ? `${student.first_name} ${student.last_name}` : t('reports.reportCard')
 
   return (
     <section>
       <Link to={`/students/${report.student_id}/reports`} className="back-link">
-        ← Reports
+        ← {t('nav.reports')}
       </Link>
 
       <div className="report-header">
@@ -111,7 +112,7 @@ export default function ReportDetailPage() {
           </p>
         </div>
         <button type="button" className="btn btn-primary" onClick={handleDownload} disabled={downloading}>
-          {downloading ? 'Preparing…' : 'Download PDF'}
+          {downloading ? t('reports.preparing') : t('reports.downloadPdf')}
         </button>
       </div>
 
@@ -121,13 +122,13 @@ export default function ReportDetailPage() {
         <ReportAverages report={report} />
       </div>
 
-      <h3 className="section-title">Courses</h3>
+      <h3 className="section-title">{t('reports.coursesSection')}</h3>
       <table className="table">
         <thead>
           <tr>
-            <th>Course</th>
-            <th className="num">Average</th>
-            <th className="num">Grade</th>
+            <th>{t('reports.course')}</th>
+            <th className="num">{t('reports.average')}</th>
+            <th className="num">{t('reports.grade')}</th>
           </tr>
         </thead>
         <tbody>
@@ -143,7 +144,7 @@ export default function ReportDetailPage() {
 
       {report.ai_summary && (
         <>
-          <h3 className="section-title">Summary</h3>
+          <h3 className="section-title">{t('reports.parentSummarySection')}</h3>
           <div className="card summary-card">{report.ai_summary}</div>
         </>
       )}

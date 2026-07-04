@@ -12,3 +12,4 @@ jinja2
 weasyprint
 openai>=2,<3
 resend>=2,<3
+twilio>=9,<10

@@ -3,6 +3,7 @@ import RequireRole from './auth/RequireRole.jsx'
 import Layout from './components/Layout.jsx'
 import AdminLayout from './components/AdminLayout.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import StudentReportsPage from './pages/StudentReportsPage.jsx'
 import ReportDetailPage from './pages/ReportDetailPage.jsx'
@@ -36,6 +37,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
       {/* Change password — any authenticated role; bypasses must_change_password guard */}
       <Route

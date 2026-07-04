@@ -78,8 +78,8 @@ export default function AdminParentDetailPage() {
     setEditError(null)
     setEditMessage(null)
 
-    if (!editForm.name.trim() || !editForm.email.trim()) {
-      setEditError('Name and email are required.')
+    if (!editForm.name.trim()) {
+      setEditError('Name is required.')
       return
     }
 
@@ -143,7 +143,7 @@ export default function AdminParentDetailPage() {
       </Link>
       <h2 className="page-title">{parent.name}</h2>
       <p className="muted">
-        {parent.email}
+        {parent.email || '—'}
         {parent.phone ? ` · ${parent.phone}` : ''}
       </p>
       {!showEditForm && (
@@ -185,13 +185,12 @@ export default function AdminParentDetailPage() {
           </label>
 
           <label className="field">
-            <span>Email</span>
+            <span>Email (optional)</span>
             <input
-              type="email"
+              type="text"
               value={editForm.email}
               onChange={(event) => updateEditField('email', event.target.value)}
               disabled={savingEdit}
-              required
             />
           </label>
 

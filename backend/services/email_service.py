@@ -298,12 +298,18 @@ def send_account_created_email(
 
 
 def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> list[dict]:
-    config = _get_email_config()
+    from services.sms_service import send_report_available_sms
+
+    email_config = _get_email_config()
     report_card = db.get(ReportCard, report_card_id)
     if report_card is None or report_card.deleted_at is not None or report_card.student.deleted_at is not None:
         raise ValueError("Report card not found")
 
-    report_link = _build_report_link(config["app_base_url"], report_card.id)
+    report_link = _build_report_link(email_config["app_base_url"], report_card.id)
+    student = report_card.student
+    student_name = f"{student.first_name} {student.last_name}"
+    term = report_card.term
+
     parents = db.scalars(
         select(Parent)
         .join(StudentParent, StudentParent.parent_id == Parent.id)
@@ -317,13 +323,24 @@ def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> li
     results = []
     for parent in parents:
         parent_name = parent.user.name if parent.user and parent.user.name else "Parent/Guardian"
-        results.append(
-            send_report_available_email(
-                parent.user.email,
-                parent_name,
-                report_link,
-                config=config,
+
+        if parent.user.email:
+            results.append(
+                send_report_available_email(
+                    parent.user.email,
+                    parent_name,
+                    report_link,
+                    config=email_config,
+                )
             )
-        )
+
+        if parent.phone:
+            sms_results = send_report_available_sms(
+                phone=parent.phone,
+                student_name=student_name,
+                term=term,
+                report_card_id=report_card.id,
+            )
+            results.extend(sms_results)
 
     return results

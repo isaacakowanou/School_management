@@ -227,6 +227,7 @@ class TeacherRouteTests(unittest.TestCase):
                 "user_id": str(response.json()["user_id"]),
                 "name": "New Teacher",
                 "email": "audit-teacher@example.test",
+                "phone": None,
                 "employee_number": "TCH-AUDIT",
             },
         )
@@ -407,6 +408,62 @@ class TeacherRouteTests(unittest.TestCase):
         self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
         self.assertEqual(audit_log.old_value["name"], "Taylor Teacher")
         self.assertEqual(audit_log.new_value["name"], "Audit Teacher")
+
+    # --- Email-optional ---
+
+    def test_create_teacher_without_email_succeeds(self):
+        response = self.client.post(
+            "/api/v1/teachers",
+            json={"name": "No Email Teacher", "employee_number": "TCH-NOEMAIL"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["name"], "No Email Teacher")
+        self.assertIsNone(data["email"])
+        self.assertEqual(data["employee_number"], "TCH-NOEMAIL")
+        self.assertIn("temp_password", data)
+
+    def test_teacher_without_email_logs_in_with_employee_number(self):
+        create = self.client.post(
+            "/api/v1/teachers",
+            json={"name": "No Email Teacher", "employee_number": "TCH-EMPNUM"},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(create.status_code, 201)
+        temp_password = create.json()["temp_password"]
+
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"identifier": "TCH-EMPNUM", "password": temp_password},
+        )
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.json()["role"], "teacher")
+
+    def test_update_teacher_can_clear_email_via_null(self):
+        response = self.client.put(
+            f"/api/v1/teachers/{self.existing_teacher.id}",
+            json={"email": None},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["email"])
+        self.db.expire_all()
+        self.assertIsNone(self.db.get(User, self.existing_teacher.user_id).email)
+
+    def test_update_teacher_omitting_email_leaves_it_unchanged(self):
+        original_email = self.teacher_user.email
+        response = self.client.put(
+            f"/api/v1/teachers/{self.existing_teacher.id}",
+            json={"name": "Renamed Only"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.db.expire_all()
+        self.assertEqual(self.db.get(User, self.existing_teacher.user_id).email, original_email)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ function teacherToForm(teacher) {
   return {
     name: teacher?.name || '',
     email: teacher?.email || '',
+    phone: teacher?.phone || '',
     employeeNumber: teacher?.employee_number || '',
   }
 }
@@ -78,8 +79,8 @@ export default function AdminTeacherDetailPage() {
     setEditError(null)
     setEditMessage(null)
 
-    if (!editForm.name.trim() || !editForm.email.trim() || !editForm.employeeNumber.trim()) {
-      setEditError('Name, email, and employee number are required.')
+    if (!editForm.name.trim() || !editForm.employeeNumber.trim()) {
+      setEditError('Name and employee number are required.')
       return
     }
 
@@ -146,7 +147,7 @@ export default function AdminTeacherDetailPage() {
       </Link>
       <h2 className="page-title">{teacher.name}</h2>
       <p className="muted">
-        {teacher.email} · Employee #{teacher.employee_number}
+        {teacher.email || '—'} · {teacher.phone || '—'} · Employee #{teacher.employee_number}
       </p>
       {!showEditForm && (
         <div className="grade-actions">
@@ -187,13 +188,23 @@ export default function AdminTeacherDetailPage() {
           </label>
 
           <label className="field">
-            <span>Email</span>
+            <span>Email (optional)</span>
             <input
-              type="email"
+              type="text"
               value={editForm.email}
               onChange={(event) => updateEditField('email', event.target.value)}
               disabled={savingEdit}
-              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Phone (optional)</span>
+            <input
+              type="text"
+              value={editForm.phone}
+              onChange={(event) => updateEditField('phone', event.target.value)}
+              disabled={savingEdit}
+              placeholder="+22961000000"
             />
           </label>
 

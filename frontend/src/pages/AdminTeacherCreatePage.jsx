@@ -6,6 +6,7 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 const EMPTY_FORM = {
   name: '',
   email: '',
+  phone: '',
   employeeNumber: '',
 }
 
@@ -25,8 +26,8 @@ export default function AdminTeacherCreatePage() {
     event.preventDefault()
     setError(null)
 
-    if (!form.name.trim() || !form.email.trim()) {
-      setError('Name and email are required.')
+    if (!form.name.trim()) {
+      setError('Name is required.')
       return
     }
 
@@ -54,7 +55,7 @@ export default function AdminTeacherCreatePage() {
         <div className="card admin-form">
           <h2 className="page-title">Teacher account created</h2>
           <p className="muted" style={{ marginBottom: '1rem' }}>
-            {created.name} &lt;{created.email}&gt; has been added (employee #{created.employeeNumber}). A temporary password was generated below.
+            {created.name}{created.email ? ` <${created.email}>` : ''} has been added (employee #{created.employeeNumber}). A temporary password was generated below.
             Share it with the teacher — <strong>it will not be shown again</strong>.
           </p>
 
@@ -118,7 +119,7 @@ export default function AdminTeacherCreatePage() {
       <div className="report-header">
         <div>
           <h2 className="page-title">Add teacher</h2>
-          <p className="muted">A temporary password will be generated and emailed to the teacher.</p>
+          <p className="muted">A temporary password will be generated. If an email or phone is provided, it will be sent automatically.</p>
         </div>
       </div>
 
@@ -136,13 +137,23 @@ export default function AdminTeacherCreatePage() {
         </label>
 
         <label className="field">
-          <span>Email</span>
+          <span>Email (optional)</span>
           <input
-            type="email"
+            type="text"
             value={form.email}
             onChange={(event) => updateField('email', event.target.value)}
             disabled={saving}
-            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Phone (optional)</span>
+          <input
+            type="text"
+            value={form.phone}
+            onChange={(event) => updateField('phone', event.target.value)}
+            disabled={saving}
+            placeholder="+22961000000"
           />
         </label>
 

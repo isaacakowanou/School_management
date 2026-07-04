@@ -92,7 +92,7 @@ export default function AdminParentsPage() {
               {parents.map((parent) => (
                 <tr key={parent.id}>
                   <td>{parent.name}</td>
-                  <td className="nowrap">{parent.email}</td>
+                  <td className="nowrap">{parent.email || '—'}</td>
                   <td className="nowrap">{parent.phone || '—'}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/parents/${parent.id}`}>

@@ -12,6 +12,7 @@ from database import get_db
 from models import Course, Grade, Teacher, User
 from schemas import CourseResponse, StatusResponse, TeacherCreate, TeacherCreateResponse, TeacherResponse, TeacherUpdate
 from services.email_service import send_account_created_email
+from services.sms_service import send_account_created_sms
 from utils import to_course_response
 
 
@@ -24,6 +25,7 @@ def to_teacher_response(teacher: Teacher) -> TeacherResponse:
         user_id=teacher.user_id,
         name=teacher.user.name,
         email=teacher.user.email,
+        phone=teacher.phone,
         employee_number=teacher.employee_number,
     )
 
@@ -92,11 +94,13 @@ def create_teacher(
     current_user: User = Depends(require_admin),
 ) -> TeacherCreateResponse:
     name = clean_required_text(payload.name, "name")
-    email = clean_required_text(payload.email, "email")
+    email = (payload.email or "").strip() or None
+    phone = (payload.phone or "").strip() or None
 
-    existing_user = db.scalar(select(User).where(User.email == email))
-    if existing_user is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+    if email is not None:
+        existing_user = db.scalar(select(User).where(User.email == email))
+        if existing_user is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
     raw_number = (payload.employee_number or "").strip()
     if raw_number:
@@ -117,7 +121,7 @@ def create_teacher(
         role="teacher",
         must_change_password=True,
     )
-    teacher = Teacher(user=user, employee_number=employee_number)
+    teacher = Teacher(user=user, employee_number=employee_number, phone=phone)
     db.add_all([user, teacher])
     db.flush()
     create_audit_log(
@@ -131,22 +135,30 @@ def create_teacher(
             "user_id": teacher.user_id,
             "name": user.name,
             "email": user.email,
+            "phone": teacher.phone,
             "employee_number": teacher.employee_number,
         },
     )
     db.commit()
     db.refresh(teacher)
 
-    try:
-        send_account_created_email(name=name, to_email=email, temp_password=temp_password)
-    except Exception:
-        pass
+    if email:
+        try:
+            send_account_created_email(name=name, to_email=email, temp_password=temp_password)
+        except Exception:
+            pass
+    elif phone:
+        try:
+            send_account_created_sms(name=name, phone=phone, temp_password=temp_password)
+        except Exception:
+            pass
 
     return TeacherCreateResponse(
         id=teacher.id,
         user_id=teacher.user_id,
         name=user.name,
         email=user.email,
+        phone=teacher.phone,
         employee_number=teacher.employee_number,
         temp_password=temp_password,
     )
@@ -176,17 +188,21 @@ def update_teacher(
         "user_id": teacher.user_id,
         "name": teacher.user.name,
         "email": teacher.user.email,
+        "phone": teacher.phone,
         "employee_number": teacher.employee_number,
     }
 
     if payload.name is not None:
         teacher.user.name = clean_required_text(payload.name, "name")
-    if payload.email is not None:
-        email = clean_required_text(payload.email, "email")
-        existing_user = db.scalar(select(User).where(User.email == email, User.id != teacher.user_id))
-        if existing_user is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+    if "email" in payload.model_fields_set:
+        email = (payload.email or "").strip() or None
+        if email is not None:
+            existing_user = db.scalar(select(User).where(User.email == email, User.id != teacher.user_id))
+            if existing_user is not None:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
         teacher.user.email = email
+    if "phone" in payload.model_fields_set:
+        teacher.phone = (payload.phone or "").strip() or None
     if payload.employee_number is not None:
         employee_number = clean_required_text(payload.employee_number, "employee_number")
         existing_teacher = db.scalar(
@@ -203,6 +219,7 @@ def update_teacher(
         "user_id": teacher.user_id,
         "name": teacher.user.name,
         "email": teacher.user.email,
+        "phone": teacher.phone,
         "employee_number": teacher.employee_number,
     }
     if new_value != old_value:

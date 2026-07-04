@@ -113,7 +113,7 @@ def _label(target) -> str:
     if isinstance(target, Student):
         return f"{target.first_name} {target.last_name} #{target.student_number}"
     if isinstance(target, Parent):
-        return f"{target.user.name} ({target.user.email})"
+        return f"{target.user.name} ({target.user.email or 'no email'})"
     if isinstance(target, Teacher):
         return f"{target.user.name} #{target.employee_number}"
     if isinstance(target, Class):
@@ -166,7 +166,7 @@ def _course_subtitle(course: Course) -> str:
         parts.append(course.school_class.name_fr)
     parts.append(course.school_year)
     if course.teacher is not None and course.teacher.user is not None:
-        parts.append(course.teacher.user.email)
+        parts.append(course.teacher.user.email or course.teacher.user.name)
     return " · ".join(part for part in parts if part)
 
 
@@ -210,7 +210,7 @@ def _search_results(db: Session, entity_type: str, q: str) -> list[DangerZoneSea
             .limit(20)
         ).all()
         return [
-            DangerZoneSearchResult(id=row.id, label=row.user.name, subtitle=row.user.email, entity_type=entity_type)
+            DangerZoneSearchResult(id=row.id, label=row.user.name, subtitle=row.user.email or row.user.name, entity_type=entity_type)
             for row in rows
         ]
 
@@ -227,7 +227,7 @@ def _search_results(db: Session, entity_type: str, q: str) -> list[DangerZoneSea
             .limit(20)
         ).all()
         return [
-            DangerZoneSearchResult(id=row.id, label=row.user.name, subtitle=row.user.email, entity_type=entity_type)
+            DangerZoneSearchResult(id=row.id, label=row.user.name, subtitle=row.user.email or row.employee_number, entity_type=entity_type)
             for row in rows
         ]
 

@@ -363,6 +363,62 @@ class CurrentParentRouteTests(unittest.TestCase):
         self.assertEqual(audit_log.old_value["name"], "Pat Parent")
         self.assertEqual(audit_log.new_value["name"], "Audit Parent")
 
+    # --- Email-optional ---
+
+    def test_create_parent_without_email_succeeds(self):
+        response = self.client.post(
+            "/api/v1/parents",
+            json={"name": "No Email Parent", "phone": "555-0001"},
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["name"], "No Email Parent")
+        self.assertIsNone(data["email"])
+        self.assertEqual(data["phone"], "555-0001")
+        self.assertIn("temp_password", data)
+
+    def test_parent_without_email_logs_in_with_phone(self):
+        create = self.client.post(
+            "/api/v1/parents",
+            json={"name": "No Email Parent", "phone": "555-7777"},
+            headers=self._auth_headers(self.admin_user.email),
+        )
+        self.assertEqual(create.status_code, 201)
+        temp_password = create.json()["temp_password"]
+
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"identifier": "555-7777", "password": temp_password},
+        )
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.json()["role"], "parent")
+
+    def test_update_parent_can_clear_email_via_null(self):
+        response = self.client.put(
+            f"/api/v1/parents/{self.parent.id}",
+            json={"email": None},
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["email"])
+        self.db.expire_all()
+        self.assertIsNone(self.db.get(User, self.parent.user_id).email)
+
+    def test_update_parent_omitting_email_leaves_it_unchanged(self):
+        original_email = self.parent_user.email
+        response = self.client.put(
+            f"/api/v1/parents/{self.parent.id}",
+            json={"name": "Renamed Only"},
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.db.expire_all()
+        self.assertEqual(self.db.get(User, self.parent.user_id).email, original_email)
+
 
 if __name__ == "__main__":
     unittest.main()

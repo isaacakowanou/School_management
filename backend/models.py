@@ -16,7 +16,7 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     must_change_password: Mapped[bool] = mapped_column(
@@ -135,6 +135,7 @@ class Teacher(Base):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True
     )
     employee_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True

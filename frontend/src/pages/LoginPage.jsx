@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import { homePathForRole, isPathForRole } from '../utils/roles.js'
@@ -14,7 +14,7 @@ export default function LoginPage() {
   const { login, isAuthenticated, bootstrapping, role, homePath } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState(null)
@@ -34,7 +34,7 @@ export default function LoginPage() {
     setError(null)
     setSubmitting(true)
     try {
-      const me = await login(email.trim(), password)
+      const me = await login(identifier.trim(), password)
       if (me.must_change_password) {
         navigate('/change-password', { replace: true })
         return
@@ -57,11 +57,11 @@ export default function LoginPage() {
         {error && <ErrorBanner message={error} />}
 
         <label className="field">
-          <span>Email</span>
+          <span>Email / Employee number / Phone</span>
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
             autoComplete="username"
             required
           />
@@ -138,6 +138,12 @@ export default function LoginPage() {
         <button type="submit" className="btn btn-primary" disabled={submitting}>
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
+
+        <p style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.875rem' }}>
+          <Link to="/forgot-password" style={{ color: 'var(--color-primary, #2563eb)' }}>
+            Forgot password?
+          </Link>
+        </p>
       </form>
     </div>
   )

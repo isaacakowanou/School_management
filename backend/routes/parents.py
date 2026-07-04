@@ -12,6 +12,7 @@ from database import get_db
 from models import Parent, Student, StudentParent, User
 from schemas import ParentCreate, ParentCreateResponse, ParentResponse, ParentSelfUpdate, ParentUpdate, StatusResponse, StudentResponse
 from services.email_service import send_account_created_email
+from services.sms_service import send_account_created_sms
 from utils import to_student_response
 
 
@@ -73,14 +74,15 @@ def create_parent(
     current_user: User = Depends(require_admin),
 ) -> ParentCreateResponse:
     name = clean_required_text(payload.name, "name")
-    email = clean_required_text(payload.email, "email")
+    email = (payload.email or "").strip() or None
     phone = payload.phone.strip() if payload.phone is not None else None
     if phone == "":
         phone = None
 
-    existing_user = db.scalar(select(User).where(User.email == email))
-    if existing_user is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+    if email is not None:
+        existing_user = db.scalar(select(User).where(User.email == email))
+        if existing_user is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
     temp_password = secrets.token_urlsafe(9)
     user = User(
@@ -110,10 +112,16 @@ def create_parent(
     db.commit()
     db.refresh(parent)
 
-    try:
-        send_account_created_email(name=name, to_email=email, temp_password=temp_password)
-    except Exception:
-        pass
+    if email:
+        try:
+            send_account_created_email(name=name, to_email=email, temp_password=temp_password)
+        except Exception:
+            pass
+    elif phone:
+        try:
+            send_account_created_sms(name=name, phone=phone, temp_password=temp_password)
+        except Exception:
+            pass
 
     return ParentCreateResponse(
         id=parent.id,
@@ -190,11 +198,12 @@ def update_parent(
 
     if payload.name is not None:
         parent.user.name = clean_required_text(payload.name, "name")
-    if payload.email is not None:
-        email = clean_required_text(payload.email, "email")
-        existing_user = db.scalar(select(User).where(User.email == email, User.id != parent.user_id))
-        if existing_user is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+    if "email" in payload.model_fields_set:
+        email = (payload.email or "").strip() or None
+        if email is not None:
+            existing_user = db.scalar(select(User).where(User.email == email, User.id != parent.user_id))
+            if existing_user is not None:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
         parent.user.email = email
     if "phone" in updated_fields:
         phone = payload.phone.strip() if payload.phone is not None else ""

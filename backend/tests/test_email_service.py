@@ -81,7 +81,8 @@ class EmailServiceTests(unittest.TestCase):
 
         with patch.dict(os.environ, RESEND_ENV, clear=True):
             with patch.dict(sys.modules, {"resend": fake_resend}):
-                results = send_report_notification_to_parents(self.db, self.report_card.id)
+                with patch("services.sms_service.send_report_available_sms", return_value=[]):
+                    results = send_report_notification_to_parents(self.db, self.report_card.id)
 
         self.assertEqual(len(results), 1)
         self.assertEqual(
@@ -115,7 +116,8 @@ class EmailServiceTests(unittest.TestCase):
 
         with patch.dict(os.environ, EMAIL_ENV, clear=True):
             with patch("services.email_service.smtplib.SMTP", return_value=smtp_context) as smtp_class:
-                results = send_report_notification_to_parents(self.db, self.report_card.id)
+                with patch("services.sms_service.send_report_available_sms", return_value=[]):
+                    results = send_report_notification_to_parents(self.db, self.report_card.id)
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["email"], "parent@example.test")
@@ -242,7 +244,8 @@ class EmailServiceTests(unittest.TestCase):
 
         with patch.dict(os.environ, EMAIL_ENV, clear=True):
             with patch("services.email_service.smtplib.SMTP", return_value=smtp_context):
-                results = send_report_notification_to_parents(self.db, self.report_card.id)
+                with patch("services.sms_service.send_report_available_sms", return_value=[]):
+                    results = send_report_notification_to_parents(self.db, self.report_card.id)
 
         self.assertEqual(len(results), 2)
         self.assertEqual({result["email"] for result in results}, {"parent@example.test", "parent2@example.test"})
@@ -263,7 +266,8 @@ class EmailServiceTests(unittest.TestCase):
 
         with patch.dict(os.environ, env, clear=True):
             with patch("services.email_service.smtplib.SMTP_SSL", return_value=smtp_context) as smtp_ssl_class:
-                send_report_notification_to_parents(self.db, self.report_card.id)
+                with patch("services.sms_service.send_report_available_sms", return_value=[]):
+                    send_report_notification_to_parents(self.db, self.report_card.id)
 
         smtp_ssl_class.assert_called_once_with("smtp.example.test", 465)
         smtp_instance.starttls.assert_not_called()

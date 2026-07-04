@@ -28,7 +28,7 @@ export function createParent({ name, email, phone }) {
   const trimmedPhone = (phone || '').trim()
   return apiPost('/parents', {
     name: name.trim(),
-    email: email.trim(),
+    email: email.trim() || null,
     phone: trimmedPhone || null,
   })
 }
@@ -43,7 +43,7 @@ export function updateParent(parentId, { name, email, phone }) {
   const trimmedPhone = (phone || '').trim()
   return apiPut(`/parents/${parentId}`, {
     name: name.trim(),
-    email: email.trim(),
+    email: email.trim() || null,
     phone: trimmedPhone || null,
   })
 }

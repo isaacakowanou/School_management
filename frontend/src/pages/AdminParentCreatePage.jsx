@@ -25,8 +25,8 @@ export default function AdminParentCreatePage() {
     event.preventDefault()
     setError(null)
 
-    if (!form.name.trim() || !form.email.trim()) {
-      setError('Name and email are required.')
+    if (!form.name.trim()) {
+      setError('Name is required.')
       return
     }
 
@@ -54,7 +54,7 @@ export default function AdminParentCreatePage() {
         <div className="card admin-form">
           <h2 className="page-title">Parent account created</h2>
           <p className="muted" style={{ marginBottom: '1rem' }}>
-            {created.name} &lt;{created.email}&gt; has been added. A temporary password was generated below.
+            {created.name}{created.email ? ` <${created.email}>` : ''} has been added. A temporary password was generated below.
             Share it with the parent — <strong>it will not be shown again</strong>.
           </p>
 
@@ -118,7 +118,7 @@ export default function AdminParentCreatePage() {
       <div className="report-header">
         <div>
           <h2 className="page-title">Add parent</h2>
-          <p className="muted">A temporary password will be generated and emailed to the parent.</p>
+          <p className="muted">A temporary password will be generated. If an email is provided, it will be sent automatically.</p>
         </div>
       </div>
 
@@ -136,13 +136,12 @@ export default function AdminParentCreatePage() {
         </label>
 
         <label className="field">
-          <span>Email</span>
+          <span>Email (optional)</span>
           <input
-            type="email"
+            type="text"
             value={form.email}
             onChange={(event) => updateField('email', event.target.value)}
             disabled={saving}
-            required
           />
         </label>
 

@@ -87,6 +87,7 @@ export default function AdminTeachersPage() {
               <tr>
                 <th>Name</th>
                 <th>Email</th>
+                <th>Phone</th>
                 <th>Employee #</th>
                 <th></th>
               </tr>
@@ -95,7 +96,8 @@ export default function AdminTeachersPage() {
               {teachers.map((teacher) => (
                 <tr key={teacher.id}>
                   <td>{teacher.name}</td>
-                  <td className="nowrap">{teacher.email}</td>
+                  <td className="nowrap">{teacher.email || '—'}</td>
+                  <td className="nowrap">{teacher.phone || '—'}</td>
                   <td className="nowrap">{teacher.employee_number}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/teachers/${teacher.id}`}>

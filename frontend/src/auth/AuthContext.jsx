@@ -74,8 +74,8 @@ export function AuthProvider({ children }) {
   }, [logout])
 
   const login = useCallback(
-    async (email, password) => {
-      const result = await authApi.login(email, password)
+    async (identifier, password) => {
+      const result = await authApi.login(identifier, password)
 
       // Store the token so the authenticated /auth/me check can use it.
       setToken(result.access_token)

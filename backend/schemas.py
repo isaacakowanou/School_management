@@ -84,7 +84,7 @@ class ChangePasswordRequest(BaseModel):
 class UserResponse(BaseModel):
     id: UUID
     name: str
-    email: str
+    email: str | None = None
     role: str
     must_change_password: bool = False
 
@@ -274,14 +274,14 @@ class LinkedParentResponse(BaseModel):
     id: UUID
     user_id: UUID
     name: str
-    email: str
+    email: str | None = None
     phone: str | None = None
     relationship: str | None = None
 
 
 class ParentCreate(BaseModel):
     name: str
-    email: str
+    email: str | None = None
     phone: str | None = None
 
 
@@ -300,7 +300,7 @@ class ParentResponse(BaseModel):
     id: UUID
     user_id: UUID
     name: str
-    email: str
+    email: str | None = None
     phone: str | None = None
 
 
@@ -310,13 +310,15 @@ class ParentCreateResponse(ParentResponse):
 
 class TeacherCreate(BaseModel):
     name: str
-    email: str
+    email: str | None = None
+    phone: str | None = None
     employee_number: str | None = None
 
 
 class TeacherUpdate(BaseModel):
     name: str | None = None
     email: str | None = None
+    phone: str | None = None
     employee_number: str | None = None
 
 
@@ -324,7 +326,8 @@ class TeacherResponse(BaseModel):
     id: UUID
     user_id: UUID
     name: str
-    email: str
+    email: str | None = None
+    phone: str | None = None
     employee_number: str
 
 

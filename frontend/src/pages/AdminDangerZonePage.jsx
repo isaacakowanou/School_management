@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   moveDangerZoneToTrash,
   previewDangerZoneDelete,
@@ -9,16 +10,16 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 
 const ENTITY_TYPES = ['student', 'parent', 'teacher', 'class', 'course', 'grade_item', 'report']
 
-function CountsTable({ counts }) {
+function CountsTable({ counts, t }) {
   const rows = Object.entries(counts || {})
-  if (rows.length === 0) return <p className="muted">No dependent records found.</p>
+  if (rows.length === 0) return <p className="muted">{t('dangerZone.noDependents')}</p>
   return (
     <div className="table-scroll">
       <table className="table">
         <thead>
           <tr>
-            <th>Table</th>
-            <th className="num">Records moved</th>
+            <th>{t('dangerZone.tableCol')}</th>
+            <th className="num">{t('dangerZone.recordsCol')}</th>
           </tr>
         </thead>
         <tbody>
@@ -35,6 +36,7 @@ function CountsTable({ counts }) {
 }
 
 export default function AdminDangerZonePage() {
+  const { t } = useTranslation()
   const [entityType, setEntityType] = useState('student')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -129,7 +131,7 @@ export default function AdminDangerZonePage() {
         confirmation,
         reason: reason.trim() || null,
       })
-      setNotice(`${result.target_label} moved to Trash. Batch ${result.batch_id}.`)
+      setNotice(t('dangerZone.movedToTrash', { label: result.target_label, batchId: result.batch_id }))
       setPreview(null)
       setSelected(null)
       setQuery('')
@@ -147,11 +149,11 @@ export default function AdminDangerZonePage() {
     <section className="admin-page">
       <div className="report-header">
         <div>
-          <h2 className="page-title">Owner Danger Zone</h2>
-          <p className="muted">Recoverable cleanup only. Records are moved to Trash as one restoreable batch.</p>
+          <h2 className="page-title">{t('dangerZone.title')}</h2>
+          <p className="muted">{t('dangerZone.subtitle')}</p>
         </div>
         <Link to="/admin/trash" className="btn btn-ghost">
-          Trash
+          {t('nav.trash')}
         </Link>
       </div>
 
@@ -160,7 +162,7 @@ export default function AdminDangerZonePage() {
 
       <form className="admin-form" onSubmit={handlePreview}>
         <label>
-          Entity type
+          {t('dangerZone.entityType')}
           <select
             value={entityType}
             onChange={(event) => {
@@ -176,7 +178,7 @@ export default function AdminDangerZonePage() {
           </select>
         </label>
         <label>
-          Search records
+          {t('dangerZone.searchRecords')}
           <input
             value={query}
             onChange={(event) => {
@@ -186,8 +188,8 @@ export default function AdminDangerZonePage() {
             placeholder="Type stress, math, 6ème..."
           />
         </label>
-        {searching && <p className="muted">Searching...</p>}
-        {!searching && query.trim() && results.length === 0 && <p className="muted">No matches.</p>}
+        {searching && <p className="muted">{t('dangerZone.searching')}</p>}
+        {!searching && query.trim() && results.length === 0 && <p className="muted">{t('dangerZone.noMatches')}</p>}
         {results.length > 0 && (
           <div className="danger-search-results">
             {results.map((result) => (
@@ -205,28 +207,28 @@ export default function AdminDangerZonePage() {
         )}
         {selected && (
           <div className="danger-selected">
-            <span>Selected</span>
+            <span>{t('dangerZone.selected')}</span>
             <strong>{selected.label}</strong>
             <small>{selected.subtitle}</small>
           </div>
         )}
         <label>
-          Note
+          {t('dangerZone.note')}
           <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Demo cleanup" />
         </label>
         <button type="submit" className="btn btn-primary" disabled={loading || !selected}>
-          {loading ? 'Checking...' : 'Preview'}
+          {loading ? t('dangerZone.checking') : t('dangerZone.preview')}
         </button>
       </form>
 
       {preview && (
         <div className="admin-form">
-          <h3>Preview</h3>
+          <h3>{t('dangerZone.preview')}</h3>
           <p>
             <strong>{preview.target_label}</strong>
           </p>
-          <p className="muted">This moves the selected data and dependencies to Trash. It does not permanently delete academic history.</p>
-          <CountsTable counts={preview.counts} />
+          <p className="muted">{t('dangerZone.previewDesc')}</p>
+          <CountsTable counts={preview.counts} t={t} />
           {preview.warnings?.length > 0 && (
             <ul>
               {preview.warnings.map((warning) => (
@@ -235,16 +237,16 @@ export default function AdminDangerZonePage() {
             </ul>
           )}
           <label>
-            Confirmation
+            {t('dangerZone.confirmation')}
             <input
               value={confirmation}
               onChange={(event) => setConfirmation(event.target.value)}
               placeholder={targetConfirmation}
             />
           </label>
-          <p className="muted">Type MOVE TO TRASH or {targetConfirmation}</p>
+          <p className="muted">{t('dangerZone.confirmHint', { target: targetConfirmation })}</p>
           <button type="button" className="btn btn-danger" disabled={!canDelete || loading} onClick={handleMoveToTrash}>
-            Move to Trash
+            {t('dangerZone.moveToTrash')}
           </button>
         </div>
       )}

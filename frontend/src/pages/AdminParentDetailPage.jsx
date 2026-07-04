@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { deleteParent, getParent, getParentStudents, updateParent } from '../api/parents.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -16,6 +17,7 @@ function parentToForm(parent) {
 export default function AdminParentDetailPage() {
   const { parentId } = useParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [parent, setParent] = useState(null)
   const [students, setStudents] = useState([])
   const [error, setError] = useState(null)
@@ -48,7 +50,6 @@ export default function AdminParentDetailPage() {
         if (!cancelled) setError(err.message)
         return
       }
-      // Linked students are best-effort; a failure here won't blank the page.
       try {
         const linked = await getParentStudents(parentId)
         if (!cancelled) setStudents(linked)
@@ -79,7 +80,7 @@ export default function AdminParentDetailPage() {
     setEditMessage(null)
 
     if (!editForm.name.trim()) {
-      setEditError('Name is required.')
+      setEditError(t('parents.errorNameRequired'))
       return
     }
 
@@ -89,7 +90,7 @@ export default function AdminParentDetailPage() {
       const refreshed = await getParent(parentId)
       setParent(refreshed)
       setEditForm(parentToForm(refreshed))
-      setEditMessage('Parent updated.')
+      setEditMessage(t('parents.updated'))
       setShowEditForm(false)
     } catch (err) {
       setEditError(err.message)
@@ -99,16 +100,16 @@ export default function AdminParentDetailPage() {
   }
 
   async function handleDeleteParent() {
-    if (!window.confirm(`Move parent "${parent.name}" to Trash? This is only allowed when the parent is not linked to active students.`)) return
+    if (!window.confirm(t('parents.confirmDelete', { name: parent.name }))) return
     setEditError(null)
     setEditMessage(null)
     setDeleting(true)
     try {
       await deleteParent(parentId)
-      navigate('/admin/parents', { replace: true, state: { message: 'Parent deleted.' } })
+      navigate('/admin/parents', { replace: true, state: { message: t('parents.deleted') } })
     } catch (err) {
       if (err.status === 409 && err.detail && typeof err.detail === 'object') {
-        setEditError(`Cannot delete this parent: linked to ${err.detail.active_student_count} active student(s).`)
+        setEditError(t('parents.deleteBlocked', { count: err.detail.active_student_count }))
       } else {
         setEditError(err.message)
       }
@@ -121,7 +122,7 @@ export default function AdminParentDetailPage() {
     return (
       <section className="admin-page">
         <Link to="/admin/parents" className="back-link">
-          ← Parents
+          ← {t('nav.parents')}
         </Link>
         <ErrorBanner message={error} />
       </section>
@@ -131,7 +132,7 @@ export default function AdminParentDetailPage() {
   if (!parent) {
     return (
       <section className="admin-page">
-        <Spinner label="Loading parent…" />
+        <Spinner label={t('parents.loadingOne')} />
       </section>
     )
   }
@@ -139,7 +140,7 @@ export default function AdminParentDetailPage() {
   return (
     <section className="admin-page">
       <Link to="/admin/parents" className="back-link">
-        ← Parents
+        ← {t('nav.parents')}
       </Link>
       <h2 className="page-title">{parent.name}</h2>
       <p className="muted">
@@ -158,7 +159,7 @@ export default function AdminParentDetailPage() {
               setShowEditForm(true)
             }}
           >
-            Edit
+            {t('common.edit')}
           </button>
           <button
             type="button"
@@ -166,7 +167,7 @@ export default function AdminParentDetailPage() {
             onClick={handleDeleteParent}
             disabled={deleting}
           >
-            {deleting ? 'Deleting...' : 'Delete'}
+            {deleting ? t('common.deleting') : t('common.delete')}
           </button>
         </div>
       )}
@@ -175,7 +176,7 @@ export default function AdminParentDetailPage() {
       {showEditForm && (
         <form className="card admin-form" onSubmit={handleEditParent}>
           <label className="field">
-            <span>Name</span>
+            <span>{t('common.name')}</span>
             <input
               value={editForm.name}
               onChange={(event) => updateEditField('name', event.target.value)}
@@ -185,7 +186,7 @@ export default function AdminParentDetailPage() {
           </label>
 
           <label className="field">
-            <span>Email (optional)</span>
+            <span>{t('teachers.emailOptional')}</span>
             <input
               type="text"
               value={editForm.email}
@@ -195,7 +196,7 @@ export default function AdminParentDetailPage() {
           </label>
 
           <label className="field">
-            <span>Phone</span>
+            <span>{t('common.phone')}</span>
             <input
               value={editForm.phone}
               onChange={(event) => updateEditField('phone', event.target.value)}
@@ -205,27 +206,27 @@ export default function AdminParentDetailPage() {
 
           <div className="grade-actions">
             <button type="submit" className="btn btn-primary" disabled={savingEdit}>
-              {savingEdit ? 'Saving...' : 'Save changes'}
+              {savingEdit ? t('common.saving') : t('common.saveChanges')}
             </button>
             <button type="button" className="btn btn-ghost" disabled={savingEdit} onClick={cancelEdit}>
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
           {editError && <ErrorBanner message={editError} />}
         </form>
       )}
 
-      <h3 className="section-title">Students</h3>
+      <h3 className="section-title">{t('students.title')}</h3>
       {students.length === 0 ? (
-        <Empty message="No students linked to this parent." />
+        <Empty message={t('parents.noStudents')} />
       ) : (
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Student #</th>
-                <th>Class</th>
+                <th>{t('common.name')}</th>
+                <th>{t('students.studentNumber')}</th>
+                <th>{t('students.class')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -239,7 +240,7 @@ export default function AdminParentDetailPage() {
                   <td className="nowrap">{student.class_name || '—'}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/students/${student.id}`}>
-                      Open →
+                      {t('common.open')}
                     </Link>
                   </td>
                 </tr>

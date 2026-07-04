@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { getCurrentParent, updateCurrentParent } from '../api/parents.js'
 import { changePassword } from '../api/auth.js'
 import { useAuth } from '../auth/AuthContext.jsx'
@@ -7,15 +8,14 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 
 export default function ParentSettingsPage() {
   const { refreshUser } = useAuth()
+  const { t } = useTranslation()
 
-  // Profile section
   const [profileForm, setProfileForm] = useState({ name: '', phone: '' })
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileError, setProfileError] = useState(null)
   const [profileSuccess, setProfileSuccess] = useState(false)
 
-  // Password section
   const [pwForm, setPwForm] = useState({ newPassword: '', confirm: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [pwSaving, setPwSaving] = useState(false)
@@ -25,9 +25,9 @@ export default function ParentSettingsPage() {
   useEffect(() => {
     getCurrentParent()
       .then((p) => setProfileForm({ name: p.name, phone: p.phone ?? '' }))
-      .catch(() => setProfileError('Could not load your profile.'))
+      .catch(() => setProfileError(t('settings.profileLoadError')))
       .finally(() => setProfileLoading(false))
-  }, [])
+  }, [t])
 
   async function handleProfileSubmit(event) {
     event.preventDefault()
@@ -43,7 +43,7 @@ export default function ParentSettingsPage() {
       await refreshUser()
       setProfileSuccess(true)
     } catch (err) {
-      setProfileError(err.message || 'Could not save profile.')
+      setProfileError(err.message || t('settings.profileSaveError'))
     } finally {
       setProfileSaving(false)
     }
@@ -55,7 +55,7 @@ export default function ParentSettingsPage() {
     setPwSuccess(false)
 
     if (pwForm.newPassword !== pwForm.confirm) {
-      setPwError('Passwords do not match.')
+      setPwError(t('changePassword.passwordMismatch'))
       return
     }
 
@@ -65,7 +65,7 @@ export default function ParentSettingsPage() {
       setPwForm({ newPassword: '', confirm: '' })
       setPwSuccess(true)
     } catch (err) {
-      setPwError(err.message || 'Could not change password.')
+      setPwError(err.message || t('settings.passwordError'))
     } finally {
       setPwSaving(false)
     }
@@ -74,35 +74,34 @@ export default function ParentSettingsPage() {
   if (profileLoading) {
     return (
       <section className="admin-page">
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('common.loading')}</p>
       </section>
     )
   }
 
   return (
     <section className="admin-page">
-      <Link to="/" className="back-link">&larr; Back</Link>
+      <Link to="/" className="back-link">← {t('common.back')}</Link>
       <div className="report-header">
         <div>
-          <h2 className="page-title">Settings</h2>
-          <p className="muted">Update your name, phone, or password.</p>
+          <h2 className="page-title">{t('common.settings')}</h2>
+          <p className="muted">{t('settings.subtitle')}</p>
         </div>
       </div>
 
-      {/* Profile */}
       <div className="card admin-form" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Profile</h3>
+        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>{t('settings.profileTitle')}</h3>
 
         {profileError && <ErrorBanner message={profileError} />}
         {profileSuccess && (
           <p style={{ color: 'var(--color-success, #166534)', marginBottom: '0.75rem' }}>
-            Profile updated.
+            {t('settings.profileUpdated')}
           </p>
         )}
 
         <form onSubmit={handleProfileSubmit}>
           <label className="field">
-            <span>Name</span>
+            <span>{t('common.name')}</span>
             <input
               value={profileForm.name}
               onChange={(e) => setProfileForm((f) => ({ ...f, name: e.target.value }))}
@@ -112,7 +111,7 @@ export default function ParentSettingsPage() {
           </label>
 
           <label className="field">
-            <span>Phone</span>
+            <span>{t('common.phone')}</span>
             <input
               value={profileForm.phone}
               onChange={(e) => setProfileForm((f) => ({ ...f, phone: e.target.value }))}
@@ -123,26 +122,25 @@ export default function ParentSettingsPage() {
 
           <div className="grade-actions">
             <button type="submit" className="btn btn-primary" disabled={profileSaving}>
-              {profileSaving ? 'Saving…' : 'Save changes'}
+              {profileSaving ? t('common.saving') : t('common.saveChanges')}
             </button>
           </div>
         </form>
       </div>
 
-      {/* Change password */}
       <div className="card admin-form">
-        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Change password</h3>
+        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>{t('settings.changePasswordTitle')}</h3>
 
         {pwError && <ErrorBanner message={pwError} />}
         {pwSuccess && (
           <p style={{ color: 'var(--color-success, #166534)', marginBottom: '0.75rem' }}>
-            Password changed successfully.
+            {t('settings.passwordChanged')}
           </p>
         )}
 
         <form onSubmit={handlePasswordSubmit}>
           <label className="field">
-            <span>New password</span>
+            <span>{t('changePassword.newPassword')}</span>
             <div className="password-input-wrap">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -157,7 +155,7 @@ export default function ParentSettingsPage() {
                 type="button"
                 className="password-toggle"
                 onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                 aria-pressed={showPassword}
               >
                 {showPassword ? (
@@ -177,7 +175,7 @@ export default function ParentSettingsPage() {
           </label>
 
           <label className="field">
-            <span>Confirm password</span>
+            <span>{t('changePassword.confirmPassword')}</span>
             <input
               type={showPassword ? 'text' : 'password'}
               value={pwForm.confirm}
@@ -191,7 +189,7 @@ export default function ParentSettingsPage() {
 
           <div className="grade-actions">
             <button type="submit" className="btn btn-primary" disabled={pwSaving}>
-              {pwSaving ? 'Saving…' : 'Change password'}
+              {pwSaving ? t('common.saving') : t('settings.changePasswordTitle')}
             </button>
           </div>
         </form>

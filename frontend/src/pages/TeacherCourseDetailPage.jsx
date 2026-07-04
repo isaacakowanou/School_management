@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { getCourse, listCourseStudents } from '../api/courses.js'
 import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
 import { listCourseGrades } from '../api/grades.js'
@@ -50,7 +51,7 @@ function gradeItemToForm(gradeItem) {
   }
 }
 
-function validateGradeItemForm(form) {
+function validateGradeItemForm(form, t) {
   const maxScore = Number(form.maxScore)
   const weight = Number(form.weight)
   if (
@@ -60,15 +61,16 @@ function validateGradeItemForm(form) {
     !Number.isFinite(maxScore) ||
     !Number.isFinite(weight)
   ) {
-    return 'Title, category, max score, weight, and term are required.'
+    return t('courses.gradeItemRequired')
   }
-  if (maxScore <= 0) return 'Max score must be greater than 0.'
-  if (weight <= 0 || weight > 1) return 'Weight must be greater than 0 and at most 1.'
+  if (maxScore <= 0) return t('courses.maxScorePositive')
+  if (weight <= 0 || weight > 1) return t('courses.weightRange')
   return null
 }
 
 export default function TeacherCourseDetailPage() {
   const { courseId } = useParams()
+  const { t } = useTranslation()
 
   const [course, setCourse] = useState(null)
   const [students, setStudents] = useState(null)
@@ -142,7 +144,6 @@ export default function TeacherCourseDetailPage() {
     }
   }, [courseId])
 
-  // Refresh grades after a save so the matrix reflects newly created grade ids.
   const handleGradesSaved = useCallback(async (changedStudentIds = []) => {
     if (changedStudentIds.length > 0) {
       setPendingRecalcStudentIds((current) =>
@@ -192,7 +193,7 @@ export default function TeacherCourseDetailPage() {
     setGradeItemError(null)
     setGradeItemMessage(null)
 
-    const validationError = validateGradeItemForm(gradeItemForm)
+    const validationError = validateGradeItemForm(gradeItemForm, t)
     if (validationError) {
       setGradeItemError(validationError)
       return
@@ -206,7 +207,7 @@ export default function TeacherCourseDetailPage() {
         ...EMPTY_GRADE_ITEM_FORM,
         term: gradeItemForm.term.trim() || course?.term || '',
       })
-      setGradeItemMessage('Grade item added.')
+      setGradeItemMessage(t('courses.gradeItemAdded'))
       setShowGradeItemForm(false)
     } catch (err) {
       setGradeItemError(err.message)
@@ -220,7 +221,7 @@ export default function TeacherCourseDetailPage() {
     setGradeItemEditError(null)
     setGradeItemMessage(null)
 
-    const validationError = validateGradeItemForm(editGradeItemForm)
+    const validationError = validateGradeItemForm(editGradeItemForm, t)
     if (validationError) {
       setGradeItemEditError(validationError)
       return
@@ -230,7 +231,7 @@ export default function TeacherCourseDetailPage() {
     try {
       await updateGradeItem(gradeItemId, editGradeItemForm)
       await refreshGradeItems()
-      setGradeItemMessage('Grade item updated.')
+      setGradeItemMessage(t('courses.gradeItemUpdated'))
       setEditingGradeItemId(null)
       setEditGradeItemForm(gradeItemToForm(null))
     } catch (err) {
@@ -291,21 +292,21 @@ export default function TeacherCourseDetailPage() {
   const totalWeight = gradeItemList.reduce((sum, item) => sum + Number(item.weight || 0), 0)
   const isWeightReady = Math.abs(totalWeight - 1) <= WEIGHT_TOLERANCE
   const weightSummary = isWeightReady
-    ? `Grade item weights total ${formatWeight(totalWeight)}. Recalculation is ready.`
+    ? t('courses.weightReady', { total: formatWeight(totalWeight) })
     : totalWeight < 1
-      ? `Grade item weights total ${formatWeight(totalWeight)}. Missing ${formatWeight(1 - totalWeight)} before recalculation will work correctly.`
-      : `Grade item weights total ${formatWeight(totalWeight)}. Over by ${formatWeight(totalWeight - 1)} before recalculation will work correctly.`
+      ? t('courses.weightMissing', { total: formatWeight(totalWeight), amount: formatWeight(1 - totalWeight) })
+      : t('courses.weightOver', { total: formatWeight(totalWeight), amount: formatWeight(totalWeight - 1) })
 
   const loaded = course && students && gradeItems && grades && results
 
   return (
     <section className="teacher-page">
       <Link to="/teacher" className="back-link">
-        ← My courses
+        ← {t('courses.myCourses')}
       </Link>
 
       {error && <ErrorBanner message={error} />}
-      {!error && !loaded && <Spinner label="Loading course…" />}
+      {!error && !loaded && <Spinner label={t('courses.loadingOne')} />}
 
       {!error && loaded && (
         <>
@@ -314,17 +315,17 @@ export default function TeacherCourseDetailPage() {
             {course.code} · {course.class_name || '—'} · {course.term} {course.school_year}
           </p>
 
-          <h3 className="section-title">Enrolled students</h3>
+          <h3 className="section-title">{t('courses.enrolledStudents')}</h3>
           {students.length === 0 ? (
-            <Empty message="No students are enrolled in this course yet." />
+            <Empty message={t('courses.noStudentsYet')} />
           ) : (
             <div className="table-scroll">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Student</th>
-                    <th>Class</th>
-                    <th>Student #</th>
+                    <th>{t('reports.student')}</th>
+                    <th>{t('students.class')}</th>
+                    <th>{t('students.studentNumber')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -342,18 +343,18 @@ export default function TeacherCourseDetailPage() {
             </div>
           )}
 
-          <h3 className="section-title">Grade items</h3>
+          <h3 className="section-title">{t('courses.gradeItems')}</h3>
           {!showGradeItemForm && (
             <div className="grade-actions">
               <button type="button" className="btn btn-primary" onClick={openAddGradeItemForm}>
-                Add grade item
+                {t('courses.addGradeItem')}
               </button>
             </div>
           )}
           {gradeItemMessage && <p className="grade-summary">{gradeItemMessage}</p>}
           <div className="state state-empty weight-summary">
             <strong>{weightSummary}</strong>
-            <p>Weights should add up to 1.00, for example 0.30 = 30%.</p>
+            <p>{t('courses.weightHint')}</p>
           </div>
 
           <datalist id="teacher-grade-item-title-options">
@@ -370,7 +371,7 @@ export default function TeacherCourseDetailPage() {
           {showGradeItemForm && (
             <form className="card admin-form" onSubmit={handleAddGradeItem}>
               <label className="field">
-                <span>Title</span>
+                <span>{t('courses.title')}</span>
                 <input
                   value={gradeItemForm.title}
                   onChange={(event) => updateGradeItemField('title', event.target.value)}
@@ -381,7 +382,7 @@ export default function TeacherCourseDetailPage() {
               </label>
 
               <label className="field">
-                <span>Category</span>
+                <span>{t('courses.category')}</span>
                 <input
                   value={gradeItemForm.category}
                   onChange={(event) => updateGradeItemField('category', event.target.value)}
@@ -392,7 +393,7 @@ export default function TeacherCourseDetailPage() {
               </label>
 
               <label className="field">
-                <span>Max score</span>
+                <span>{t('courses.maxScore')}</span>
                 <input
                   type="number"
                   min="0.01"
@@ -405,7 +406,7 @@ export default function TeacherCourseDetailPage() {
               </label>
 
               <label className="field">
-                <span>Weight</span>
+                <span>{t('courses.weight')}</span>
                 <input
                   type="number"
                   min="0.01"
@@ -416,11 +417,11 @@ export default function TeacherCourseDetailPage() {
                   disabled={addingGradeItem}
                   required
                 />
-                <p className="muted">0.30 = 30%</p>
+                <p className="muted">{t('courses.weightExample')}</p>
               </label>
 
               <label className="field">
-                <span>Term</span>
+                <span>{t('common.term')}</span>
                 <TermSelect
                   value={gradeItemForm.term}
                   onChange={(value) => updateGradeItemField('term', value)}
@@ -429,7 +430,7 @@ export default function TeacherCourseDetailPage() {
               </label>
 
               <label className="field">
-                <span>Due date</span>
+                <span>{t('courses.dueDate')}</span>
                 <input
                   type="date"
                   value={gradeItemForm.dueDate}
@@ -440,7 +441,7 @@ export default function TeacherCourseDetailPage() {
 
               <div className="grade-actions">
                 <button type="submit" className="btn btn-primary" disabled={addingGradeItem}>
-                  {addingGradeItem ? 'Adding…' : 'Add grade item'}
+                  {addingGradeItem ? t('courses.adding') : t('courses.addGradeItem')}
                 </button>
                 <button
                   type="button"
@@ -448,7 +449,7 @@ export default function TeacherCourseDetailPage() {
                   disabled={addingGradeItem}
                   onClick={cancelAddGradeItem}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
               {gradeItemError && <ErrorBanner message={gradeItemError} />}
@@ -456,18 +457,18 @@ export default function TeacherCourseDetailPage() {
           )}
 
           {gradeItems.length === 0 ? (
-            <Empty message="This course has no grade items yet." />
+            <Empty message={t('courses.noGradeItemsYet')} />
           ) : (
             <div className="table-scroll">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Title</th>
-                    <th>Category</th>
-                    <th className="num">Max score</th>
-                    <th className="num">Weight</th>
-                    <th>Term</th>
-                    <th>Due date</th>
+                    <th>{t('courses.title')}</th>
+                    <th>{t('courses.category')}</th>
+                    <th className="num">{t('courses.maxScore')}</th>
+                    <th className="num">{t('courses.weight')}</th>
+                    <th>{t('common.term')}</th>
+                    <th>{t('courses.dueDate')}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -495,7 +496,7 @@ export default function TeacherCourseDetailPage() {
                               setEditingGradeItemId(item.id)
                             }}
                           >
-                            Edit
+                            {t('common.edit')}
                           </button>
                         </td>
                       </tr>
@@ -504,7 +505,7 @@ export default function TeacherCourseDetailPage() {
                           <td colSpan="7">
                             <form className="card admin-form" onSubmit={(event) => handleEditGradeItem(event, item.id)}>
                               <label className="field">
-                                <span>Title</span>
+                                <span>{t('courses.title')}</span>
                                 <input
                                   value={editGradeItemForm.title}
                                   onChange={(event) => updateEditGradeItemField('title', event.target.value)}
@@ -515,7 +516,7 @@ export default function TeacherCourseDetailPage() {
                               </label>
 
                               <label className="field">
-                                <span>Category</span>
+                                <span>{t('courses.category')}</span>
                                 <input
                                   value={editGradeItemForm.category}
                                   onChange={(event) => updateEditGradeItemField('category', event.target.value)}
@@ -526,7 +527,7 @@ export default function TeacherCourseDetailPage() {
                               </label>
 
                               <label className="field">
-                                <span>Max score</span>
+                                <span>{t('courses.maxScore')}</span>
                                 <input
                                   type="number"
                                   min="0.01"
@@ -539,7 +540,7 @@ export default function TeacherCourseDetailPage() {
                               </label>
 
                               <label className="field">
-                                <span>Weight</span>
+                                <span>{t('courses.weight')}</span>
                                 <input
                                   type="number"
                                   min="0.01"
@@ -550,11 +551,11 @@ export default function TeacherCourseDetailPage() {
                                   disabled={savingGradeItemEdit}
                                   required
                                 />
-                                <p className="muted">0.30 = 30%</p>
+                                <p className="muted">{t('courses.weightExample')}</p>
                               </label>
 
                               <label className="field">
-                                <span>Term</span>
+                                <span>{t('common.term')}</span>
                                 <TermSelect
                                   value={editGradeItemForm.term}
                                   onChange={(value) => updateEditGradeItemField('term', value)}
@@ -563,7 +564,7 @@ export default function TeacherCourseDetailPage() {
                               </label>
 
                               <label className="field">
-                                <span>Due date</span>
+                                <span>{t('courses.dueDate')}</span>
                                 <input
                                   type="date"
                                   value={editGradeItemForm.dueDate}
@@ -574,7 +575,7 @@ export default function TeacherCourseDetailPage() {
 
                               <div className="grade-actions">
                                 <button type="submit" className="btn btn-primary" disabled={savingGradeItemEdit}>
-                                  {savingGradeItemEdit ? 'Saving…' : 'Save changes'}
+                                  {savingGradeItemEdit ? t('common.saving') : t('common.saveChanges')}
                                 </button>
                                 <button
                                   type="button"
@@ -586,7 +587,7 @@ export default function TeacherCourseDetailPage() {
                                     setGradeItemEditError(null)
                                   }}
                                 >
-                                  Cancel
+                                  {t('common.cancel')}
                                 </button>
                               </div>
                               {gradeItemEditError && <ErrorBanner message={gradeItemEditError} />}
@@ -601,7 +602,7 @@ export default function TeacherCourseDetailPage() {
             </div>
           )}
 
-          <h3 className="section-title">Grade entry</h3>
+          <h3 className="section-title">{t('courses.gradeEntry')}</h3>
           <GradeEntryTable
             students={students}
             gradeItems={gradeItems}
@@ -609,7 +610,7 @@ export default function TeacherCourseDetailPage() {
             onSaved={handleGradesSaved}
           />
 
-          <h3 className="section-title">Course results</h3>
+          <h3 className="section-title">{t('courses.results')}</h3>
           <div className="grade-actions">
             <button
               type="button"
@@ -617,11 +618,11 @@ export default function TeacherCourseDetailPage() {
               onClick={handleRecalculate}
               disabled={calculating}
             >
-              {calculating ? 'Recalculating…' : 'Recalculate results'}
+              {calculating ? t('courses.recalculating') : t('courses.recalculate')}
             </button>
             {calcSummary && (
               <span className="grade-summary">
-                {calcSummary.no_changes ? 'No grade changes to recalculate.' : 'Results recalculated.'}
+                {calcSummary.no_changes ? t('courses.noChanges') : t('courses.recalculated')}
               </span>
             )}
           </div>
@@ -630,11 +631,11 @@ export default function TeacherCourseDetailPage() {
 
           {calcSummary && calcSummary.skipped_students.length > 0 && (
             <div className="state state-empty skipped-note">
-              <strong>Skipped (missing grades):</strong>
+              <strong>{t('courses.skippedStudents')}</strong>
               <ul className="skipped-list">
                 {calcSummary.skipped_students.map((skipped) => (
                   <li key={skipped.student_id}>
-                    {skipped.student_name} — missing: {skipped.missing_grade_items.join(', ')}
+                    {t('courses.skippedLine', { name: skipped.student_name, items: skipped.missing_grade_items.join(', ') })}
                   </li>
                 ))}
               </ul>
@@ -642,16 +643,16 @@ export default function TeacherCourseDetailPage() {
           )}
 
           {results.length === 0 ? (
-            <Empty message="No results yet. Use “Recalculate results” to generate them." />
+            <Empty message={t('courses.noResultsYet')} />
           ) : (
             <div className="table-scroll">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Student</th>
-                    <th>Term</th>
-                    <th className="num">Average</th>
-                    <th>Letter</th>
+                    <th>{t('reports.student')}</th>
+                    <th>{t('common.term')}</th>
+                    <th className="num">{t('reports.average')}</th>
+                    <th>{t('courses.letterGrade')}</th>
                   </tr>
                 </thead>
                 <tbody>

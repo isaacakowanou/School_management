@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { deleteParent, listParents } from '../api/parents.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -8,6 +9,7 @@ import Empty from '../components/Empty.jsx'
 export default function AdminParentsPage() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [parents, setParents] = useState(null)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(location.state?.message || null)
@@ -42,17 +44,17 @@ export default function AdminParentsPage() {
   }, [])
 
   async function handleDelete(parent) {
-    if (!window.confirm(`Move parent "${parent.name}" to Trash? This is only allowed when the parent is not linked to active students.`)) return
+    if (!window.confirm(t('parents.confirmDelete', { name: parent.name }))) return
     setError(null)
     setNotice(null)
     setDeletingId(parent.id)
     try {
       await deleteParent(parent.id)
       await refresh()
-      setNotice('Parent deleted.')
+      setNotice(t('parents.deleted'))
     } catch (err) {
       if (err.status === 409 && err.detail && typeof err.detail === 'object') {
-        setError(`Cannot delete "${parent.name}": linked to ${err.detail.active_student_count} active student(s).`)
+        setError(t('parents.deleteBlocked', { count: err.detail.active_student_count }))
       } else {
         setError(err.message)
       }
@@ -65,26 +67,26 @@ export default function AdminParentsPage() {
     <section className="admin-page">
       <div className="report-header">
         <div>
-          <h2 className="page-title">Parents</h2>
-          <p className="muted">All parent accounts.</p>
+          <h2 className="page-title">{t('nav.parents')}</h2>
+          <p className="muted">{t('parents.subtitle')}</p>
         </div>
         <Link to="/admin/parents/new" className="btn btn-primary">
-          Add parent
+          {t('parents.addParent')}
         </Link>
       </div>
 
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
-      {!error && parents === null && <Spinner label="Loading parents…" />}
-      {!error && parents && parents.length === 0 && <Empty message="No parents found." />}
+      {!error && parents === null && <Spinner label={t('parents.loading')} />}
+      {!error && parents && parents.length === 0 && <Empty message={t('parents.empty')} />}
       {!error && parents && parents.length > 0 && (
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Phone</th>
+                <th>{t('common.name')}</th>
+                <th>{t('common.email')}</th>
+                <th>{t('common.phone')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -96,7 +98,7 @@ export default function AdminParentsPage() {
                   <td className="nowrap">{parent.phone || '—'}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/parents/${parent.id}`}>
-                      Open →
+                      {t('common.open')}
                     </Link>
                     <button
                       type="button"
@@ -105,7 +107,7 @@ export default function AdminParentsPage() {
                       disabled={deletingId === parent.id}
                       style={{ marginLeft: 8 }}
                     >
-                      {deletingId === parent.id ? 'Deleting...' : 'Delete'}
+                      {deletingId === parent.id ? t('common.deleting') : t('common.delete')}
                     </button>
                   </td>
                 </tr>

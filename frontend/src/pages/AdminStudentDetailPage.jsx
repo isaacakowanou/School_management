@@ -459,7 +459,7 @@ export default function AdminStudentDetailPage() {
           </label>
 
           <label className="field">
-            <span>{t('common.relationship', t('common.optional'))}</span>
+            <span>{t('common.relationship')}</span>
             <select
               className="grade-input"
               value={relationship}
@@ -509,7 +509,7 @@ export default function AdminStudentDetailPage() {
                 <th>{t('common.name')}</th>
                 <th>{t('common.email')}</th>
                 <th>{t('common.phone')}</th>
-                <th>{t('common.relationship', t('common.optional'))}</th>
+                <th>{t('common.relationship')}</th>
                 <th></th>
               </tr>
             </thead>

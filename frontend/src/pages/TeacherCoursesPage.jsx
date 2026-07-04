@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { getMyCourses } from '../api/courses.js'
 import Spinner from '../components/Spinner.jsx'
@@ -8,6 +9,7 @@ import Empty from '../components/Empty.jsx'
 
 export default function TeacherCoursesPage() {
   const { user } = useAuth()
+  const { t } = useTranslation()
   const [courses, setCourses] = useState(null)
   const [error, setError] = useState(null)
 
@@ -29,13 +31,13 @@ export default function TeacherCoursesPage() {
 
   return (
     <section className="teacher-page">
-      <h2 className="page-title">My courses</h2>
-      {user && <p className="muted">Signed in as {user.name}</p>}
+      <h2 className="page-title">{t('courses.myCourses')}</h2>
+      {user && <p className="muted">{t('dashboard.signedInAs', { name: user.name })}</p>}
 
       {error && <ErrorBanner message={error} />}
-      {!error && courses === null && <Spinner label="Loading courses…" />}
+      {!error && courses === null && <Spinner label={t('courses.loading')} />}
       {!error && courses && courses.length === 0 && (
-        <Empty message="No courses are assigned to your account yet." />
+        <Empty message={t('courses.noAssigned')} />
       )}
       {!error && courses && courses.length > 0 && (
         <ul className="card-list">

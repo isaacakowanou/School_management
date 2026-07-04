@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { listDeletionBatches, restoreDeletionBatch } from '../api/dangerZone.js'
 import Empty from '../components/Empty.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -11,6 +12,7 @@ function CountsSummary({ counts }) {
 }
 
 export default function AdminTrashPage() {
+  const { t } = useTranslation()
   const [batches, setBatches] = useState(null)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -39,14 +41,14 @@ export default function AdminTrashPage() {
   }, [])
 
   async function handleRestore(batch) {
-    if (!window.confirm(`Restore ${batch.target_label} and all records in this batch?`)) return
+    if (!window.confirm(t('trash.confirmRestore', { label: batch.target_label }))) return
     setError(null)
     setNotice(null)
     setRestoringId(batch.id)
     try {
       await restoreDeletionBatch(batch.id)
       await refresh()
-      setNotice(`${batch.target_label} restored.`)
+      setNotice(t('trash.restored', { label: batch.target_label }))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -58,25 +60,25 @@ export default function AdminTrashPage() {
     <section className="admin-page">
       <div className="report-header">
         <div>
-          <h2 className="page-title">Trash</h2>
-          <p className="muted">Deletion batches created from the Owner Danger Zone.</p>
+          <h2 className="page-title">{t('nav.trash')}</h2>
+          <p className="muted">{t('trash.subtitle')}</p>
         </div>
       </div>
 
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
-      {!error && batches === null && <Spinner label="Loading Trash..." />}
-      {!error && batches && batches.length === 0 && <Empty message="Trash is empty." />}
+      {!error && batches === null && <Spinner label={t('trash.loading')} />}
+      {!error && batches && batches.length === 0 && <Empty message={t('trash.empty')} />}
       {!error && batches && batches.length > 0 && (
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Target</th>
-                <th>Type</th>
-                <th>Deleted</th>
-                <th>Counts</th>
-                <th>Status</th>
+                <th>{t('trash.targetCol')}</th>
+                <th>{t('trash.typeCol')}</th>
+                <th>{t('trash.deletedCol')}</th>
+                <th>{t('trash.countsCol')}</th>
+                <th>{t('trash.statusCol')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -87,7 +89,7 @@ export default function AdminTrashPage() {
                   <td className="nowrap">{batch.entity_type}</td>
                   <td className="nowrap">{new Date(batch.deleted_at).toLocaleString()}</td>
                   <td>{CountsSummary({ counts: batch.counts })}</td>
-                  <td className="nowrap">{batch.restored_at ? 'Restored' : 'In Trash'}</td>
+                  <td className="nowrap">{batch.restored_at ? t('trash.statusRestored') : t('trash.statusInTrash')}</td>
                   <td className="nowrap">
                     <button
                       type="button"
@@ -95,7 +97,7 @@ export default function AdminTrashPage() {
                       disabled={Boolean(batch.restored_at) || restoringId === batch.id}
                       onClick={() => handleRestore(batch)}
                     >
-                      {restoringId === batch.id ? 'Restoring...' : 'Restore'}
+                      {restoringId === batch.id ? t('trash.restoring') : t('trash.restore')}
                     </button>
                   </td>
                 </tr>

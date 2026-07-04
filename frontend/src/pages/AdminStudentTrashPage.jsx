@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { listDeletedStudents, restoreStudent } from '../api/students.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 
 export default function AdminStudentTrashPage() {
+  const { t } = useTranslation()
   const [students, setStudents] = useState(null)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
@@ -41,7 +43,7 @@ export default function AdminStudentTrashPage() {
     try {
       await restoreStudent(student.id)
       await refresh()
-      setMessage(`${name} restored.`)
+      setMessage(t('trash.studentRestored', { name }))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -52,29 +54,29 @@ export default function AdminStudentTrashPage() {
   return (
     <section className="admin-page">
       <Link to="/admin/students" className="back-link">
-        ← Back to students
+        ← {t('students.title')}
       </Link>
 
       <div className="report-header">
         <div>
-          <h2 className="page-title">Deleted students</h2>
-          <p className="muted">Students in Trash are hidden from normal workflows and can be restored.</p>
+          <h2 className="page-title">{t('students.deletedStudents')}</h2>
+          <p className="muted">{t('trash.studentTrashSubtitle')}</p>
         </div>
       </div>
 
       {message && <p className="grade-summary">{message}</p>}
       {error && <ErrorBanner message={error} />}
-      {!error && students === null && <Spinner label="Loading deleted students…" />}
-      {!error && students && students.length === 0 && <Empty message="No deleted students." />}
+      {!error && students === null && <Spinner label={t('trash.loadingStudents')} />}
+      {!error && students && students.length === 0 && <Empty message={t('trash.noStudents')} />}
       {!error && students && students.length > 0 && (
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Student #</th>
-                <th>Class</th>
-                <th>Deleted</th>
+                <th>{t('common.name')}</th>
+                <th>{t('students.studentNumber')}</th>
+                <th>{t('students.class')}</th>
+                <th>{t('trash.deletedCol')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -94,7 +96,7 @@ export default function AdminStudentTrashPage() {
                       onClick={() => handleRestore(student)}
                       disabled={restoringId === student.id}
                     >
-                      {restoringId === student.id ? 'Restoring...' : 'Restore'}
+                      {restoringId === student.id ? t('trash.restoring') : t('trash.restore')}
                     </button>
                   </td>
                 </tr>

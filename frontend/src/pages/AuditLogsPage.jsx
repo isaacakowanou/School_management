@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getAuditLogs } from '../api/auditLogs.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -23,7 +24,7 @@ function formatJson(value) {
   }
 }
 
-function ActorCell({ log }) {
+function ActorCell({ log, unknownActorLabel }) {
   if (!log.actor_name && !log.actor_email) {
     return (
       <span className="audit-id" title={log.actor_user_id}>
@@ -34,15 +35,16 @@ function ActorCell({ log }) {
 
   return (
     <div>
-      <div className="student-cell-main">{log.actor_name || 'Unknown actor'}</div>
+      <div className="student-cell-main">{log.actor_name || unknownActorLabel}</div>
       {log.actor_email && <div className="student-cell-meta">{log.actor_email}</div>}
     </div>
   )
 }
 
 export default function AuditLogsPage() {
-  const [draft, setDraft] = useState(EMPTY_FILTERS) // form inputs
-  const [filters, setFilters] = useState(EMPTY_FILTERS) // applied filters (drives fetch)
+  const { t } = useTranslation()
+  const [draft, setDraft] = useState(EMPTY_FILTERS)
+  const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [logs, setLogs] = useState(null)
   const [error, setError] = useState(null)
   const [expandedLogId, setExpandedLogId] = useState(null)
@@ -84,12 +86,12 @@ export default function AuditLogsPage() {
 
   return (
     <section className="admin-page">
-      <h2 className="page-title">Audit logs</h2>
-      <p className="muted">Administrator view</p>
+      <h2 className="page-title">{t('nav.auditLogs')}</h2>
+      <p className="muted">{t('auditLogs.adminView')}</p>
 
       <form className="filters" onSubmit={applyFilters}>
         <label className="field">
-          <span>Entity type</span>
+          <span>{t('auditLogs.entityTypeFilter')}</span>
           <input
             value={draft.entity_type}
             onChange={(e) => setDraft({ ...draft, entity_type: e.target.value })}
@@ -97,7 +99,7 @@ export default function AuditLogsPage() {
           />
         </label>
         <label className="field">
-          <span>Entity ID</span>
+          <span>{t('auditLogs.entityId')}</span>
           <input
             value={draft.entity_id}
             onChange={(e) => setDraft({ ...draft, entity_id: e.target.value })}
@@ -105,7 +107,7 @@ export default function AuditLogsPage() {
           />
         </label>
         <label className="field">
-          <span>Actor user ID</span>
+          <span>{t('auditLogs.actorId')}</span>
           <input
             value={draft.actor_user_id}
             onChange={(e) => setDraft({ ...draft, actor_user_id: e.target.value })}
@@ -114,28 +116,28 @@ export default function AuditLogsPage() {
         </label>
         <div className="filters-actions">
           <button type="submit" className="btn btn-primary">
-            Apply
+            {t('common.apply')}
           </button>
           <button type="button" className="btn btn-ghost" onClick={clearFilters}>
-            Clear
+            {t('common.clear')}
           </button>
         </div>
       </form>
 
       {error && <ErrorBanner message={error} />}
-      {!error && logs === null && <Spinner label="Loading audit logs…" />}
-      {!error && logs && logs.length === 0 && <Empty message="No audit log entries match." />}
+      {!error && logs === null && <Spinner label={t('auditLogs.loading')} />}
+      {!error && logs && logs.length === 0 && <Empty message={t('auditLogs.empty')} />}
       {!error && logs && logs.length > 0 && (
         <div className="table-scroll">
           <table className="table audit-table">
             <thead>
               <tr>
-                <th>Time</th>
-                <th>Actor</th>
-                <th>Action</th>
-                <th>Entity type</th>
-                <th>Entity ID</th>
-                <th>Details</th>
+                <th>{t('auditLogs.timeCol')}</th>
+                <th>{t('auditLogs.actorCol')}</th>
+                <th>{t('auditLogs.actionCol')}</th>
+                <th>{t('auditLogs.entityTypeCol')}</th>
+                <th>{t('auditLogs.entityIdCol')}</th>
+                <th>{t('auditLogs.detailsCol')}</th>
               </tr>
             </thead>
             <tbody>
@@ -148,7 +150,7 @@ export default function AuditLogsPage() {
                     <tr>
                       <td className="nowrap">{formatTime(log.created_at)}</td>
                       <td>
-                        <ActorCell log={log} />
+                        <ActorCell log={log} unknownActorLabel={t('auditLogs.unknownActor')} />
                       </td>
                       <td>{log.action}</td>
                       <td className="nowrap">{log.entity_type}</td>
@@ -164,7 +166,7 @@ export default function AuditLogsPage() {
                           onClick={() => toggleDetails(log.id)}
                           aria-expanded={isExpanded}
                         >
-                          {isExpanded ? 'Hide details' : 'View details'}
+                          {isExpanded ? t('auditLogs.hideDetails') : t('auditLogs.viewDetails')}
                         </button>
                       </td>
                     </tr>
@@ -173,11 +175,11 @@ export default function AuditLogsPage() {
                         <td colSpan={6}>
                           <div className="audit-details-grid">
                             <div>
-                              <h3>Old value</h3>
+                              <h3>{t('auditLogs.oldValue')}</h3>
                               <pre className="json-cell json-cell-expanded">{oldValue}</pre>
                             </div>
                             <div>
-                              <h3>New value</h3>
+                              <h3>{t('auditLogs.newValue')}</h3>
                               <pre className="json-cell json-cell-expanded">{newValue}</pre>
                             </div>
                           </div>

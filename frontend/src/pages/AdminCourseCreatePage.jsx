@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { createCourse } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
 import { listClasses } from '../api/classes.js'
@@ -28,6 +29,7 @@ const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
 
 export default function AdminCourseCreatePage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [form, setForm] = useState(EMPTY_FORM)
   const [teachers, setTeachers] = useState(null)
   const [error, setError] = useState(null)
@@ -113,7 +115,7 @@ export default function AdminCourseCreatePage() {
       !form.term.trim() ||
       !form.schoolYear.trim()
     ) {
-      setError('Course name (or a subject), code, teacher, term, and school year are required.')
+      setError(t('courses.errorRequired'))
       return
     }
 
@@ -121,7 +123,7 @@ export default function AdminCourseCreatePage() {
     try {
       await createCourse(form)
       navigate('/admin/courses', {
-        state: { message: 'Course created.' },
+        state: { message: t('courses.created') },
       })
     } catch (err) {
       setError(err.message)
@@ -133,39 +135,37 @@ export default function AdminCourseCreatePage() {
   return (
     <section className="admin-page">
       <Link to="/admin/courses" className="back-link">
-        &lt;- Courses
+        ← {t('nav.courses')}
       </Link>
 
       <div className="report-header">
         <div>
-          <h2 className="page-title">Add course</h2>
-          <p className="muted">Create a course and assign its teacher.</p>
+          <h2 className="page-title">{t('courses.addCourse')}</h2>
+          <p className="muted">{t('courses.createSubtitle')}</p>
         </div>
       </div>
 
       {error && <ErrorBanner message={error} />}
-      {!error && teachers === null && <Spinner label="Loading teachers..." />}
+      {!error && teachers === null && <Spinner label={t('courses.loadingTeachers')} />}
       {!error && teachers && teachers.length === 0 && (
-        <Empty message="Create a teacher before adding a course." />
+        <Empty message={t('courses.needsTeacher')} />
       )}
 
       {teachers && teachers.length > 0 && (
         <form className="card admin-form" onSubmit={handleSubmit}>
           <label className="field">
-            <span>Subject</span>
+            <span>{t('courses.subject')}</span>
             <SubjectSelect
               subjects={subjects}
               value={form.subjectId}
               onChange={(value) => updateField('subjectId', value)}
               disabled={saving}
             />
-            <span className="muted">
-              Pick a catalog subject, or “Custom (free text)” for a course outside the catalog.
-            </span>
+            <span className="muted">{t('courses.subjectHint')}</span>
           </label>
 
           <label className="field">
-            <span>Course name</span>
+            <span>{t('courses.courseName')}</span>
             <input
               value={selectedSubject ? derivedCourseName(selectedSubject) : form.name}
               onChange={(event) => updateField('name', event.target.value)}
@@ -174,15 +174,12 @@ export default function AdminCourseCreatePage() {
               required={!selectedSubject}
             />
             {selectedSubject && (
-              <span className="muted">
-                Name and language group come from the subject. Switch Subject to “Custom (free
-                text)” to enter your own.
-              </span>
+              <span className="muted">{t('courses.nameFromSubjectHint')}</span>
             )}
           </label>
 
           <label className="field">
-            <span>Course code</span>
+            <span>{t('courses.courseCode')}</span>
             <input
               value={form.code}
               onChange={(event) => updateField('code', event.target.value)}
@@ -192,7 +189,7 @@ export default function AdminCourseCreatePage() {
           </label>
 
           <label className="field">
-            <span>Teacher</span>
+            <span>{t('common.teacher')}</span>
             <select
               className="grade-input"
               value={form.teacherId}
@@ -210,7 +207,7 @@ export default function AdminCourseCreatePage() {
           </label>
 
           <label className="field">
-            <span>Term</span>
+            <span>{t('common.term')}</span>
             <TermSelect
               value={form.term}
               onChange={(value) => updateField('term', value)}
@@ -219,7 +216,7 @@ export default function AdminCourseCreatePage() {
           </label>
 
           <label className="field">
-            <span>School year</span>
+            <span>{t('common.schoolYear')}</span>
             <input
               value={form.schoolYear}
               onChange={(event) => updateField('schoolYear', event.target.value)}
@@ -230,7 +227,7 @@ export default function AdminCourseCreatePage() {
           </label>
 
           <label className="field">
-            <span>Language group (optional)</span>
+            <span>{t('courses.languageGroup')}</span>
             <select
               className="grade-input"
               value={selectedSubject ? selectedSubject.section : form.languageGroup}
@@ -238,7 +235,7 @@ export default function AdminCourseCreatePage() {
               disabled={saving || Boolean(selectedSubject)}
               style={{ width: '100%', textAlign: 'left' }}
             >
-              <option value="">Not set</option>
+              <option value="">{t('common.notSet')}</option>
               {SCHOOL_GROUPS.map((group) => (
                 <option key={group.value} value={group.value}>
                   {group.label}
@@ -248,7 +245,7 @@ export default function AdminCourseCreatePage() {
           </label>
 
           <label className="field">
-            <span>Class / Classe (optional)</span>
+            <span>{t('courses.classOptional')}</span>
             <ClassSelect
               classes={classes}
               value={form.classId}
@@ -265,10 +262,10 @@ export default function AdminCourseCreatePage() {
 
           <div className="grade-actions">
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Creating...' : 'Create course'}
+              {saving ? t('courses.creating') : t('courses.create')}
             </button>
             <Link to="/admin/courses" className="btn btn-ghost">
-              Cancel
+              {t('common.cancel')}
             </Link>
           </div>
         </form>

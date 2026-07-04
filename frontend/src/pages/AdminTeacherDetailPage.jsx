@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { deleteTeacher, getTeacher, getTeacherCourses, updateTeacher } from '../api/teachers.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -17,6 +18,7 @@ function teacherToForm(teacher) {
 export default function AdminTeacherDetailPage() {
   const { teacherId } = useParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [teacher, setTeacher] = useState(null)
   const [courses, setCourses] = useState([])
   const [error, setError] = useState(null)
@@ -49,7 +51,6 @@ export default function AdminTeacherDetailPage() {
         if (!cancelled) setError(err.message)
         return
       }
-      // Assigned courses are best-effort.
       try {
         const list = await getTeacherCourses(teacherId)
         if (!cancelled) setCourses(list)
@@ -80,7 +81,7 @@ export default function AdminTeacherDetailPage() {
     setEditMessage(null)
 
     if (!editForm.name.trim() || !editForm.employeeNumber.trim()) {
-      setEditError('Name and employee number are required.')
+      setEditError(t('teachers.errorRequired'))
       return
     }
 
@@ -90,7 +91,7 @@ export default function AdminTeacherDetailPage() {
       const refreshed = await getTeacher(teacherId)
       setTeacher(refreshed)
       setEditForm(teacherToForm(refreshed))
-      setEditMessage('Teacher updated.')
+      setEditMessage(t('teachers.updated'))
       setShowEditForm(false)
     } catch (err) {
       setEditError(err.message)
@@ -100,19 +101,16 @@ export default function AdminTeacherDetailPage() {
   }
 
   async function handleDeleteTeacher() {
-    if (!window.confirm(`Move teacher "${teacher.name}" to Trash? This is only allowed when the teacher has no courses or submitted grades.`)) return
+    if (!window.confirm(t('teachers.confirmDelete', { name: teacher.name }))) return
     setEditError(null)
     setEditMessage(null)
     setDeleting(true)
     try {
       await deleteTeacher(teacherId)
-      navigate('/admin/teachers', { replace: true, state: { message: 'Teacher deleted.' } })
+      navigate('/admin/teachers', { replace: true, state: { message: t('teachers.deleted') } })
     } catch (err) {
       if (err.status === 409 && err.detail && typeof err.detail === 'object') {
-        setEditError(
-          `Cannot delete this teacher: ${err.detail.course_count} course(s) and ` +
-            `${err.detail.submitted_grade_count} submitted grade(s) are still linked.`,
-        )
+        setEditError(t('teachers.deleteBlocked', { courses: err.detail.course_count, grades: err.detail.submitted_grade_count }))
       } else {
         setEditError(err.message)
       }
@@ -125,7 +123,7 @@ export default function AdminTeacherDetailPage() {
     return (
       <section className="admin-page">
         <Link to="/admin/teachers" className="back-link">
-          ← Teachers
+          ← {t('nav.teachers')}
         </Link>
         <ErrorBanner message={error} />
       </section>
@@ -135,7 +133,7 @@ export default function AdminTeacherDetailPage() {
   if (!teacher) {
     return (
       <section className="admin-page">
-        <Spinner label="Loading teacher…" />
+        <Spinner label={t('teachers.loadingOne')} />
       </section>
     )
   }
@@ -143,11 +141,11 @@ export default function AdminTeacherDetailPage() {
   return (
     <section className="admin-page">
       <Link to="/admin/teachers" className="back-link">
-        ← Teachers
+        ← {t('nav.teachers')}
       </Link>
       <h2 className="page-title">{teacher.name}</h2>
       <p className="muted">
-        {teacher.email || '—'} · {teacher.phone || '—'} · Employee #{teacher.employee_number}
+        {teacher.email || '—'} · {teacher.phone || '—'} · {t('common.employeeNumber')} #{teacher.employee_number}
       </p>
       {!showEditForm && (
         <div className="grade-actions">
@@ -161,7 +159,7 @@ export default function AdminTeacherDetailPage() {
               setShowEditForm(true)
             }}
           >
-            Edit
+            {t('common.edit')}
           </button>
           <button
             type="button"
@@ -169,7 +167,7 @@ export default function AdminTeacherDetailPage() {
             onClick={handleDeleteTeacher}
             disabled={deleting}
           >
-            {deleting ? 'Deleting...' : 'Delete'}
+            {deleting ? t('common.deleting') : t('common.delete')}
           </button>
         </div>
       )}
@@ -178,7 +176,7 @@ export default function AdminTeacherDetailPage() {
       {showEditForm && (
         <form className="card admin-form" onSubmit={handleEditTeacher}>
           <label className="field">
-            <span>Name</span>
+            <span>{t('common.name')}</span>
             <input
               value={editForm.name}
               onChange={(event) => updateEditField('name', event.target.value)}
@@ -188,7 +186,7 @@ export default function AdminTeacherDetailPage() {
           </label>
 
           <label className="field">
-            <span>Email (optional)</span>
+            <span>{t('teachers.emailOptional')}</span>
             <input
               type="text"
               value={editForm.email}
@@ -198,7 +196,7 @@ export default function AdminTeacherDetailPage() {
           </label>
 
           <label className="field">
-            <span>Phone (optional)</span>
+            <span>{t('teachers.phoneOptional')}</span>
             <input
               type="text"
               value={editForm.phone}
@@ -209,7 +207,7 @@ export default function AdminTeacherDetailPage() {
           </label>
 
           <label className="field">
-            <span>Employee number</span>
+            <span>{t('teachers.employeeNumber')}</span>
             <input
               value={editForm.employeeNumber}
               onChange={(event) => updateEditField('employeeNumber', event.target.value)}
@@ -220,29 +218,29 @@ export default function AdminTeacherDetailPage() {
 
           <div className="grade-actions">
             <button type="submit" className="btn btn-primary" disabled={savingEdit}>
-              {savingEdit ? 'Saving...' : 'Save changes'}
+              {savingEdit ? t('common.saving') : t('common.saveChanges')}
             </button>
             <button type="button" className="btn btn-ghost" disabled={savingEdit} onClick={cancelEdit}>
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
           {editError && <ErrorBanner message={editError} />}
         </form>
       )}
 
-      <h3 className="section-title">Assigned courses</h3>
+      <h3 className="section-title">{t('teachers.assignedCourses')}</h3>
       {courses.length === 0 ? (
-        <Empty message="No courses assigned to this teacher." />
+        <Empty message={t('teachers.noCourses')} />
       ) : (
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Code</th>
-                <th>Class</th>
-                <th>Term</th>
-                <th>School year</th>
+                <th>{t('common.name')}</th>
+                <th>{t('courses.code')}</th>
+                <th>{t('students.class')}</th>
+                <th>{t('common.term')}</th>
+                <th>{t('common.schoolYear')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -256,7 +254,7 @@ export default function AdminTeacherDetailPage() {
                   <td className="nowrap">{course.school_year}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/courses/${course.id}`}>
-                      Open →
+                      {t('common.open')}
                     </Link>
                   </td>
                 </tr>

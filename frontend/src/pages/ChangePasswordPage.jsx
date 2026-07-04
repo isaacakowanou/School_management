@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { changePassword } from '../api/auth.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -7,6 +8,7 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 export default function ChangePasswordPage() {
   const { logout, refreshUser, homePath } = useAuth()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [newPassword, setNewPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -18,7 +20,7 @@ export default function ChangePasswordPage() {
     setError(null)
 
     if (newPassword !== confirm) {
-      setError('Passwords do not match.')
+      setError(t('changePassword.passwordMismatch'))
       return
     }
 
@@ -27,10 +29,9 @@ export default function ChangePasswordPage() {
       await changePassword(newPassword)
       const me = await refreshUser()
       navigate(homePath ?? '/', { replace: true })
-      // homePath may not yet reflect the refreshed user; use me.role fallback
       void me
     } catch (err) {
-      setError(err.message || 'Could not change password. Please try again.')
+      setError(err.message)
     } finally {
       setSubmitting(false)
     }
@@ -39,15 +40,13 @@ export default function ChangePasswordPage() {
   return (
     <div className="login-wrap">
       <form className="card login-card" onSubmit={handleSubmit}>
-        <h1 className="login-title">Change your password</h1>
-        <p className="login-sub">
-          A temporary password was set for your account. Please create a new one before continuing.
-        </p>
+        <h1 className="login-title">{t('changePassword.title')}</h1>
+        <p className="login-sub">{t('changePassword.subtitle')}</p>
 
         {error && <ErrorBanner message={error} />}
 
         <label className="field">
-          <span>New password</span>
+          <span>{t('changePassword.newPassword')}</span>
           <div className="password-input-wrap">
             <input
               type={showPassword ? 'text' : 'password'}
@@ -62,7 +61,7 @@ export default function ChangePasswordPage() {
               type="button"
               className="password-toggle"
               onClick={() => setShowPassword((v) => !v)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
               aria-pressed={showPassword}
             >
               {showPassword ? (
@@ -82,7 +81,7 @@ export default function ChangePasswordPage() {
         </label>
 
         <label className="field">
-          <span>Confirm password</span>
+          <span>{t('changePassword.confirmPassword')}</span>
           <input
             type={showPassword ? 'text' : 'password'}
             value={confirm}
@@ -95,7 +94,7 @@ export default function ChangePasswordPage() {
         </label>
 
         <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? 'Saving…' : 'Set new password'}
+          {submitting ? t('changePassword.saving') : t('changePassword.submit')}
         </button>
 
         <button
@@ -105,7 +104,7 @@ export default function ChangePasswordPage() {
           onClick={logout}
           disabled={submitting}
         >
-          Log out
+          {t('common.logout')}
         </button>
       </form>
     </div>

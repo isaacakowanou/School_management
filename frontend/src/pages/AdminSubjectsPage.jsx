@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createSubject, deleteSubject, listSubjects, updateSubject } from '../api/subjects.js'
 import { SUBJECT_LEVEL_GROUPS } from '../constants/subjectLevelGroups.js'
 import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
@@ -10,7 +11,6 @@ function emptyQuickAdd() {
   return { nameFr: '', nameEn: '', section: 'FRENCH' }
 }
 
-// "6ème, 3ème" <-> ["6ème", "3ème"]; empty means "whole level group" (null).
 function parseApplicableClasses(text) {
   return text
     .split(',')
@@ -23,6 +23,7 @@ function formatApplicableClasses(list) {
 }
 
 export default function AdminSubjectsPage() {
+  const { t } = useTranslation()
   const [subjects, setSubjects] = useState(null)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
@@ -57,8 +58,6 @@ export default function AdminSubjectsPage() {
     }
   }, [])
 
-  // The backend returns bulletin order (level group, French section first,
-  // sort_order), so grouping preserves it.
   const subjectsByLevelGroup = useMemo(() => {
     const map = {}
     for (const group of SUBJECT_LEVEL_GROUPS) map[group.value] = []
@@ -87,7 +86,7 @@ export default function AdminSubjectsPage() {
     setQuickAddError((e) => ({ ...e, [groupValue]: null }))
     const form = quickAddFor(groupValue)
     if (!form.nameFr.trim() || !form.nameEn.trim()) {
-      setQuickAddError((e) => ({ ...e, [groupValue]: 'French and English names are required.' }))
+      setQuickAddError((e) => ({ ...e, [groupValue]: t('subjects.errorBothRequired') }))
       return
     }
     setPending(true)
@@ -102,7 +101,7 @@ export default function AdminSubjectsPage() {
       })
       await refresh()
       setQuickAdd((q) => ({ ...q, [groupValue]: emptyQuickAdd() }))
-      setMessage('Subject added.')
+      setMessage(t('subjects.added'))
     } catch (err) {
       setQuickAddError((e) => ({ ...e, [groupValue]: err.message }))
     } finally {
@@ -131,12 +130,12 @@ export default function AdminSubjectsPage() {
     event.preventDefault()
     setEditError(null)
     if (!editForm.nameFr.trim() || !editForm.nameEn.trim()) {
-      setEditError('French and English names are required.')
+      setEditError(t('subjects.errorBothRequired'))
       return
     }
     const sortOrder = Number(editForm.sortOrder)
     if (!Number.isInteger(sortOrder)) {
-      setEditError('Sort order must be a whole number.')
+      setEditError(t('subjects.errorSortOrder'))
       return
     }
     setPending(true)
@@ -152,7 +151,7 @@ export default function AdminSubjectsPage() {
       await refresh()
       setEditing(null)
       setEditForm(null)
-      setMessage('Subject updated.')
+      setMessage(t('subjects.updated'))
     } catch (err) {
       setEditError(err.message)
     } finally {
@@ -161,20 +160,17 @@ export default function AdminSubjectsPage() {
   }
 
   async function handleDelete(subject) {
-    if (!window.confirm(`Delete subject "${subject.name_fr}"?`)) return
+    if (!window.confirm(t('subjects.confirmDelete', { name: subject.name_fr }))) return
     setMessage(null)
     setError(null)
     setPending(true)
     try {
       await deleteSubject(subject.id)
       await refresh()
-      setMessage('Subject deleted.')
+      setMessage(t('subjects.deleted'))
     } catch (err) {
       if (err.status === 409 && err.detail && typeof err.detail === 'object') {
-        setError(
-          `Cannot delete "${subject.name_fr}": ${err.detail.course_count} course(s) reference it. ` +
-            'Reassign or delete those courses first.',
-        )
+        setError(t('subjects.deleteBlocked', { name: subject.name_fr, count: err.detail.course_count }))
       } else {
         setError(err.message)
       }
@@ -187,17 +183,14 @@ export default function AdminSubjectsPage() {
     <section className="admin-page">
       <div className="report-header">
         <div>
-          <h2 className="page-title">Subjects</h2>
-          <p className="muted">
-            GGFK subject catalog. Courses created from a subject inherit its bulletin name and
-            language section.
-          </p>
+          <h2 className="page-title">{t('nav.subjects')}</h2>
+          <p className="muted">{t('subjects.subtitle')}</p>
         </div>
       </div>
 
       {message && <p className="grade-summary">{message}</p>}
       {error && <ErrorBanner message={error} />}
-      {!error && subjects === null && <Spinner label="Loading subjects…" />}
+      {!error && subjects === null && <Spinner label={t('subjects.loading')} />}
 
       {subjects &&
         SUBJECT_LEVEL_GROUPS.map((group) => {
@@ -212,7 +205,7 @@ export default function AdminSubjectsPage() {
                 style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}
               >
                 <label className="field" style={{ marginBottom: 0 }}>
-                  <span>Name (FR)</span>
+                  <span>{t('subjects.nameFr')}</span>
                   <input
                     value={qa.nameFr}
                     onChange={(e) => setQuickAddField(group.value, 'nameFr', e.target.value)}
@@ -220,7 +213,7 @@ export default function AdminSubjectsPage() {
                   />
                 </label>
                 <label className="field" style={{ marginBottom: 0 }}>
-                  <span>Name (EN)</span>
+                  <span>{t('subjects.nameEn')}</span>
                   <input
                     value={qa.nameEn}
                     onChange={(e) => setQuickAddField(group.value, 'nameEn', e.target.value)}
@@ -228,7 +221,7 @@ export default function AdminSubjectsPage() {
                   />
                 </label>
                 <label className="field" style={{ marginBottom: 0 }}>
-                  <span>Section</span>
+                  <span>{t('subjects.section')}</span>
                   <select
                     className="grade-input"
                     value={qa.section}
@@ -244,23 +237,23 @@ export default function AdminSubjectsPage() {
                   </select>
                 </label>
                 <button type="submit" className="btn btn-primary" disabled={pending}>
-                  Add
+                  {t('common.add')}
                 </button>
               </form>
               {quickAddError[group.value] && <ErrorBanner message={quickAddError[group.value]} />}
 
               {list.length === 0 ? (
-                <Empty message={`No subjects for ${group.label}.`} />
+                <Empty message={t('subjects.emptyGroup', { group: group.label })} />
               ) : (
                 <div className="table-scroll">
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Subject</th>
-                        <th>Section</th>
-                        <th className="num">Order</th>
-                        <th>Classes</th>
-                        <th className="num">Courses</th>
+                        <th>{t('subjects.subjectCol')}</th>
+                        <th>{t('subjects.section')}</th>
+                        <th className="num">{t('subjects.orderCol')}</th>
+                        <th>{t('nav.classes')}</th>
+                        <th className="num">{t('subjects.coursesCol')}</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -272,13 +265,13 @@ export default function AdminSubjectsPage() {
                             <span className="muted"> · {subject.name_en}</span>
                           </td>
                           <td className="nowrap">
-                            {subject.section === 'FRENCH' ? 'French' : 'English'}
+                            {subject.section === 'FRENCH' ? t('subjects.sectionFrench') : t('subjects.sectionEnglish')}
                           </td>
                           <td className="num">{subject.sort_order}</td>
                           <td className="nowrap">
                             {subject.applicable_classes
                               ? subject.applicable_classes.join(', ')
-                              : 'All'}
+                              : t('subjects.allClasses')}
                           </td>
                           <td className="num">{subject.course_count}</td>
                           <td className="nowrap">
@@ -288,7 +281,7 @@ export default function AdminSubjectsPage() {
                               onClick={() => openEdit(subject)}
                               disabled={pending}
                             >
-                              Edit
+                              {t('common.edit')}
                             </button>
                             <button
                               type="button"
@@ -296,7 +289,7 @@ export default function AdminSubjectsPage() {
                               onClick={() => handleDelete(subject)}
                               disabled={pending}
                             >
-                              Delete
+                              {t('common.delete')}
                             </button>
                           </td>
                         </tr>
@@ -328,10 +321,10 @@ export default function AdminSubjectsPage() {
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
           >
-            <h3 className="section-title">Edit subject</h3>
+            <h3 className="section-title">{t('subjects.editTitle')}</h3>
             <form className="admin-form" onSubmit={handleSaveEdit}>
               <label className="field">
-                <span>Name (FR)</span>
+                <span>{t('subjects.nameFr')}</span>
                 <input
                   value={editForm.nameFr}
                   onChange={(e) => updateEditField('nameFr', e.target.value)}
@@ -340,7 +333,7 @@ export default function AdminSubjectsPage() {
                 />
               </label>
               <label className="field">
-                <span>Name (EN)</span>
+                <span>{t('subjects.nameEn')}</span>
                 <input
                   value={editForm.nameEn}
                   onChange={(e) => updateEditField('nameEn', e.target.value)}
@@ -349,7 +342,7 @@ export default function AdminSubjectsPage() {
                 />
               </label>
               <label className="field">
-                <span>Section</span>
+                <span>{t('subjects.section')}</span>
                 <select
                   className="grade-input"
                   value={editForm.section}
@@ -365,7 +358,7 @@ export default function AdminSubjectsPage() {
                 </select>
               </label>
               <label className="field">
-                <span>Level group</span>
+                <span>{t('subjects.levelGroup')}</span>
                 <select
                   className="grade-input"
                   value={editForm.levelGroup}
@@ -381,7 +374,7 @@ export default function AdminSubjectsPage() {
                 </select>
               </label>
               <label className="field">
-                <span>Sort order</span>
+                <span>{t('classes.sortOrder')}</span>
                 <input
                   type="number"
                   value={editForm.sortOrder}
@@ -390,7 +383,7 @@ export default function AdminSubjectsPage() {
                 />
               </label>
               <label className="field">
-                <span>Classes (comma-separated, empty = whole level group)</span>
+                <span>{t('subjects.classesLabel')}</span>
                 <input
                   value={editForm.applicableClasses}
                   onChange={(e) => updateEditField('applicableClasses', e.target.value)}
@@ -401,7 +394,7 @@ export default function AdminSubjectsPage() {
 
               <div className="grade-actions">
                 <button type="submit" className="btn btn-primary" disabled={pending}>
-                  {pending ? 'Saving…' : 'Save changes'}
+                  {pending ? t('common.saving') : t('common.saveChanges')}
                 </button>
                 <button
                   type="button"
@@ -409,7 +402,7 @@ export default function AdminSubjectsPage() {
                   onClick={() => setEditing(null)}
                   disabled={pending}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
               {editError && <ErrorBanner message={editError} />}

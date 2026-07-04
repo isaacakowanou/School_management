@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { createTeacher } from '../api/teachers.js'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 
@@ -12,10 +13,11 @@ const EMPTY_FORM = {
 
 export default function AdminTeacherCreatePage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [created, setCreated] = useState(null) // { name, email, tempPassword }
+  const [created, setCreated] = useState(null)
   const [copied, setCopied] = useState(false)
 
   function updateField(field, value) {
@@ -27,7 +29,7 @@ export default function AdminTeacherCreatePage() {
     setError(null)
 
     if (!form.name.trim()) {
-      setError('Name is required.')
+      setError(t('teachers.errorNameRequired'))
       return
     }
 
@@ -53,10 +55,12 @@ export default function AdminTeacherCreatePage() {
     return (
       <section className="admin-page">
         <div className="card admin-form">
-          <h2 className="page-title">Teacher account created</h2>
+          <h2 className="page-title">{t('teachers.accountCreated')}</h2>
           <p className="muted" style={{ marginBottom: '1rem' }}>
-            {created.name}{created.email ? ` <${created.email}>` : ''} has been added (employee #{created.employeeNumber}). A temporary password was generated below.
-            Share it with the teacher — <strong>it will not be shown again</strong>.
+            {t('teachers.addedMessage', {
+              name: created.email ? `${created.name} <${created.email}>` : created.name,
+              number: created.employeeNumber,
+            })}
           </p>
 
           <div
@@ -77,12 +81,12 @@ export default function AdminTeacherCreatePage() {
               {created.tempPassword}
             </code>
             <button type="button" className="btn btn-ghost" onClick={copyPassword}>
-              {copied ? 'Copied!' : 'Copy'}
+              {copied ? t('common.copied') : t('common.copy')}
             </button>
           </div>
 
           <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
-            The teacher will be required to change this password on first login.
+            {t('teachers.firstLoginHint')}
           </p>
 
           <div className="grade-actions" style={{ marginTop: '1.5rem' }}>
@@ -95,14 +99,14 @@ export default function AdminTeacherCreatePage() {
                 setForm(EMPTY_FORM)
               }}
             >
-              Add another teacher
+              {t('teachers.addAnother')}
             </button>
             <button
               type="button"
               className="btn btn-primary"
               onClick={() => navigate('/admin/teachers')}
             >
-              Done
+              {t('common.done')}
             </button>
           </div>
         </div>
@@ -113,13 +117,13 @@ export default function AdminTeacherCreatePage() {
   return (
     <section className="admin-page">
       <Link to="/admin/teachers" className="back-link">
-        &lt;- Teachers
+        ← {t('nav.teachers')}
       </Link>
 
       <div className="report-header">
         <div>
-          <h2 className="page-title">Add teacher</h2>
-          <p className="muted">A temporary password will be generated. If an email or phone is provided, it will be sent automatically.</p>
+          <h2 className="page-title">{t('teachers.addTeacher')}</h2>
+          <p className="muted">{t('teachers.createSubtitle')}</p>
         </div>
       </div>
 
@@ -127,7 +131,7 @@ export default function AdminTeacherCreatePage() {
 
       <form className="card admin-form" onSubmit={handleSubmit}>
         <label className="field">
-          <span>Name</span>
+          <span>{t('common.name')}</span>
           <input
             value={form.name}
             onChange={(event) => updateField('name', event.target.value)}
@@ -137,7 +141,7 @@ export default function AdminTeacherCreatePage() {
         </label>
 
         <label className="field">
-          <span>Email (optional)</span>
+          <span>{t('teachers.emailOptional')}</span>
           <input
             type="text"
             value={form.email}
@@ -147,7 +151,7 @@ export default function AdminTeacherCreatePage() {
         </label>
 
         <label className="field">
-          <span>Phone (optional)</span>
+          <span>{t('teachers.phoneOptional')}</span>
           <input
             type="text"
             value={form.phone}
@@ -158,21 +162,21 @@ export default function AdminTeacherCreatePage() {
         </label>
 
         <label className="field">
-          <span>Employee number</span>
+          <span>{t('teachers.employeeNumber')}</span>
           <input
             value={form.employeeNumber}
             onChange={(event) => updateField('employeeNumber', event.target.value)}
             disabled={saving}
-            placeholder="Auto-generated if left blank"
+            placeholder={t('students.autoGenerated')}
           />
         </label>
 
         <div className="grade-actions">
           <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Creating...' : 'Create teacher'}
+            {saving ? t('teachers.creating') : t('teachers.create')}
           </button>
           <Link to="/admin/teachers" className="btn btn-ghost">
-            Cancel
+            {t('common.cancel')}
           </Link>
         </div>
       </form>

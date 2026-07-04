@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   bulkCreateClasses,
   bulkEnrollClassStudents,
@@ -17,17 +18,12 @@ import Empty from '../components/Empty.jsx'
 const DEFAULT_SCHOOL_YEAR = '2026-2027'
 const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
 
-const SECTION_TITLES = {
-  maternelle: 'Nursery / Maternelle',
-  primaire: 'Primary / Primaire',
-  college: 'Collège',
-}
-
 function emptyQuickAdd() {
   return { nameFr: '', nameEn: '', stream: '' }
 }
 
 export default function AdminClassesPage() {
+  const { t } = useTranslation()
   const [classes, setClasses] = useState(null)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
@@ -46,7 +42,7 @@ export default function AdminClassesPage() {
   const [bulkError, setBulkError] = useState(null)
   const [bulkCreating, setBulkCreating] = useState(false)
 
-  const [enrollDialog, setEnrollDialog] = useState(null) // { cls, preview }
+  const [enrollDialog, setEnrollDialog] = useState(null)
   const [enrollLoading, setEnrollLoading] = useState(false)
   const [enrollError, setEnrollError] = useState(null)
   const [enrolling, setEnrolling] = useState(false)
@@ -112,7 +108,7 @@ export default function AdminClassesPage() {
     setQuickAddError((e) => ({ ...e, [levelValue]: null }))
     const form = quickAddFor(levelValue)
     if (!form.nameFr.trim()) {
-      setQuickAddError((e) => ({ ...e, [levelValue]: 'French name is required.' }))
+      setQuickAddError((e) => ({ ...e, [levelValue]: t('classes.errorFrRequired') }))
       return
     }
     setPending(true)
@@ -127,7 +123,7 @@ export default function AdminClassesPage() {
       })
       await refresh()
       setQuickAdd((q) => ({ ...q, [levelValue]: emptyQuickAdd() }))
-      setMessage('Class added.')
+      setMessage(t('classes.added'))
     } catch (err) {
       setQuickAddError((e) => ({ ...e, [levelValue]: err.message }))
     } finally {
@@ -156,12 +152,12 @@ export default function AdminClassesPage() {
     event.preventDefault()
     setEditError(null)
     if (!editForm.nameFr.trim()) {
-      setEditError('French name is required.')
+      setEditError(t('classes.errorFrRequired'))
       return
     }
     const sortOrder = Number(editForm.sortOrder)
     if (!Number.isInteger(sortOrder)) {
-      setEditError('Sort order must be a whole number.')
+      setEditError(t('classes.errorSortOrder'))
       return
     }
     setPending(true)
@@ -177,7 +173,7 @@ export default function AdminClassesPage() {
       await refresh()
       setEditing(null)
       setEditForm(null)
-      setMessage('Class updated.')
+      setMessage(t('classes.updated'))
     } catch (err) {
       setEditError(err.message)
     } finally {
@@ -185,9 +181,6 @@ export default function AdminClassesPage() {
     }
   }
 
-  // Precheck for the dialog: how many taxonomy classes are missing for the
-  // chosen year. Display-only — the server re-checks with the same
-  // normalization on submit.
   const bulkMissingCount = useMemo(() => {
     const existingKeys = new Set(
       (classes || [])
@@ -207,7 +200,7 @@ export default function AdminClassesPage() {
     event.preventDefault()
     setBulkError(null)
     if (!bulkYear.trim()) {
-      setBulkError('School year is required.')
+      setBulkError(t('classes.errorYearRequired'))
       return
     }
     setBulkCreating(true)
@@ -216,9 +209,9 @@ export default function AdminClassesPage() {
       await refresh()
       setShowBulkDialog(false)
       setSelectedYear(bulkYear.trim())
-      let text = `Created ${result.created.length} class(es) for ${bulkYear.trim()}.`
+      let text = t('classes.bulkCreated', { count: result.created.length, year: bulkYear.trim() })
       if (result.skipped.length) {
-        text += ` Skipped ${result.skipped.length} already existing.`
+        text += ' ' + t('classes.bulkSkipped', { count: result.skipped.length })
       }
       setMessage(text)
     } catch (err) {
@@ -253,14 +246,11 @@ export default function AdminClassesPage() {
       setEnrollDialog(null)
       if (result.status === 'empty') {
         const missing = []
-        if (result.students_in_class === 0) missing.push('no students assigned to this class')
-        if (result.courses_in_class === 0) missing.push(`no courses tagged with this class for ${result.school_year}`)
-        setMessage(`Nothing to enroll for ${cls.name_fr}: ${missing.join(' and ')}.`)
+        if (result.students_in_class === 0) missing.push(t('classes.missingStudents'))
+        if (result.courses_in_class === 0) missing.push(t('classes.missingCourses', { year: result.school_year }))
+        setMessage(t('classes.enrollNothingResult', { name: cls.name_fr, missing: missing.join(t('common.and')) }))
       } else {
-        setMessage(
-          `Enrolled ${cls.name_fr}: ${result.enrollments_created} new enrollment(s), ` +
-            `${result.enrollments_skipped} already existed.`,
-        )
+        setMessage(t('classes.enrolledResult', { name: cls.name_fr, created: result.enrollments_created, skipped: result.enrollments_skipped }))
       }
       await refresh()
     } catch (err) {
@@ -271,20 +261,17 @@ export default function AdminClassesPage() {
   }
 
   async function handleDelete(cls) {
-    if (!window.confirm(`Delete class "${cls.name_fr}"?`)) return
+    if (!window.confirm(t('classes.confirmDelete', { name: cls.name_fr }))) return
     setMessage(null)
     setError(null)
     setPending(true)
     try {
       await deleteClass(cls.id)
       await refresh()
-      setMessage('Class deleted.')
+      setMessage(t('classes.deleted'))
     } catch (err) {
       if (err.status === 409 && err.detail && typeof err.detail === 'object') {
-        setError(
-          `Cannot delete "${cls.name_fr}": ${err.detail.student_count} student(s) and ` +
-            `${err.detail.course_count} course(s) are still assigned. Reassign them first.`,
-        )
+        setError(t('classes.deleteBlocked', { name: cls.name_fr, students: err.detail.student_count, courses: err.detail.course_count }))
       } else {
         setError(err.message)
       }
@@ -297,13 +284,13 @@ export default function AdminClassesPage() {
     <section className="admin-page">
       <div className="report-header">
         <div>
-          <h2 className="page-title">Classes</h2>
-          <p className="muted">Create and manage classes per school year and level.</p>
+          <h2 className="page-title">{t('nav.classes')}</h2>
+          <p className="muted">{t('classes.subtitle')}</p>
         </div>
         {classes && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <label className="field" style={{ marginBottom: 0 }}>
-              <span>School year</span>
+              <span>{t('common.schoolYear')}</span>
               <select
                 className="grade-input"
                 value={selectedYear}
@@ -318,7 +305,7 @@ export default function AdminClassesPage() {
               </select>
             </label>
             <button type="button" className="btn btn-primary" onClick={openBulkDialog} disabled={pending}>
-              Create GGFK classes
+              {t('classes.createGGFK')}
             </button>
           </div>
         )}
@@ -326,7 +313,7 @@ export default function AdminClassesPage() {
 
       {message && <p className="grade-summary">{message}</p>}
       {error && <ErrorBanner message={error} />}
-      {!error && classes === null && <Spinner label="Loading classes…" />}
+      {!error && classes === null && <Spinner label={t('classes.loading')} />}
 
       {classes &&
         SCHOOL_LEVELS.map((level) => {
@@ -334,14 +321,14 @@ export default function AdminClassesPage() {
           const qa = quickAddFor(level.value)
           return (
             <div key={level.value}>
-              <h3 className="section-title">{SECTION_TITLES[level.value] || level.label}</h3>
+              <h3 className="section-title">{t('classes.level_' + level.value)}</h3>
 
               <form
                 onSubmit={(e) => handleQuickAdd(e, level.value)}
                 style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}
               >
                 <label className="field" style={{ marginBottom: 0 }}>
-                  <span>Name (FR)</span>
+                  <span>{t('classes.nameFr')}</span>
                   <input
                     value={qa.nameFr}
                     onChange={(e) => setQuickAddField(level.value, 'nameFr', e.target.value)}
@@ -349,7 +336,7 @@ export default function AdminClassesPage() {
                   />
                 </label>
                 <label className="field" style={{ marginBottom: 0 }}>
-                  <span>Name (EN)</span>
+                  <span>{t('classes.nameEn')}</span>
                   <input
                     value={qa.nameEn}
                     onChange={(e) => setQuickAddField(level.value, 'nameEn', e.target.value)}
@@ -357,7 +344,7 @@ export default function AdminClassesPage() {
                   />
                 </label>
                 <label className="field" style={{ marginBottom: 0 }}>
-                  <span>Stream</span>
+                  <span>{t('classes.stream')}</span>
                   <input
                     value={qa.stream}
                     onChange={(e) => setQuickAddField(level.value, 'stream', e.target.value)}
@@ -366,22 +353,22 @@ export default function AdminClassesPage() {
                   />
                 </label>
                 <button type="submit" className="btn btn-primary" disabled={pending}>
-                  Add
+                  {t('common.add')}
                 </button>
               </form>
               {quickAddError[level.value] && <ErrorBanner message={quickAddError[level.value]} />}
 
               {list.length === 0 ? (
-                <Empty message={`No ${level.label} classes for ${selectedYear}.`} />
+                <Empty message={t('classes.emptyLevel', { level: t('classes.level_' + level.value), year: selectedYear })} />
               ) : (
                 <div className="table-scroll">
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Class</th>
-                        <th>Stream</th>
-                        <th className="num">Students</th>
-                        <th className="num">Courses</th>
+                        <th>{t('students.class')}</th>
+                        <th>{t('classes.stream')}</th>
+                        <th className="num">{t('classes.studentsCol')}</th>
+                        <th className="num">{t('classes.coursesCol')}</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -403,13 +390,13 @@ export default function AdminClassesPage() {
                               disabled={pending || cls.student_count === 0 || cls.course_count === 0}
                               title={
                                 cls.student_count === 0
-                                  ? 'No students assigned to this class'
+                                  ? t('classes.enrollNoStudents')
                                   : cls.course_count === 0
-                                    ? 'No courses assigned to this class'
-                                    : 'Enroll every student in this class into every course in this class'
+                                    ? t('classes.enrollNoCourses')
+                                    : t('classes.enrollAll')
                               }
                             >
-                              Enroll
+                              {t('classes.enroll')}
                             </button>
                             <button
                               type="button"
@@ -417,7 +404,7 @@ export default function AdminClassesPage() {
                               onClick={() => openEdit(cls)}
                               disabled={pending}
                             >
-                              Edit
+                              {t('common.edit')}
                             </button>
                             <button
                               type="button"
@@ -425,7 +412,7 @@ export default function AdminClassesPage() {
                               onClick={() => handleDelete(cls)}
                               disabled={pending}
                             >
-                              Delete
+                              {t('common.delete')}
                             </button>
                           </td>
                         </tr>
@@ -457,15 +444,11 @@ export default function AdminClassesPage() {
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
           >
-            <h3 className="section-title">Create GGFK classes</h3>
-            <p className="muted">
-              Creates the 18 taxonomy classes (Pré-maternelle through Terminale D) for a school
-              year with canonical spellings. Classes that already exist for the year are skipped —
-              safe to re-run.
-            </p>
+            <h3 className="section-title">{t('classes.createGGFK')}</h3>
+            <p className="muted">{t('classes.bulkDialogDesc')}</p>
             <form className="admin-form" onSubmit={handleBulkCreate}>
               <label className="field">
-                <span>School year</span>
+                <span>{t('common.schoolYear')}</span>
                 <input
                   value={bulkYear}
                   onChange={(e) => setBulkYear(e.target.value)}
@@ -482,7 +465,7 @@ export default function AdminClassesPage() {
               </datalist>
 
               {bulkYear.trim() && bulkMissingCount === 0 && (
-                <p className="muted">All 18 GGFK classes already exist for {bulkYear.trim()}.</p>
+                <p className="muted">{t('classes.allExist', { year: bulkYear.trim() })}</p>
               )}
 
               <div className="grade-actions">
@@ -492,8 +475,8 @@ export default function AdminClassesPage() {
                   disabled={bulkCreating || !bulkYear.trim() || bulkMissingCount === 0}
                 >
                   {bulkCreating
-                    ? 'Creating…'
-                    : `Create ${bulkMissingCount} class${bulkMissingCount === 1 ? '' : 'es'} for ${bulkYear.trim() || '…'}`}
+                    ? t('classes.bulkCreating')
+                    : t('classes.bulkCreateBtn', { count: bulkMissingCount, year: bulkYear.trim() || '…' })}
                 </button>
                 <button
                   type="button"
@@ -501,7 +484,7 @@ export default function AdminClassesPage() {
                   onClick={() => setShowBulkDialog(false)}
                   disabled={bulkCreating}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
               {bulkError && <ErrorBanner message={bulkError} />}
@@ -529,36 +512,32 @@ export default function AdminClassesPage() {
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 520, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
           >
-            <h3 className="section-title">Enroll {enrollDialog.cls.name_fr} students</h3>
-            <p className="muted">
-              Enrolls every student in this class into every course tagged with this class for{' '}
-              {enrollDialog.cls.school_year}. Existing enrollments are kept, not duplicated.
-            </p>
+            <h3 className="section-title">{t('classes.enrollDialogTitle', { name: enrollDialog.cls.name_fr })}</h3>
+            <p className="muted">{t('classes.enrollDialogDesc', { year: enrollDialog.cls.school_year })}</p>
 
-            {enrollLoading && <Spinner label="Counting enrollments…" />}
+            {enrollLoading && <Spinner label={t('classes.countingEnrollments')} />}
 
             {!enrollLoading && enrollDialog.preview && enrollDialog.preview.status === 'empty' && (
               <ErrorBanner
                 message={
                   enrollDialog.preview.students_in_class === 0 &&
                   enrollDialog.preview.courses_in_class === 0
-                    ? 'This class has no students and no courses assigned to it — nothing to enroll.'
+                    ? t('classes.enrollPreviewEmptyBoth')
                     : enrollDialog.preview.students_in_class === 0
-                      ? 'No students are assigned to this class. Assign students first.'
-                      : `No courses are tagged with this class for ${enrollDialog.preview.school_year}. Create or tag courses first.`
+                      ? t('classes.enrollPreviewEmptyStudents')
+                      : t('classes.enrollPreviewEmptyCourses', { year: enrollDialog.preview.school_year })
                 }
               />
             )}
 
             {!enrollLoading && enrollDialog.preview && enrollDialog.preview.status === 'ok' && (
               <p>
-                <strong>{enrollDialog.preview.students_in_class}</strong> student(s) ×{' '}
-                <strong>{enrollDialog.preview.courses_in_class}</strong> course(s) ={' '}
-                <strong>{enrollDialog.preview.enrollments_to_create}</strong> new enrollment(s)
+                <strong>{enrollDialog.preview.students_in_class}</strong> {t('classes.enrollStudentsX')}{' '}
+                <strong>{enrollDialog.preview.courses_in_class}</strong> {t('classes.enrollCoursesEq')}{' '}
+                <strong>{enrollDialog.preview.enrollments_to_create}</strong> {t('classes.enrollNewEnrollments')}
                 {enrollDialog.preview.enrollments_already_existing > 0 && (
                   <>
-                    ; {enrollDialog.preview.enrollments_already_existing} already exist and will be
-                    kept.
+                    {'; '}{t('classes.enrollExisting', { count: enrollDialog.preview.enrollments_already_existing })}
                   </>
                 )}
               </p>
@@ -578,10 +557,10 @@ export default function AdminClassesPage() {
                 }
               >
                 {enrolling
-                  ? 'Enrolling…'
+                  ? t('classes.enrollingProgress')
                   : enrollDialog.preview?.enrollments_to_create
-                    ? `Create ${enrollDialog.preview.enrollments_to_create} enrollment(s)`
-                    : 'Create enrollments'}
+                    ? t('classes.enrollBtn', { count: enrollDialog.preview.enrollments_to_create })
+                    : t('classes.enrollBtnGeneric')}
               </button>
               <button
                 type="button"
@@ -589,10 +568,9 @@ export default function AdminClassesPage() {
                 onClick={() => setEnrollDialog(null)}
                 disabled={enrolling}
               >
-                {enrollDialog.preview?.status === 'ok' &&
-                enrollDialog.preview.enrollments_to_create > 0
-                  ? 'Cancel'
-                  : 'Close'}
+                {enrollDialog.preview?.status === 'ok' && enrollDialog.preview.enrollments_to_create > 0
+                  ? t('common.cancel')
+                  : t('common.close')}
               </button>
             </div>
             {enrollError && <ErrorBanner message={enrollError} />}
@@ -619,10 +597,10 @@ export default function AdminClassesPage() {
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
           >
-            <h3 className="section-title">Edit class</h3>
+            <h3 className="section-title">{t('classes.editTitle')}</h3>
             <form className="admin-form" onSubmit={handleSaveEdit}>
               <label className="field">
-                <span>Name (FR)</span>
+                <span>{t('classes.nameFr')}</span>
                 <input
                   value={editForm.nameFr}
                   onChange={(e) => updateEditField('nameFr', e.target.value)}
@@ -631,7 +609,7 @@ export default function AdminClassesPage() {
                 />
               </label>
               <label className="field">
-                <span>Name (EN)</span>
+                <span>{t('classes.nameEn')}</span>
                 <input
                   value={editForm.nameEn}
                   onChange={(e) => updateEditField('nameEn', e.target.value)}
@@ -639,7 +617,7 @@ export default function AdminClassesPage() {
                 />
               </label>
               <label className="field">
-                <span>School level</span>
+                <span>{t('classes.schoolLevel')}</span>
                 <select
                   className="grade-input"
                   value={editForm.schoolLevel}
@@ -649,13 +627,13 @@ export default function AdminClassesPage() {
                 >
                   {SCHOOL_LEVELS.map((level) => (
                     <option key={level.value} value={level.value}>
-                      {level.label}
+                      {t('classes.level_' + level.value)}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="field">
-                <span>Stream</span>
+                <span>{t('classes.stream')}</span>
                 <input
                   value={editForm.stream}
                   onChange={(e) => updateEditField('stream', e.target.value)}
@@ -663,7 +641,7 @@ export default function AdminClassesPage() {
                 />
               </label>
               <label className="field">
-                <span>Sort order</span>
+                <span>{t('classes.sortOrder')}</span>
                 <input
                   type="number"
                   value={editForm.sortOrder}
@@ -672,7 +650,7 @@ export default function AdminClassesPage() {
                 />
               </label>
               <label className="field">
-                <span>School year</span>
+                <span>{t('common.schoolYear')}</span>
                 <input
                   value={editForm.schoolYear}
                   onChange={(e) => updateEditField('schoolYear', e.target.value)}
@@ -683,7 +661,7 @@ export default function AdminClassesPage() {
 
               <div className="grade-actions">
                 <button type="submit" className="btn btn-primary" disabled={pending}>
-                  {pending ? 'Saving…' : 'Save changes'}
+                  {pending ? t('common.saving') : t('common.saveChanges')}
                 </button>
                 <button
                   type="button"
@@ -691,7 +669,7 @@ export default function AdminClassesPage() {
                   onClick={() => setEditing(null)}
                   disabled={pending}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
               {editError && <ErrorBanner message={editError} />}

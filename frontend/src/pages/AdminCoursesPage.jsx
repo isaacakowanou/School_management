@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { cloneYearCourses, listCourses } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
 import { schoolGroupLabel } from '../constants/schoolGroups.js'
@@ -12,6 +13,7 @@ const TARGET_YEAR_SUGGESTIONS = ['2027-2028', '2028-2029', '2029-2030']
 export default function AdminCoursesPage() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [courses, setCourses] = useState(null)
   const [teachers, setTeachers] = useState([])
   const [error, setError] = useState(null)
@@ -94,7 +96,7 @@ export default function AdminCoursesPage() {
     event.preventDefault()
     setCloneError(null)
     if (!cloneSourceYear || !cloneTargetYear.trim()) {
-      setCloneError('Choose a source year and enter a target year.')
+      setCloneError(t('courses.cloneValidation'))
       return
     }
     setCloning(true)
@@ -106,23 +108,17 @@ export default function AdminCoursesPage() {
       const refreshed = await listCourses()
       setCourses(refreshed)
       setShowCloneDialog(false)
-      let text = `Cloned ${result.created_count} course(s) into ${cloneTargetYear.trim()}.`
+      let text = t('courses.cloned', { count: result.created_count, year: cloneTargetYear.trim() })
       if (result.unmatched_class_names.length) {
-        text +=
-          ` No matching class in ${cloneTargetYear.trim()} for: ` +
-          `${result.unmatched_class_names.join(', ')} — those courses were left unassigned. ` +
-          'Create the classes, then reassign from each course page.'
+        text += ' ' + t('courses.clonedUnmatched', { year: cloneTargetYear.trim(), names: result.unmatched_class_names.join(', ') })
       }
       setNotice(text)
     } catch (err) {
       if (err.status === 409 && err.detail && typeof err.detail === 'object') {
         if (err.detail.course_count != null) {
-          setCloneError(
-            `${cloneTargetYear.trim()} already has ${err.detail.course_count} course(s). ` +
-              'Cloning into a non-empty year is not allowed.',
-          )
+          setCloneError(t('courses.cloneTargetNotEmpty', { year: cloneTargetYear.trim(), count: err.detail.course_count }))
         } else if (err.detail.codes) {
-          setCloneError(`These course codes already exist: ${err.detail.codes.join(', ')}.`)
+          setCloneError(t('courses.cloneCodesExist', { codes: err.detail.codes.join(', ') }))
         } else {
           setCloneError(err.message)
         }
@@ -138,8 +134,8 @@ export default function AdminCoursesPage() {
     <section className="admin-page">
       <div className="report-header">
         <div>
-          <h2 className="page-title">Courses</h2>
-          <p className="muted">All courses.</p>
+          <h2 className="page-title">{t('nav.courses')}</h2>
+          <p className="muted">{t('courses.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -148,30 +144,30 @@ export default function AdminCoursesPage() {
             onClick={openCloneDialog}
             disabled={!courses || courses.length === 0}
           >
-            Clone year
+            {t('courses.cloneYear')}
           </button>
           <Link to="/admin/courses/new" className="btn btn-primary">
-            Add course
+            {t('courses.addCourse')}
           </Link>
         </div>
       </div>
 
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
-      {!error && courses === null && <Spinner label="Loading courses…" />}
-      {!error && courses && courses.length === 0 && <Empty message="No courses found." />}
+      {!error && courses === null && <Spinner label={t('courses.loading')} />}
+      {!error && courses && courses.length === 0 && <Empty message={t('courses.empty')} />}
       {!error && courses && courses.length > 0 && (
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Code</th>
-                <th>Teacher</th>
-                <th>Class</th>
-                <th>Term</th>
-                <th>School year</th>
-                <th>Group</th>
+                <th>{t('common.name')}</th>
+                <th>{t('courses.code')}</th>
+                <th>{t('common.teacher')}</th>
+                <th>{t('students.class')}</th>
+                <th>{t('common.term')}</th>
+                <th>{t('common.schoolYear')}</th>
+                <th>{t('courses.group')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -193,7 +189,7 @@ export default function AdminCoursesPage() {
                   <td className="nowrap">{schoolGroupLabel(course.language_group) || '—'}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/courses/${course.id}`}>
-                      Open →
+                      {t('common.open')}
                     </Link>
                   </td>
                 </tr>
@@ -222,15 +218,11 @@ export default function AdminCoursesPage() {
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
           >
-            <h3 className="section-title">Clone courses to a new school year</h3>
-            <p className="muted">
-              Copies every course (subject, class, language group, teacher) from the source year.
-              Grade items and enrollments are not copied. Classes are matched by name in the
-              target year.
-            </p>
+            <h3 className="section-title">{t('courses.cloneDialogTitle')}</h3>
+            <p className="muted">{t('courses.cloneDialogDesc')}</p>
             <form className="admin-form" onSubmit={handleClone}>
               <label className="field">
-                <span>From school year</span>
+                <span>{t('courses.fromYear')}</span>
                 <select
                   className="grade-input"
                   value={cloneSourceYear}
@@ -240,13 +232,13 @@ export default function AdminCoursesPage() {
                 >
                   {schoolYears.map((year) => (
                     <option key={year} value={year}>
-                      {year} ({courseCountByYear.get(year)} course{courseCountByYear.get(year) === 1 ? '' : 's'})
+                      {t('courses.yearOption', { year, count: courseCountByYear.get(year) })}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="field">
-                <span>To school year</span>
+                <span>{t('courses.toYear')}</span>
                 <input
                   value={cloneTargetYear}
                   onChange={(e) => setCloneTargetYear(e.target.value)}
@@ -264,7 +256,7 @@ export default function AdminCoursesPage() {
 
               {cloneTargetYear.trim() && cloneTargetCount > 0 && (
                 <ErrorBanner
-                  message={`${cloneTargetYear.trim()} already has ${cloneTargetCount} course(s). Cloning into a non-empty year is not allowed.`}
+                  message={t('courses.cloneTargetNotEmpty', { year: cloneTargetYear.trim(), count: cloneTargetCount })}
                 />
               )}
 
@@ -280,9 +272,7 @@ export default function AdminCoursesPage() {
                     cloneTargetCount > 0
                   }
                 >
-                  {cloning
-                    ? 'Cloning…'
-                    : `Clone ${cloneSourceCount} course${cloneSourceCount === 1 ? '' : 's'}`}
+                  {cloning ? t('courses.cloning') : t('courses.cloneBtn', { count: cloneSourceCount })}
                 </button>
                 <button
                   type="button"
@@ -290,7 +280,7 @@ export default function AdminCoursesPage() {
                   onClick={() => setShowCloneDialog(false)}
                   disabled={cloning}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
               {cloneError && <ErrorBanner message={cloneError} />}

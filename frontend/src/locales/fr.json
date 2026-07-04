@@ -1,0 +1,50 @@
+{
+  "common": {
+    "logout": "Se déconnecter",
+    "settings": "Paramètres",
+    "schoolName": "Bulletins scolaires"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "reports": "Bulletins",
+    "students": "Élèves",
+    "teachers": "Enseignants",
+    "parents": "Parents",
+    "courses": "Cours",
+    "classes": "Classes",
+    "subjects": "Matières",
+    "trash": "Corbeille",
+    "dangerZone": "Zone de danger",
+    "auditLogs": "Journaux d'audit"
+  },
+  "login": {
+    "title": "Bulletins scolaires",
+    "subtitle": "Connectez-vous à votre compte",
+    "identifier": "Email / Matricule / Téléphone",
+    "password": "Mot de passe",
+    "showPassword": "Afficher le mot de passe",
+    "hidePassword": "Masquer le mot de passe",
+    "submit": "Se connecter",
+    "submitting": "Connexion en cours…",
+    "forgotPassword": "Mot de passe oublié ?",
+    "backendWakeup": "Le serveur démarre. Veuillez patienter 30 secondes et réessayer."
+  },
+  "forgotPassword": {
+    "title": "Mot de passe oublié ?",
+    "subtitle": "Saisissez votre numéro de téléphone (parents) ou matricule (enseignants). Si un compte existe, vous recevrez un code par SMS.",
+    "identifierLabel": "Téléphone ou matricule",
+    "sendCode": "Envoyer le code",
+    "sending": "Envoi en cours…",
+    "backToLogin": "Retour à la connexion",
+    "step2Title": "Saisissez votre code",
+    "step2Subtitle": "Si un compte existe pour {{identifier}}, un code a été envoyé par SMS. Saisissez-le ci-dessous avec votre nouveau mot de passe.",
+    "otpLabel": "Code à usage unique",
+    "newPasswordLabel": "Nouveau mot de passe",
+    "resetButton": "Réinitialiser le mot de passe",
+    "resetting": "Réinitialisation…",
+    "tryDifferent": "Essayer un autre identifiant",
+    "successTitle": "Mot de passe réinitialisé",
+    "successMessage": "Votre mot de passe a été mis à jour. Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.",
+    "backToSignIn": "Retour à la connexion"
+  }
+}

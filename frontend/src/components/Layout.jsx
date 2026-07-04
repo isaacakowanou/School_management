@@ -1,5 +1,6 @@
 import { Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
+import LanguageSwitcher from './LanguageSwitcher.jsx'
 
 export default function Layout() {
   const { user, role, logout, homePath } = useAuth()
@@ -17,6 +18,7 @@ export default function Layout() {
               Settings
             </Link>
           )}
+          <LanguageSwitcher />
           <button type="button" className="btn btn-ghost" onClick={logout}>
             Log out
           </button>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { forgotPassword, resetPassword } from '../api/auth.js'
 import ErrorBanner from '../components/ErrorBanner.jsx'
+import LanguageSwitcher from '../components/LanguageSwitcher.jsx'
 
 export default function ForgotPasswordPage() {
   const [step, setStep] = useState(1) // 1 = enter identifier, 2 = enter OTP + new password
@@ -48,6 +49,9 @@ export default function ForgotPasswordPage() {
   if (done) {
     return (
       <div className="login-wrap">
+        <div className="lang-switcher-floating">
+          <LanguageSwitcher />
+        </div>
         <div className="card login-card">
           <h1 className="login-title">Password reset</h1>
           <p className="muted" style={{ marginBottom: '1.25rem' }}>
@@ -63,6 +67,9 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="login-wrap">
+      <div className="lang-switcher-floating">
+        <LanguageSwitcher />
+      </div>
       {step === 1 ? (
         <form className="card login-card" onSubmit={handleRequestOtp}>
           <h1 className="login-title">Forgot password?</h1>

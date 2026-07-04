@@ -1,0 +1,50 @@
+{
+  "common": {
+    "logout": "Log out",
+    "settings": "Settings",
+    "schoolName": "School Reports"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "reports": "Reports",
+    "students": "Students",
+    "teachers": "Teachers",
+    "parents": "Parents",
+    "courses": "Courses",
+    "classes": "Classes",
+    "subjects": "Subjects",
+    "trash": "Trash",
+    "dangerZone": "Danger Zone",
+    "auditLogs": "Audit logs"
+  },
+  "login": {
+    "title": "School Reports",
+    "subtitle": "Sign in to your account",
+    "identifier": "Email / Employee number / Phone",
+    "password": "Password",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "forgotPassword": "Forgot password?",
+    "backendWakeup": "Backend is waking up. Please wait 30 seconds and try again."
+  },
+  "forgotPassword": {
+    "title": "Forgot password?",
+    "subtitle": "Enter your phone number (parents) or employee number (teachers). If an account exists, you will receive a one-time code by SMS.",
+    "identifierLabel": "Phone or employee number",
+    "sendCode": "Send code",
+    "sending": "Sending…",
+    "backToLogin": "Back to sign in",
+    "step2Title": "Enter your code",
+    "step2Subtitle": "If an account exists for {{identifier}}, a code was sent by SMS. Enter it below along with your new password.",
+    "otpLabel": "One-time code",
+    "newPasswordLabel": "New password",
+    "resetButton": "Reset password",
+    "resetting": "Resetting…",
+    "tryDifferent": "Try a different identifier",
+    "successTitle": "Password reset",
+    "successMessage": "Your password has been updated. You can now sign in with your new password.",
+    "backToSignIn": "Back to sign in"
+  }
+}

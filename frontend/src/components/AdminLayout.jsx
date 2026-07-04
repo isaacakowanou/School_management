@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
+import LanguageSwitcher from './LanguageSwitcher.jsx'
 
 // Layout for the admin area only. Adds a left sidebar for navigation between
 // admin pages. Parent and teacher areas keep using the plain Layout (topbar only).
@@ -28,6 +29,7 @@ export default function AdminLayout() {
         </Link>
         <div className="topbar-right">
           {user && <span className="parent-name">{user.name}</span>}
+          <LanguageSwitcher />
           <button type="button" className="btn btn-ghost" onClick={logout}>
             Log out
           </button>

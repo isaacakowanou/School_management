@@ -936,3 +936,47 @@ a.card:active {
     width: 100%;
   }
 }
+
+/* ── Language switcher ─────────────────────────────────────────── */
+.lang-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.lang-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: var(--text-muted, #6b7280);
+  transition: color 0.15s, background 0.15s;
+}
+
+.lang-btn:hover {
+  color: var(--text, #111827);
+  background: var(--surface-hover, rgba(0, 0, 0, 0.06));
+}
+
+.lang-btn-active {
+  color: var(--color-primary, #2563eb);
+  font-weight: 700;
+}
+
+.lang-sep {
+  font-size: 0.7rem;
+  color: var(--border, #d1d5db);
+  user-select: none;
+}
+
+/* Floating switcher on login / forgot-password pages */
+.lang-switcher-floating {
+  position: fixed;
+  top: 1rem;
+  right: 1.25rem;
+  z-index: 100;
+}

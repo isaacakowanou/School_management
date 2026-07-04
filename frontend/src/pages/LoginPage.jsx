@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
+import LanguageSwitcher from '../components/LanguageSwitcher.jsx'
 import { homePathForRole, isPathForRole } from '../utils/roles.js'
 
 const BACKEND_WAKEUP_MESSAGE = 'Backend is waking up. Please wait 30 seconds and try again.'
@@ -50,6 +51,9 @@ export default function LoginPage() {
 
   return (
     <div className="login-wrap">
+      <div className="lang-switcher-floating">
+        <LanguageSwitcher />
+      </div>
       <form className="card login-card" onSubmit={handleSubmit}>
         <h1 className="login-title">School Reports</h1>
         <p className="login-sub">Sign in to your account</p>

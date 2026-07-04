@@ -91,7 +91,6 @@ class DangerZoneRouteTests(unittest.TestCase):
         self.student = Student(
             first_name="Demo",
             last_name="Student",
-            grade_level="6",
             school_level="college",
             student_number="DZ-STU",
             school_class=self.school_class,
@@ -103,7 +102,6 @@ class DangerZoneRouteTests(unittest.TestCase):
             name="Danger Math",
             code="DZ-MATH",
             teacher=self.teacher,
-            grade_level="6",
             term="1er Trimestre",
             school_year="2026-2027",
             school_class=self.school_class,

@@ -220,22 +220,19 @@ def get_or_create_student(db: Session, stats: StressStats, *, index: int) -> Stu
     student_number = f"STRESS-STU-{padded(index)}"
     first_name = "Stress"
     last_name = f"Student {padded(index)}"
-    grade_level = str(9 + ((index - 1) % 4))
-
     student = db.scalar(select(Student).where(Student.student_number == student_number))
     if student is None:
         student = Student(
             first_name=first_name,
             last_name=last_name,
             student_number=student_number,
-            grade_level=grade_level,
         )
         db.add(student)
         stats.create("students")
         return student
 
     stats.reuse("students")
-    if changed(student, first_name=first_name, last_name=last_name, grade_level=grade_level):
+    if changed(student, first_name=first_name, last_name=last_name):
         stats.update("students")
     return student
 
@@ -279,7 +276,6 @@ def get_or_create_course(
             name=name,
             code=code,
             teacher=teacher,
-            grade_level="10",
             term=STRESS_TERM,
             school_year=STRESS_SCHOOL_YEAR,
         )
@@ -291,7 +287,6 @@ def get_or_create_course(
     did_change = changed(
         course,
         name=name,
-        grade_level="10",
         term=STRESS_TERM,
         school_year=STRESS_SCHOOL_YEAR,
     )

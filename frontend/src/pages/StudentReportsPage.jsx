@@ -59,7 +59,7 @@ export default function StudentReportsPage() {
       </h2>
       {student && (
         <p className="muted">
-          {student.grade_level} · #{student.student_number}
+          {student.class_name || '—'} · #{student.student_number}
         </p>
       )}
 

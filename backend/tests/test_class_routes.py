@@ -90,7 +90,7 @@ class ClassRouteTests(unittest.TestCase):
         return r.json()
 
     def _create_student(self, number, class_id=None):
-        body = {"first_name": "A", "last_name": "B", "student_number": number, "grade_level": "6"}
+        body = {"first_name": "A", "last_name": "B", "student_number": number}
         if class_id is not None:
             body["class_id"] = class_id
         r = self.client.post("/api/v1/students", json=body, headers=self._admin())
@@ -100,7 +100,7 @@ class ClassRouteTests(unittest.TestCase):
     def _create_course(self, code, class_id=None):
         body = {
             "name": "Course", "code": code, "teacher_id": str(self.teacher.id),
-            "grade_level": "6", "term": "1er Trimestre", "school_year": "2026-2027",
+            "term": "1er Trimestre", "school_year": "2026-2027",
         }
         if class_id is not None:
             body["class_id"] = class_id
@@ -313,7 +313,7 @@ class ClassRouteTests(unittest.TestCase):
             "/api/v1/students",
             json={
                 "first_name": "A", "last_name": "B", "student_number": "S-BADCLASS",
-                "grade_level": "6", "class_id": str(uuid4()),
+                "class_id": str(uuid4()),
             },
             headers=self._admin(),
         )

@@ -110,6 +110,7 @@ def list_students(
 ) -> list[StudentResponse]:
     students = db.scalars(
         select(Student)
+        .options(joinedload(Student.school_class))
         .where(Student.deleted_at.is_(None))
         .order_by(Student.last_name, Student.first_name)
     ).all()
@@ -130,7 +131,6 @@ def list_deleted_students(
     return [
         DeletedStudentResponse(
             **to_student_response(student).model_dump(),
-            class_name=student.school_class.name_fr if student.school_class else None,
             deleted_at=student.deleted_at,
         )
         for student in students
@@ -146,7 +146,6 @@ def create_student(
 ) -> StudentResponse:
     first_name = clean_required_text(payload.first_name, "first_name")
     last_name = clean_required_text(payload.last_name, "last_name")
-    grade_level = clean_required_text(payload.grade_level, "grade_level")
     school_level = payload.school_level.value if payload.school_level is not None else None
 
     raw_number = (payload.student_number or "").strip()
@@ -166,7 +165,6 @@ def create_student(
     student = Student(
         first_name=first_name,
         last_name=last_name,
-        grade_level=grade_level,
         school_level=school_level,
         student_number=student_number,
         educmaster_number=educmaster_number,
@@ -184,7 +182,6 @@ def create_student(
         new_value={
             "first_name": student.first_name,
             "last_name": student.last_name,
-            "grade_level": student.grade_level,
             "school_level": student.school_level,
             "student_number": student.student_number,
             "educmaster_number": student.educmaster_number,
@@ -222,7 +219,6 @@ def update_student(
     old_value = {
         "first_name": student.first_name,
         "last_name": student.last_name,
-        "grade_level": student.grade_level,
         "school_level": student.school_level,
         "student_number": student.student_number,
         "educmaster_number": student.educmaster_number,
@@ -241,8 +237,6 @@ def update_student(
         student.first_name = clean_required_text(payload.first_name, "first_name")
     if payload.last_name is not None:
         student.last_name = clean_required_text(payload.last_name, "last_name")
-    if payload.grade_level is not None:
-        student.grade_level = clean_required_text(payload.grade_level, "grade_level")
     # Nullable fields: explicit null clears, omitting leaves unchanged.
     if "school_level" in payload.model_fields_set:
         student.school_level = (
@@ -258,7 +252,6 @@ def update_student(
     new_value = {
         "first_name": student.first_name,
         "last_name": student.last_name,
-        "grade_level": student.grade_level,
         "school_level": student.school_level,
         "student_number": student.student_number,
         "educmaster_number": student.educmaster_number,
@@ -291,7 +284,6 @@ def delete_student(
     old_value = {
         "first_name": student.first_name,
         "last_name": student.last_name,
-        "grade_level": student.grade_level,
         "school_level": student.school_level,
         "student_number": student.student_number,
         "class_id": student.class_id,

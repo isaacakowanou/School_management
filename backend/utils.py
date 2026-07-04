@@ -36,11 +36,11 @@ def to_student_response(student: Student) -> StudentResponse:
         id=student.id,
         first_name=student.first_name,
         last_name=student.last_name,
-        grade_level=student.grade_level,
         school_level=student.school_level,
         student_number=student.student_number,
         educmaster_number=student.educmaster_number,
         class_id=student.class_id,
+        class_name=student.school_class.name_fr if student.school_class else None,
     )
 
 
@@ -50,10 +50,10 @@ def to_course_response(course: Course) -> CourseResponse:
         name=course.name,
         code=course.code,
         teacher_id=course.teacher_id,
-        grade_level=course.grade_level,
         term=course.term,
         school_year=course.school_year,
         language_group=course.language_group,
         class_id=course.class_id,
+        class_name=course.school_class.name_fr if course.school_class else None,
         subject_id=course.subject_id,
     )

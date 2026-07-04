@@ -36,7 +36,7 @@ def _build_summary_prompt(report_data: dict) -> str:
     return f"""Write a short parent-friendly academic summary using only the data below.
 
 Student name: {student_name}
-Grade level: {student['grade_level']}
+Class: {student.get('class_name') or '—'}
 Term: {report_data['term']}
 School year: {report_data['school_year']}
 Averages use a {scale_suffix} scale.

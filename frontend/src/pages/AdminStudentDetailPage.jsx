@@ -25,7 +25,6 @@ function studentToForm(student) {
     firstName: student?.first_name || '',
     lastName: student?.last_name || '',
     studentNumber: student?.student_number || '',
-    gradeLevel: student?.grade_level || '',
     schoolLevel: student?.school_level || '',
     classId: student?.class_id || '',
     educmasterNumber: student?.educmaster_number || '',
@@ -195,13 +194,8 @@ export default function AdminStudentDetailPage() {
     setEditError(null)
     setEditMessage(null)
 
-    if (
-      !editForm.firstName.trim() ||
-      !editForm.lastName.trim() ||
-      !editForm.studentNumber.trim() ||
-      !editForm.gradeLevel.trim()
-    ) {
-      setEditError('First name, last name, student number, and grade level are required.')
+    if (!editForm.firstName.trim() || !editForm.lastName.trim() || !editForm.studentNumber.trim()) {
+      setEditError('First name, last name, and student number are required.')
       return
     }
 
@@ -316,7 +310,7 @@ export default function AdminStudentDetailPage() {
         {student.first_name} {student.last_name}
       </h2>
       <p className="muted">
-        {student.grade_level}
+        {student.class_name || '—'}
         {student.school_level ? ` · ${schoolLevelLabel(student.school_level)}` : ''} · #
         {student.student_number}
       </p>
@@ -364,16 +358,6 @@ export default function AdminStudentDetailPage() {
             <input
               value={editForm.studentNumber}
               onChange={(event) => updateEditField('studentNumber', event.target.value)}
-              disabled={savingEdit}
-              required
-            />
-          </label>
-
-          <label className="field">
-            <span>Grade level</span>
-            <input
-              value={editForm.gradeLevel}
-              onChange={(event) => updateEditField('gradeLevel', event.target.value)}
               disabled={savingEdit}
               required
             />

@@ -83,7 +83,6 @@ class CloneYearTests(unittest.TestCase):
             name="Mathématique",
             code="MATH6",
             teacher_id=self.teacher.id,
-            grade_level="6ème",
             term="1er Trimestre",
             school_year=SOURCE_YEAR,
             language_group="FRENCH",
@@ -94,7 +93,6 @@ class CloneYearTests(unittest.TestCase):
             name="English studies",
             code="ENG5",
             teacher_id=self.teacher.id,
-            grade_level="5ème",
             term="1er Trimestre",
             school_year=SOURCE_YEAR,
             language_group="ENGLISH",
@@ -104,7 +102,6 @@ class CloneYearTests(unittest.TestCase):
             name="Informatique",
             code="INFO",
             teacher_id=self.teacher.id,
-            grade_level="6ème",
             term="1er Trimestre",
             school_year=SOURCE_YEAR,
         )
@@ -113,7 +110,7 @@ class CloneYearTests(unittest.TestCase):
 
         # Grade item + enrollment on the source course: clones must get neither.
         self.student = Student(
-            first_name="Ama", last_name="Kow", grade_level="6ème", student_number="S-CLONE-1"
+            first_name="Ama", last_name="Kow", student_number="S-CLONE-1"
         )
         self.db.add(self.student)
         self.db.flush()
@@ -199,7 +196,6 @@ class CloneYearTests(unittest.TestCase):
                 name="Existing",
                 code="EXIST",
                 teacher_id=self.teacher.id,
-                grade_level="6ème",
                 term="1er Trimestre",
                 school_year=TARGET_YEAR,
             )
@@ -224,7 +220,6 @@ class CloneYearTests(unittest.TestCase):
                 name="Squatter",
                 code=f"MATH6-{TARGET_YEAR}",
                 teacher_id=self.teacher.id,
-                grade_level="6ème",
                 term="1er Trimestre",
                 school_year="2028-2029",
             )

@@ -89,10 +89,10 @@ class TermValidationTests(unittest.TestCase):
             employee_number="T-TERM-1",
         )
         self.db.add(self.teacher)
-        self.student = Student(first_name="Ama", last_name="Kow", grade_level="6ème", student_number="S-TERM-1")
+        self.student = Student(first_name="Ama", last_name="Kow", student_number="S-TERM-1")
         self.db.add(self.student)
         self.course = Course(
-            name="Maths", code="TERM-M1", teacher=self.teacher, grade_level="6ème",
+            name="Maths", code="TERM-M1", teacher=self.teacher,
             term="1er Trimestre", school_year="2026-2027",
         )
         self.db.add(self.course)
@@ -116,7 +116,6 @@ class TermValidationTests(unittest.TestCase):
             "name": "New Course",
             "code": "TERM-NEW",
             "teacher_id": str(self.teacher.id),
-            "grade_level": "6ème",
             "term": term,
             "school_year": "2026-2027",
         }
@@ -193,14 +192,14 @@ class TermMigrationTests(unittest.TestCase):
         with self.engine.begin() as conn:
             conn.execute(text("INSERT INTO users (id, name, email, password_hash, role) VALUES ('u1','T','t@t.com','h','teacher')"))
             conn.execute(text("INSERT INTO teachers (id, user_id, employee_number) VALUES ('t1','u1','E001')"))
-            conn.execute(text("INSERT INTO students (id, first_name, last_name, grade_level, student_number) VALUES ('s1','A','B','6ème','S001')"))
+            conn.execute(text("INSERT INTO students (id, first_name, last_name, student_number, grade_level) VALUES ('s1','A','B','S001','N/A')"))
             # One row per legacy shape, spread across the four term tables.
             conn.execute(text(
-                "INSERT INTO courses (id, name, code, teacher_id, grade_level, term, school_year)"
-                " VALUES ('c1','Math','M01','t1','6ème','Fall','2026-2027'),"
-                "        ('c2','Eng','E01','t1','6ème','Trimester 1','2026-2027'),"
-                "        ('c3','Sci','S01','t1','6ème','Fall 2026','2026-2027'),"
-                "        ('c4','Art','A01','t1','6ème','1er Trimestre','2026-2027')"
+                "INSERT INTO courses (id, name, code, teacher_id, term, school_year, grade_level)"
+                " VALUES ('c1','Math','M01','t1','Fall','2026-2027','N/A'),"
+                "        ('c2','Eng','E01','t1','Trimester 1','2026-2027','N/A'),"
+                "        ('c3','Sci','S01','t1','Fall 2026','2026-2027','N/A'),"
+                "        ('c4','Art','A01','t1','1er Trimestre','2026-2027','N/A')"
             ))
             conn.execute(text(
                 "INSERT INTO grade_items (id, course_id, title, category, max_score, weight, term)"
@@ -282,10 +281,10 @@ class ReportBuilderPickupTests(unittest.TestCase):
             employee_number="T-PICK-1",
         )
         self.db.add(teacher)
-        self.student = Student(first_name="Ama", last_name="Kow", grade_level="6ème", student_number="S-PICK-1")
+        self.student = Student(first_name="Ama", last_name="Kow", student_number="S-PICK-1")
         self.db.add(self.student)
         course = Course(
-            name="Maths", code="PICK-M1", teacher=teacher, grade_level="6ème",
+            name="Maths", code="PICK-M1", teacher=teacher,
             term="Trimester 1", school_year="2026-2027", language_group="FRENCH",
         )
         self.db.add(course)

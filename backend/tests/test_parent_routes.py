@@ -251,7 +251,7 @@ class CurrentParentRouteTests(unittest.TestCase):
         )
 
     def test_admin_delete_parent_blocked_when_linked_to_active_student(self):
-        student = Student(first_name="Active", last_name="Student", student_number="PDEL-ACTIVE", grade_level="12")
+        student = Student(first_name="Active", last_name="Student", student_number="PDEL-ACTIVE")
         self.db.add(student)
         self.db.flush()
         self.db.add(StudentParent(student=student, parent=self.parent, relationship="Guardian"))

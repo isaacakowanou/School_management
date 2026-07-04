@@ -168,7 +168,7 @@ export default function AdminCoursesPage() {
                 <th>Name</th>
                 <th>Code</th>
                 <th>Teacher</th>
-                <th>Grade level</th>
+                <th>Class</th>
                 <th>Term</th>
                 <th>School year</th>
                 <th>Group</th>
@@ -187,7 +187,7 @@ export default function AdminCoursesPage() {
                       </span>
                     )}
                   </td>
-                  <td className="nowrap">{course.grade_level}</td>
+                  <td className="nowrap">{course.class_name || '—'}</td>
                   <td className="nowrap">{course.term}</td>
                   <td className="nowrap">{course.school_year}</td>
                   <td className="nowrap">{schoolGroupLabel(course.language_group) || '—'}</td>

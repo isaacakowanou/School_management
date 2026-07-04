@@ -71,7 +71,6 @@ class ReportStalenessRouteTests(unittest.TestCase):
         self.student = Student(
             first_name="Demo",
             last_name="Student",
-            grade_level="Grade 12",
             student_number="STALE001",
         )
         self.db.add_all([self.parent, self.teacher, self.student])
@@ -82,7 +81,6 @@ class ReportStalenessRouteTests(unittest.TestCase):
             name="Mathematics",
             code="MATH-ST",
             teacher=self.teacher,
-            grade_level="Grade 12",
             term="1er Trimestre",
             school_year="2026-2027",
         )
@@ -90,7 +88,6 @@ class ReportStalenessRouteTests(unittest.TestCase):
             name="Science",
             code="SCI-ST",
             teacher=self.teacher,
-            grade_level="Grade 12",
             term="1er Trimestre",
             school_year="2026-2027",
         )
@@ -223,7 +220,6 @@ class ReportStalenessRouteTests(unittest.TestCase):
         historical_student = Student(
             first_name="Legacy",
             last_name="Student",
-            grade_level="Grade 10",
             student_number="LEGACY001",
         )
         self.db.add(historical_student)

@@ -81,7 +81,7 @@ def build_summary_report_data(report_card: ReportCard) -> dict:
             "id": student.id,
             "first_name": student.first_name,
             "last_name": student.last_name,
-            "grade_level": student.grade_level,
+            "class_name": student.school_class.name_fr if student.school_class else None,
         },
         "term": report_card.term,
         "school_year": report_card.school_year,

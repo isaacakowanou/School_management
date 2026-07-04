@@ -105,7 +105,7 @@ export default function ReportDetailPage() {
             {student && (
               <>
                 {' '}
-                · {student.grade_level} · #{student.student_number}
+                · {student.class_name || '—'} · #{student.student_number}
               </>
             )}
           </p>

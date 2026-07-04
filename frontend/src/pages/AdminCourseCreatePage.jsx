@@ -17,23 +17,12 @@ const EMPTY_FORM = {
   name: '',
   code: '',
   teacherId: '',
-  gradeLevel: '',
   term: '',
   schoolYear: '',
   languageGroup: '',
   classId: '',
   subjectId: '',
 }
-
-const GRADE_LEVEL_SUGGESTIONS = [
-  'Grade 6',
-  'Grade 7',
-  'Grade 8',
-  'Grade 9',
-  'Grade 10',
-  'Grade 11',
-  'Grade 12',
-]
 
 const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
 
@@ -121,11 +110,10 @@ export default function AdminCourseCreatePage() {
       (!form.subjectId && !form.name.trim()) ||
       !form.code.trim() ||
       !form.teacherId ||
-      !form.gradeLevel.trim() ||
       !form.term.trim() ||
       !form.schoolYear.trim()
     ) {
-      setError('Course name (or a subject), code, teacher, grade level, term, and school year are required.')
+      setError('Course name (or a subject), code, teacher, term, and school year are required.')
       return
     }
 
@@ -222,17 +210,6 @@ export default function AdminCourseCreatePage() {
           </label>
 
           <label className="field">
-            <span>Grade level</span>
-            <input
-              value={form.gradeLevel}
-              onChange={(event) => updateField('gradeLevel', event.target.value)}
-              disabled={saving}
-              list="course-grade-level-options"
-              required
-            />
-          </label>
-
-          <label className="field">
             <span>Term</span>
             <TermSelect
               value={form.term}
@@ -280,11 +257,6 @@ export default function AdminCourseCreatePage() {
             />
           </label>
 
-          <datalist id="course-grade-level-options">
-            {GRADE_LEVEL_SUGGESTIONS.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
           <datalist id="course-school-year-options">
             {SCHOOL_YEAR_SUGGESTIONS.map((value) => (
               <option key={value} value={value} />

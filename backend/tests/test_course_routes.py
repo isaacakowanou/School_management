@@ -77,7 +77,6 @@ class CourseRouteTests(unittest.TestCase):
             name="Existing Course",
             code="EXIST-101",
             teacher=self.teacher,
-            grade_level="12",
             term="1er Trimestre",
             school_year="2026-2027",
         )
@@ -97,7 +96,6 @@ class CourseRouteTests(unittest.TestCase):
             "name": "New Course",
             "code": code,
             "teacher_id": str(self.teacher.id),
-            "grade_level": "12",
             "term": "1er Trimestre",
             "school_year": "2026-2027",
         }
@@ -114,7 +112,6 @@ class CourseRouteTests(unittest.TestCase):
         self.assertEqual(data["name"], "New Course")
         self.assertEqual(data["code"], "NEW-101")
         self.assertEqual(data["teacher_id"], str(self.teacher.id))
-        self.assertEqual(data["grade_level"], "12")
         self.assertEqual(data["term"], "1er Trimestre")
         self.assertEqual(data["school_year"], "2026-2027")
 
@@ -158,7 +155,6 @@ class CourseRouteTests(unittest.TestCase):
                 "name": "  Trimmed Course  ",
                 "code": "  TRIM-101  ",
                 "teacher_id": str(self.teacher.id),
-                "grade_level": "  11  ",
                 "term": "2ème Trimestre",
                 "school_year": "  2027-2028  ",
             },
@@ -169,7 +165,6 @@ class CourseRouteTests(unittest.TestCase):
         data = response.json()
         self.assertEqual(data["name"], "Trimmed Course")
         self.assertEqual(data["code"], "TRIM-101")
-        self.assertEqual(data["grade_level"], "11")
         self.assertEqual(data["term"], "2ème Trimestre")
         self.assertEqual(data["school_year"], "2027-2028")
 
@@ -244,7 +239,6 @@ class CourseRouteTests(unittest.TestCase):
                 "name": "New Course",
                 "code": "AUDIT-101",
                 "teacher_id": str(self.teacher.id),
-                "grade_level": "12",
                 "term": "1er Trimestre",
                 "school_year": "2026-2027",
                 "language_group": None,
@@ -254,7 +248,7 @@ class CourseRouteTests(unittest.TestCase):
         )
 
     def test_course_delete_blocked_when_dependent_academic_data_exists(self):
-        student = Student(first_name="Ada", last_name="Lovelace", student_number="CDEL-STU", grade_level="12")
+        student = Student(first_name="Ada", last_name="Lovelace", student_number="CDEL-STU")
         self.db.add(student)
         self.db.flush()
         self.db.add(Enrollment(student=student, course=self.existing_course))
@@ -343,7 +337,6 @@ class CourseRouteTests(unittest.TestCase):
                 "name": "  Edited Course  ",
                 "code": "  EDIT-101  ",
                 "teacher_id": str(self.teacher.id),
-                "grade_level": "  11  ",
                 "term": "2ème Trimestre",
                 "school_year": "  2027-2028  ",
             },
@@ -355,7 +348,6 @@ class CourseRouteTests(unittest.TestCase):
         self.assertEqual(data["name"], "Edited Course")
         self.assertEqual(data["code"], "EDIT-101")
         self.assertEqual(data["teacher_id"], str(self.teacher.id))
-        self.assertEqual(data["grade_level"], "11")
         self.assertEqual(data["term"], "2ème Trimestre")
         self.assertEqual(data["school_year"], "2027-2028")
 
@@ -427,7 +419,6 @@ class CourseRouteTests(unittest.TestCase):
             name="Other Course",
             code="OTHER-101",
             teacher=self.teacher,
-            grade_level="12",
             term="1er Trimestre",
             school_year="2026-2027",
         )

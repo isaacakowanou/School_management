@@ -68,7 +68,7 @@ class ReportDetailsRouteTests(unittest.TestCase):
         self.parent = Parent(user=self.parent_user, phone="555-0100")
         self.teacher = Teacher(user=self.teacher_user, employee_number="T-DET-1")
         self.student = Student(
-            first_name="Ada", last_name="Lovelace", grade_level="Grade 12", student_number="DET001"
+            first_name="Ada", last_name="Lovelace", student_number="DET001"
         )
         self.db.add_all([self.parent, self.teacher, self.student])
         self.db.flush()
@@ -76,7 +76,7 @@ class ReportDetailsRouteTests(unittest.TestCase):
 
         self.course = Course(
             name="Mathematics", code="MATH-DET", teacher=self.teacher,
-            grade_level="Grade 12", term="1er Trimestre", school_year="2026-2027",
+            term="1er Trimestre", school_year="2026-2027",
         )
         self.db.add(self.course)
         self.db.flush()

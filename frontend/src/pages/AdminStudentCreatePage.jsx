@@ -10,7 +10,6 @@ const EMPTY_FORM = {
   firstName: '',
   lastName: '',
   studentNumber: '',
-  gradeLevel: '',
   schoolLevel: '',
   classId: '',
   educmasterNumber: '',
@@ -45,8 +44,8 @@ export default function AdminStudentCreatePage() {
     event.preventDefault()
     setError(null)
 
-    if (!form.firstName.trim() || !form.lastName.trim() || !form.gradeLevel.trim()) {
-      setError('First name, last name, and grade level are required.')
+    if (!form.firstName.trim() || !form.lastName.trim()) {
+      setError('First name and last name are required.')
       return
     }
 
@@ -106,16 +105,6 @@ export default function AdminStudentCreatePage() {
             onChange={(event) => updateField('studentNumber', event.target.value)}
             disabled={saving}
             placeholder="Auto-generated if left blank"
-          />
-        </label>
-
-        <label className="field">
-          <span>Grade level</span>
-          <input
-            value={form.gradeLevel}
-            onChange={(event) => updateField('gradeLevel', event.target.value)}
-            disabled={saving}
-            required
           />
         </label>
 

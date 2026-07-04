@@ -70,30 +70,30 @@ class BulkEnrollClassStudentsTests(unittest.TestCase):
 
         # 3 students in 6ème + 1 unassigned that must NOT be swept in.
         self.students = [
-            Student(first_name=f"S{i}", last_name="X", grade_level="6ème",
+            Student(first_name=f"S{i}", last_name="X",
                     student_number=f"S6-{i}", class_id=self.sixieme.id)
             for i in range(3)
         ]
         self.unassigned = Student(
-            first_name="Solo", last_name="X", grade_level="6ème", student_number="S6-NC",
+            first_name="Solo", last_name="X", student_number="S6-NC",
         )
         self.db.add_all(self.students + [self.unassigned])
 
         # 2 courses tagged with 6ème for this year.
         self.courses = [
-            Course(name=n, code=c, teacher_id=self.teacher.id, grade_level="6ème",
+            Course(name=n, code=c, teacher_id=self.teacher.id,
                    term="1er Trimestre", school_year=SCHOOL_YEAR, class_id=self.sixieme.id)
             for n, c in [("Maths", "M6"), ("Anglais", "A6")]
         ]
         # A course tagged with 6ème but for a DIFFERENT school year — must be
         # ignored (the class row's year drives the filter, not the tag).
         self.wrong_year_course = Course(
-            name="Maths", code="M6-NEXT", teacher_id=self.teacher.id, grade_level="6ème",
+            name="Maths", code="M6-NEXT", teacher_id=self.teacher.id,
             term="1er Trimestre", school_year=OTHER_YEAR, class_id=self.sixieme.id,
         )
         # A course with no class_id — untagged courses are not implicitly swept.
         self.untagged_course = Course(
-            name="Info", code="INFO", teacher_id=self.teacher.id, grade_level="6ème",
+            name="Info", code="INFO", teacher_id=self.teacher.id,
             term="1er Trimestre", school_year=SCHOOL_YEAR,
         )
         self.db.add_all(self.courses + [self.wrong_year_course, self.untagged_course])
@@ -181,7 +181,7 @@ class BulkEnrollClassStudentsTests(unittest.TestCase):
     def test_class_with_students_but_no_courses_returns_empty(self):
         # Give 5ème students but no courses.
         self.db.add(
-            Student(first_name="Solo", last_name="Y", grade_level="5ème",
+            Student(first_name="Solo", last_name="Y",
                     student_number="S5-1", class_id=self.cinquieme.id)
         )
         self.db.commit()

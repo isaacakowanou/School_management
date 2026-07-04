@@ -43,7 +43,6 @@ class EmailServiceTests(unittest.TestCase):
         self.student = Student(
             first_name="Isaac",
             last_name="Akowanou",
-            grade_level="Grade 12",
             student_number="STU001",
         )
         self.parent_user = User(

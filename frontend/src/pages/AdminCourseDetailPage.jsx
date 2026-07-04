@@ -36,7 +36,6 @@ const EMPTY_COURSE_EDIT_FORM = {
   name: '',
   code: '',
   teacherId: '',
-  gradeLevel: '',
   term: '',
   schoolYear: '',
   languageGroup: '',
@@ -54,15 +53,6 @@ const GRADE_ITEM_SUGGESTIONS = [
   'Participation',
 ]
 
-const GRADE_LEVEL_SUGGESTIONS = [
-  'Grade 6',
-  'Grade 7',
-  'Grade 8',
-  'Grade 9',
-  'Grade 10',
-  'Grade 11',
-  'Grade 12',
-]
 const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
 const WEIGHT_TOLERANCE = 0.005
 
@@ -75,7 +65,6 @@ function courseToForm(course) {
     name: course?.name || '',
     code: course?.code || '',
     teacherId: course?.teacher_id || '',
-    gradeLevel: course?.grade_level || '',
     term: course?.term || '',
     schoolYear: course?.school_year || '',
     languageGroup: course?.language_group || '',
@@ -311,11 +300,10 @@ export default function AdminCourseDetailPage() {
       (!editForm.subjectId && !editForm.name.trim()) ||
       !editForm.code.trim() ||
       !editForm.teacherId ||
-      !editForm.gradeLevel.trim() ||
       !editForm.term.trim() ||
       !editForm.schoolYear.trim()
     ) {
-      setEditError('Course name (or a subject), code, teacher, grade level, term, and school year are required.')
+      setEditError('Course name (or a subject), code, teacher, term, and school year are required.')
       return
     }
 
@@ -559,7 +547,7 @@ export default function AdminCourseDetailPage() {
       </Link>
       <h2 className="page-title">{course.name}</h2>
       <p className="muted">
-        {course.code} · {course.grade_level} · {course.term} · {course.school_year}
+        {course.code} · {course.class_name || '—'} · {course.term} · {course.school_year}
       </p>
       <p className="muted">
         Teacher:{' '}
@@ -666,17 +654,6 @@ export default function AdminCourseDetailPage() {
           </label>
 
           <label className="field">
-            <span>Grade level</span>
-            <input
-              value={editForm.gradeLevel}
-              onChange={(event) => updateEditField('gradeLevel', event.target.value)}
-              disabled={savingEdit}
-              list="course-edit-grade-level-options"
-              required
-            />
-          </label>
-
-          <label className="field">
             <span>Term</span>
             <TermSelect
               value={editForm.term}
@@ -724,11 +701,6 @@ export default function AdminCourseDetailPage() {
             />
           </label>
 
-          <datalist id="course-edit-grade-level-options">
-            {GRADE_LEVEL_SUGGESTIONS.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
           <datalist id="course-edit-school-year-options">
             {SCHOOL_YEAR_SUGGESTIONS.map((value) => (
               <option key={value} value={value} />
@@ -822,7 +794,7 @@ export default function AdminCourseDetailPage() {
               <tr>
                 <th>Name</th>
                 <th>Student #</th>
-                <th>Grade level</th>
+                <th>Class</th>
                 <th></th>
               </tr>
             </thead>
@@ -833,7 +805,7 @@ export default function AdminCourseDetailPage() {
                     {student.first_name} {student.last_name}
                   </td>
                   <td className="nowrap">{student.student_number}</td>
-                  <td className="nowrap">{student.grade_level}</td>
+                  <td className="nowrap">{student.class_name || '—'}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/students/${student.id}`}>
                       Open →

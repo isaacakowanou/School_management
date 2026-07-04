@@ -77,19 +77,16 @@ class CourseResultRouteTests(unittest.TestCase):
         self.student_one = Student(
             first_name="Ada",
             last_name="Lovelace",
-            grade_level="Grade 12",
             student_number="CR001",
         )
         self.student_two = Student(
             first_name="Grace",
             last_name="Hopper",
-            grade_level="Grade 12",
             student_number="CR002",
         )
         self.unenrolled_student = Student(
             first_name="Katherine",
             last_name="Johnson",
-            grade_level="Grade 12",
             student_number="CR003",
         )
         self.db.add_all(
@@ -107,7 +104,6 @@ class CourseResultRouteTests(unittest.TestCase):
             name="Mathematics",
             code="COURSE-RESULTS",
             teacher=self.teacher,
-            grade_level="Grade 12",
             term="1er Trimestre",
             school_year="2026-2027",
         )

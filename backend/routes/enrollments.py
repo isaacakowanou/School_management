@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from audit import create_audit_log
 from auth import get_current_user, require_admin
@@ -95,6 +95,7 @@ def list_course_students(
     students = db.scalars(
         select(Student)
         .join(Enrollment, Enrollment.student_id == Student.id)
+        .options(joinedload(Student.school_class))
         .where(
             Enrollment.course_id == course_id,
             Enrollment.deleted_at.is_(None),

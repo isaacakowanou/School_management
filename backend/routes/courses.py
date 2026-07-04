@@ -2,7 +2,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from audit import create_audit_log
 from auth import get_current_user, require_admin
@@ -84,7 +84,12 @@ def list_courses(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CourseResponse]:
-    query = select(Course).where(Course.deleted_at.is_(None)).order_by(Course.name, Course.code)
+    query = (
+        select(Course)
+        .options(joinedload(Course.school_class))
+        .where(Course.deleted_at.is_(None))
+        .order_by(Course.name, Course.code)
+    )
     if school_year is not None:
         query = query.where(Course.school_year == school_year)
 
@@ -109,7 +114,6 @@ def create_course(
     current_user: User = Depends(require_admin),
 ) -> CourseResponse:
     code = clean_required_text(payload.code, "code")
-    grade_level = clean_required_text(payload.grade_level, "grade_level")
     term = payload.term.value
     school_year = clean_required_text(payload.school_year, "school_year")
     language_group = payload.language_group.value if payload.language_group is not None else None
@@ -136,7 +140,6 @@ def create_course(
         name=name,
         code=code,
         teacher_id=payload.teacher_id,
-        grade_level=grade_level,
         term=term,
         school_year=school_year,
         language_group=language_group,
@@ -156,7 +159,6 @@ def create_course(
             "name": course.name,
             "code": course.code,
             "teacher_id": course.teacher_id,
-            "grade_level": course.grade_level,
             "term": course.term,
             "school_year": course.school_year,
             "language_group": course.language_group,
@@ -245,7 +247,6 @@ def clone_year(
                 name=source_course.name,
                 code=new_code_by_id[source_course.id],
                 teacher_id=source_course.teacher_id,
-                grade_level=source_course.grade_level,
                 term=source_course.term,
                 school_year=target_year,
                 language_group=source_course.language_group,
@@ -305,7 +306,6 @@ def update_course(
         "name": course.name,
         "code": course.code,
         "teacher_id": course.teacher_id,
-        "grade_level": course.grade_level,
         "term": course.term,
         "school_year": course.school_year,
         "language_group": course.language_group,
@@ -356,8 +356,6 @@ def update_course(
                 payload.language_group.value if payload.language_group is not None else None
             )
 
-    if payload.grade_level is not None:
-        course.grade_level = clean_required_text(payload.grade_level, "grade_level")
     if payload.term is not None:
         course.term = payload.term.value
     if payload.school_year is not None:
@@ -371,7 +369,6 @@ def update_course(
         "name": course.name,
         "code": course.code,
         "teacher_id": course.teacher_id,
-        "grade_level": course.grade_level,
         "term": course.term,
         "school_year": course.school_year,
         "language_group": course.language_group,
@@ -429,7 +426,6 @@ def delete_course(
         "name": course.name,
         "code": course.code,
         "teacher_id": course.teacher_id,
-        "grade_level": course.grade_level,
         "term": course.term,
         "school_year": course.school_year,
         "language_group": course.language_group,

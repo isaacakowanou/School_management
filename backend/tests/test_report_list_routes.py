@@ -74,7 +74,6 @@ class ReportListRouteTests(unittest.TestCase):
         self.student = Student(
             first_name="Ada",
             last_name="Lovelace",
-            grade_level="Grade 12",
             student_number="LIST001",
         )
         self.db.add_all([self.parent, self.teacher, self.student])
@@ -85,7 +84,6 @@ class ReportListRouteTests(unittest.TestCase):
             name="Mathematics",
             code="MATH-LIST",
             teacher=self.teacher,
-            grade_level="Grade 12",
             term="1er Trimestre",
             school_year="2026-2027",
         )
@@ -139,14 +137,12 @@ class ReportListRouteTests(unittest.TestCase):
         student = Student(
             first_name="Student",
             last_name=suffix,
-            grade_level="Grade 12",
             student_number=f"LIST-{suffix}",
         )
         course = Course(
             name=f"Course {suffix}",
             code=f"COURSE-{suffix}",
             teacher=self.teacher,
-            grade_level="Grade 12",
             term="1er Trimestre",
             school_year="2026-2027",
         )
@@ -195,14 +191,12 @@ class ReportListRouteTests(unittest.TestCase):
         student = Student(
             first_name="New",
             last_name="Student",
-            grade_level="Grade 12",
             student_number="LIST-FIRST-REPORT",
         )
         course = Course(
             name="First Report Course",
             code="COURSE-FIRST-REPORT",
             teacher=self.teacher,
-            grade_level="Grade 12",
             term="2ème Trimestre",
             school_year="2026-2027",
         )
@@ -229,22 +223,21 @@ class ReportListRouteTests(unittest.TestCase):
         student = Student(
             first_name="Bilingual",
             last_name="Student",
-            grade_level="Grade 12",
             student_number="LIST-BILINGUAL",
         )
         french_a = Course(
             name="Francais A", code="FR-BIL-A", teacher=self.teacher,
-            grade_level="Grade 12", term="2ème Trimestre", school_year="2026-2027",
+            term="2ème Trimestre", school_year="2026-2027",
             language_group="FRENCH",
         )
         french_b = Course(
             name="Francais B", code="FR-BIL-B", teacher=self.teacher,
-            grade_level="Grade 12", term="2ème Trimestre", school_year="2026-2027",
+            term="2ème Trimestre", school_year="2026-2027",
             language_group="FRENCH",
         )
         english = Course(
             name="English", code="EN-BIL", teacher=self.teacher,
-            grade_level="Grade 12", term="2ème Trimestre", school_year="2026-2027",
+            term="2ème Trimestre", school_year="2026-2027",
             language_group="ENGLISH",
         )
         self.db.add_all([student, french_a, french_b, english])

@@ -84,7 +84,6 @@ class GradeItemRouteTests(unittest.TestCase):
             name="Grade Item Course",
             code="GI-101",
             teacher=self.teacher,
-            grade_level="12",
             term="1er Trimestre",
             school_year="2026-2027",
         )
@@ -308,7 +307,7 @@ class GradeItemRouteTests(unittest.TestCase):
 
     def test_grade_item_delete_blocked_when_grades_exist(self):
         grade_item = self._create_grade_item("Has Grades")
-        student = Student(first_name="Ada", last_name="Lovelace", student_number="GIDEL-STU", grade_level="12")
+        student = Student(first_name="Ada", last_name="Lovelace", student_number="GIDEL-STU")
         self.db.add(student)
         self.db.flush()
         grade = Grade(student=student, grade_item=grade_item, score=18, submitted_by_teacher=self.teacher)

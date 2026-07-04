@@ -30,12 +30,11 @@ export function listCourses({ schoolYear } = {}) {
 // POST /api/v1/courses (admin). With a subjectId the backend derives name and
 // language_group from the subject, so neither is sent (a conflicting value
 // would be rejected with a 422).
-export function createCourse({ name, code, teacherId, gradeLevel, term, schoolYear, languageGroup, classId, subjectId }) {
+export function createCourse({ name, code, teacherId, term, schoolYear, languageGroup, classId, subjectId }) {
   return apiPost('/courses', {
     name: subjectId ? null : name.trim(),
     code: code.trim(),
     teacher_id: teacherId,
-    grade_level: gradeLevel.trim(),
     term: term.trim(),
     school_year: schoolYear.trim(),
     language_group: subjectId ? null : languageGroup || null,
@@ -47,11 +46,10 @@ export function createCourse({ name, code, teacherId, gradeLevel, term, schoolYe
 // PUT /api/v1/courses/{course_id} (admin). Same subject rule as createCourse:
 // with a subjectId, name / language_group are omitted so the backend derives
 // them from the subject.
-export function updateCourse(courseId, { name, code, teacherId, gradeLevel, term, schoolYear, languageGroup, classId, subjectId }) {
+export function updateCourse(courseId, { name, code, teacherId, term, schoolYear, languageGroup, classId, subjectId }) {
   const body = {
     code: code.trim(),
     teacher_id: teacherId,
-    grade_level: gradeLevel.trim(),
     school_year: schoolYear.trim(),
     class_id: classId || null,
     subject_id: subjectId || null,

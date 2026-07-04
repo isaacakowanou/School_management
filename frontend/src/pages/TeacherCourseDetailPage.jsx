@@ -311,7 +311,7 @@ export default function TeacherCourseDetailPage() {
         <>
           <h2 className="page-title">{course.name}</h2>
           <p className="muted">
-            {course.code} · {course.grade_level} · {course.term} {course.school_year}
+            {course.code} · {course.class_name || '—'} · {course.term} {course.school_year}
           </p>
 
           <h3 className="section-title">Enrolled students</h3>
@@ -323,7 +323,7 @@ export default function TeacherCourseDetailPage() {
                 <thead>
                   <tr>
                     <th>Student</th>
-                    <th>Grade level</th>
+                    <th>Class</th>
                     <th>Student #</th>
                   </tr>
                 </thead>
@@ -333,7 +333,7 @@ export default function TeacherCourseDetailPage() {
                       <td className="nowrap">
                         {student.last_name}, {student.first_name}
                       </td>
-                      <td>{student.grade_level}</td>
+                      <td>{student.class_name || '—'}</td>
                       <td className="mono">{student.student_number}</td>
                     </tr>
                   ))}

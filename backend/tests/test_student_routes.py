@@ -101,7 +101,6 @@ class StudentRouteTests(unittest.TestCase):
             "first_name": "New",
             "last_name": "Student",
             "student_number": student_number,
-            "grade_level": "12",
         }
 
     def _create_student(self, student_number: str = "LINK-STU-001") -> Student:
@@ -109,7 +108,6 @@ class StudentRouteTests(unittest.TestCase):
             first_name="Link",
             last_name="Student",
             student_number=student_number,
-            grade_level="12",
         )
         self.db.add(student)
         self.db.commit()
@@ -128,7 +126,6 @@ class StudentRouteTests(unittest.TestCase):
         self.assertEqual(data["first_name"], "New")
         self.assertEqual(data["last_name"], "Student")
         self.assertEqual(data["student_number"], "NEW-STU-001")
-        self.assertEqual(data["grade_level"], "12")
 
         student = self.db.scalar(select(Student).where(Student.student_number == "NEW-STU-001"))
         self.assertIsNotNone(student)
@@ -140,7 +137,6 @@ class StudentRouteTests(unittest.TestCase):
                 "first_name": "  Trimmed  ",
                 "last_name": "  Student  ",
                 "student_number": "  NEW-STU-TRIM  ",
-                "grade_level": "  11  ",
             },
             headers=self._headers(self.admin_user.email),
         )
@@ -150,7 +146,6 @@ class StudentRouteTests(unittest.TestCase):
         self.assertEqual(data["first_name"], "Trimmed")
         self.assertEqual(data["last_name"], "Student")
         self.assertEqual(data["student_number"], "NEW-STU-TRIM")
-        self.assertEqual(data["grade_level"], "11")
 
     def test_non_admin_cannot_create_student(self):
         for user in [self.teacher_user, self.parent_user]:
@@ -167,7 +162,6 @@ class StudentRouteTests(unittest.TestCase):
             first_name="Existing",
             last_name="Student",
             student_number="DUP-STU-001",
-            grade_level="12",
         )
         self.db.add(existing_student)
         self.db.commit()
@@ -188,7 +182,6 @@ class StudentRouteTests(unittest.TestCase):
                 "first_name": " ",
                 "last_name": "Student",
                 "student_number": "EMPTY-STU-001",
-                "grade_level": "12",
             },
             headers=self._headers(self.admin_user.email),
         )
@@ -220,9 +213,9 @@ class StudentRouteTests(unittest.TestCase):
             {
                 "first_name": "New",
                 "last_name": "Student",
-                "grade_level": "12",
                 "school_level": None,
                 "student_number": "AUDIT-STU-001",
+                "educmaster_number": None,
                 "class_id": None,
             },
         )
@@ -303,7 +296,7 @@ class StudentRouteTests(unittest.TestCase):
 
         response = self.client.put(
             f"/api/v1/students/{student.id}",
-            json={"grade_level": "11"},
+            json={"first_name": "Updated"},
             headers=self._headers(self.admin_user.email),
         )
 
@@ -327,7 +320,6 @@ class StudentRouteTests(unittest.TestCase):
         student = self._create_student("UPD-LEVEL-ONLY")
         original_first = student.first_name
         original_last = student.last_name
-        original_grade = student.grade_level
         original_number = student.student_number
 
         response = self.client.put(
@@ -341,7 +333,6 @@ class StudentRouteTests(unittest.TestCase):
         self.assertEqual(data["school_level"], "primaire")
         self.assertEqual(data["first_name"], original_first)
         self.assertEqual(data["last_name"], original_last)
-        self.assertEqual(data["grade_level"], original_grade)
         self.assertEqual(data["student_number"], original_number)
 
     def test_existing_null_school_level_appears_in_list_and_detail(self):
@@ -372,7 +363,6 @@ class StudentRouteTests(unittest.TestCase):
                 "first_name": "  Edited  ",
                 "last_name": "  Student  ",
                 "student_number": "  EDIT-STU-002  ",
-                "grade_level": "  11  ",
             },
             headers=self._headers(self.admin_user.email),
         )
@@ -382,7 +372,6 @@ class StudentRouteTests(unittest.TestCase):
         self.assertEqual(data["first_name"], "Edited")
         self.assertEqual(data["last_name"], "Student")
         self.assertEqual(data["student_number"], "EDIT-STU-002")
-        self.assertEqual(data["grade_level"], "11")
 
     def test_non_admin_cannot_update_student(self):
         student = self._create_student("EDIT-STU-NONADMIN")
@@ -449,7 +438,6 @@ class StudentRouteTests(unittest.TestCase):
             first_name="Soft",
             last_name="Deleted",
             student_number=student_number,
-            grade_level="12",
         )
         self.db.add_all([teacher, student])
         self.db.flush()
@@ -457,7 +445,6 @@ class StudentRouteTests(unittest.TestCase):
             name=f"History {student_number}",
             code=f"COURSE-{student_number}",
             teacher=teacher,
-            grade_level="12",
             term="1er Trimestre",
             school_year="2026-2027",
         )

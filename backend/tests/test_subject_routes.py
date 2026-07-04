@@ -98,7 +98,6 @@ class SubjectRouteTests(unittest.TestCase):
             "name": "Free text course",
             "code": "CRS-1",
             "teacher_id": str(self.teacher.id),
-            "grade_level": "6ème",
             "term": "1er Trimestre",
             "school_year": "2026-2027",
         }

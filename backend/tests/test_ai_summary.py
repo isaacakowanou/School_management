@@ -18,7 +18,7 @@ def sample_report_data():
         "student": {
             "first_name": "Isaac",
             "last_name": "Akowanou",
-            "grade_level": "Grade 12",
+            "class_name": "6ème",
         },
         "term": "1er Trimestre",
         "school_year": "2026-2027",
@@ -68,7 +68,7 @@ class AISummaryServiceTests(unittest.TestCase):
         messages = call_kwargs["messages"]
         prompt_text = messages[1]["content"]
         self.assertIn("Isaac Akowanou", prompt_text)
-        self.assertIn("Grade 12", prompt_text)
+        self.assertIn("6ème", prompt_text)
         self.assertIn("1er Trimestre", prompt_text)
         self.assertIn("2026-2027", prompt_text)
         self.assertIn("Averages use a /20 scale.", prompt_text)
@@ -99,7 +99,6 @@ class AISummaryRouteTests(unittest.TestCase):
         self.student = Student(
             first_name="Isaac",
             last_name="Akowanou",
-            grade_level="Grade 12",
             student_number="STU001",
         )
         self.report_card = ReportCard(
@@ -178,7 +177,6 @@ class AISummaryRouteTests(unittest.TestCase):
         student_without_draft = Student(
             first_name="No",
             last_name="Draft",
-            grade_level="Grade 12",
             student_number="STU-NODRAFT",
         )
         self.db.add(student_without_draft)

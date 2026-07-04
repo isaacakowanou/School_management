@@ -236,7 +236,6 @@ class TeacherRouteTests(unittest.TestCase):
             name="Teacher Course",
             code="TDEL-COURSE",
             teacher=self.existing_teacher,
-            grade_level="12",
             term="1er Trimestre",
             school_year="2026-2027",
         )
@@ -266,11 +265,10 @@ class TeacherRouteTests(unittest.TestCase):
             name="Past Course",
             code="TDEL-GRADE",
             teacher=course_teacher,
-            grade_level="12",
             term="1er Trimestre",
             school_year="2026-2027",
         )
-        student = Student(first_name="Ada", last_name="Lovelace", student_number="TDEL-STU", grade_level="12")
+        student = Student(first_name="Ada", last_name="Lovelace", student_number="TDEL-STU")
         self.db.add_all([course, student])
         self.db.flush()
         grade_item = GradeItem(course=course, title="Exam", category="Exam", max_score=20, weight=1, term="1er Trimestre")

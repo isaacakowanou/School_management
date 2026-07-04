@@ -73,7 +73,7 @@ class ReportPdfTests(unittest.TestCase):
         self.other_parent = Parent(user=self.other_parent_user, phone="555-0200")
         self.teacher = Teacher(user=self.teacher_user, employee_number="T-PDF-1")
         self.student = Student(
-            first_name="Isaac", last_name="Student", grade_level="Grade 12", student_number="STU001"
+            first_name="Isaac", last_name="Student", student_number="STU001"
         )
         self.db.add_all([self.parent, self.other_parent, self.teacher, self.student])
         self.db.flush()
@@ -82,7 +82,7 @@ class ReportPdfTests(unittest.TestCase):
         # Untagged course (no language_group) -> renders in the "Other" section.
         self.course = Course(
             name="Mathematics", code="MATH-12", teacher=self.teacher,
-            grade_level="Grade 12", term="1er Trimestre", school_year="2026-2027",
+            term="1er Trimestre", school_year="2026-2027",
         )
         self.db.add(self.course)
         self.db.commit()

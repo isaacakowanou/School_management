@@ -58,7 +58,6 @@ def get_or_create_student(
     *,
     first_name: str,
     last_name: str,
-    grade_level: str,
     student_number: str,
 ) -> Student:
     student = db.scalar(select(Student).where(Student.student_number == student_number))
@@ -68,7 +67,6 @@ def get_or_create_student(
     student = Student(
         first_name=first_name,
         last_name=last_name,
-        grade_level=grade_level,
         student_number=student_number,
     )
     db.add(student)
@@ -84,7 +82,6 @@ def get_or_create_course(db: Session, *, teacher: Teacher) -> Course:
         name="Mathematics",
         code="MATH-12-FALL-2026",
         teacher=teacher,
-        grade_level="Grade 12",
         term="Fall",
         school_year="2026-2027",
     )
@@ -184,7 +181,6 @@ def seed() -> None:
                 db,
                 first_name=first_name,
                 last_name="Student",
-                grade_level="Grade 12",
                 student_number=student_number,
             )
             for first_name, student_number in [

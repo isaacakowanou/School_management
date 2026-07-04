@@ -229,7 +229,7 @@ export default function AdminTeacherDetailPage() {
               <tr>
                 <th>Name</th>
                 <th>Code</th>
-                <th>Grade level</th>
+                <th>Class</th>
                 <th>Term</th>
                 <th>School year</th>
                 <th></th>
@@ -240,7 +240,7 @@ export default function AdminTeacherDetailPage() {
                 <tr key={course.id}>
                   <td>{course.name}</td>
                   <td className="nowrap">{course.code}</td>
-                  <td className="nowrap">{course.grade_level}</td>
+                  <td className="nowrap">{course.class_name || '—'}</td>
                   <td className="nowrap">{course.term}</td>
                   <td className="nowrap">{course.school_year}</td>
                   <td className="nowrap">

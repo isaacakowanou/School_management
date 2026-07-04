@@ -44,7 +44,7 @@ export default function TeacherCoursesPage() {
               <Link className="card student-card" to={`/teacher/courses/${course.id}`}>
                 <div className="student-name">{course.name}</div>
                 <div className="muted">
-                  {course.code} · {course.grade_level} · {course.term} {course.school_year}
+                  {course.code} · {course.class_name || '—'} · {course.term} {course.school_year}
                 </div>
               </Link>
             </li>

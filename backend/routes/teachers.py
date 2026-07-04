@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, contains_eager
+from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from audit import create_audit_log
 from auth import get_current_user, hash_password, require_admin
@@ -276,6 +276,9 @@ def list_teacher_courses(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
     courses = db.scalars(
-        select(Course).where(Course.teacher_id == teacher_id, Course.deleted_at.is_(None)).order_by(Course.name)
+        select(Course)
+        .options(joinedload(Course.school_class))
+        .where(Course.teacher_id == teacher_id, Course.deleted_at.is_(None))
+        .order_by(Course.name)
     ).all()
     return [to_course_response(course) for course in courses]

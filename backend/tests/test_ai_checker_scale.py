@@ -24,7 +24,6 @@ class AiCheckerScaleTests(unittest.TestCase):
         self.student = Student(
             first_name="Check",
             last_name="Scale",
-            grade_level="Grade 12",
             student_number="CHK001",
         )
         # Course has no grade items and no enrollments, so the only warnings that
@@ -33,7 +32,6 @@ class AiCheckerScaleTests(unittest.TestCase):
             name="Mathematics",
             code="MATH-CHK",
             teacher=self.teacher,
-            grade_level="Grade 12",
             term="1er Trimestre",
             school_year="2026-2027",
         )

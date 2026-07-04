@@ -11,12 +11,11 @@ export function listDeletedStudents() {
 }
 
 // POST /api/v1/students (admin)
-export function createStudent({ firstName, lastName, studentNumber, gradeLevel, schoolLevel, classId, educmasterNumber }) {
+export function createStudent({ firstName, lastName, studentNumber, schoolLevel, classId, educmasterNumber }) {
   return apiPost('/students', {
     first_name: firstName.trim(),
     last_name: lastName.trim(),
     student_number: studentNumber.trim() || null,
-    grade_level: gradeLevel.trim(),
     school_level: schoolLevel || null,
     class_id: classId || null,
     educmaster_number: (educmasterNumber || '').trim() || null,
@@ -39,12 +38,11 @@ export function restoreStudent(studentId) {
 }
 
 // PUT /api/v1/students/{student_id} (admin)
-export function updateStudent(studentId, { firstName, lastName, studentNumber, gradeLevel, schoolLevel, classId, educmasterNumber }) {
+export function updateStudent(studentId, { firstName, lastName, studentNumber, schoolLevel, classId, educmasterNumber }) {
   return apiPut(`/students/${studentId}`, {
     first_name: firstName.trim(),
     last_name: lastName.trim(),
     student_number: studentNumber.trim(),
-    grade_level: gradeLevel.trim(),
     school_level: schoolLevel || null,
     class_id: classId || null,
     educmaster_number: (educmasterNumber || '').trim() || null,

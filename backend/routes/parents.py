@@ -288,7 +288,7 @@ def list_parent_students(
     links = db.scalars(
         select(StudentParent)
         .join(StudentParent.student)
-        .options(joinedload(StudentParent.student))
+        .options(joinedload(StudentParent.student).joinedload(Student.school_class))
         .where(
             StudentParent.parent_id == parent_id,
             StudentParent.deleted_at.is_(None),

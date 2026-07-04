@@ -226,7 +226,7 @@ export default function AdminParentDetailPage() {
               <tr>
                 <th>Name</th>
                 <th>Student #</th>
-                <th>Grade level</th>
+                <th>Class</th>
                 <th></th>
               </tr>
             </thead>
@@ -237,7 +237,7 @@ export default function AdminParentDetailPage() {
                     {student.first_name} {student.last_name}
                   </td>
                   <td className="nowrap">{student.student_number}</td>
-                  <td className="nowrap">{student.grade_level}</td>
+                  <td className="nowrap">{student.class_name || '—'}</td>
                   <td className="nowrap">
                     <Link className="back-link" to={`/admin/students/${student.id}`}>
                       Open →

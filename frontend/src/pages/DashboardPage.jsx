@@ -47,7 +47,7 @@ export default function DashboardPage() {
                   {student.first_name} {student.last_name}
                 </div>
                 <div className="muted">
-                  {student.grade_level} · #{student.student_number}
+                  {student.class_name || '—'} · #{student.student_number}
                 </div>
               </Link>
             </li>

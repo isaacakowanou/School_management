@@ -75,13 +75,11 @@ class EnrollmentRouteTests(unittest.TestCase):
             first_name="Ada",
             last_name="Lovelace",
             student_number="ENROLL-STU-001",
-            grade_level="12",
         )
         self.duplicate_student = Student(
             first_name="Grace",
             last_name="Hopper",
             student_number="ENROLL-STU-002",
-            grade_level="12",
         )
         self.db.add_all([self.teacher, self.student, self.duplicate_student])
         self.db.flush()
@@ -89,7 +87,6 @@ class EnrollmentRouteTests(unittest.TestCase):
             name="Enrollment Course",
             code="ENROLL-101",
             teacher=self.teacher,
-            grade_level="12",
             term="1er Trimestre",
             school_year="2026-2027",
         )

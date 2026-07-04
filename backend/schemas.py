@@ -235,7 +235,6 @@ class SubjectResponse(BaseModel):
 class StudentCreate(BaseModel):
     first_name: str
     last_name: str
-    grade_level: str
     school_level: SchoolLevel | None = None
     student_number: str | None = None
     educmaster_number: str | None = None
@@ -245,7 +244,6 @@ class StudentCreate(BaseModel):
 class StudentUpdate(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
-    grade_level: str | None = None
     school_level: SchoolLevel | None = None
     student_number: str | None = None
     educmaster_number: str | None = None
@@ -256,15 +254,14 @@ class StudentResponse(BaseModel):
     id: UUID
     first_name: str
     last_name: str
-    grade_level: str
     school_level: SchoolLevel | None = None
     student_number: str
     educmaster_number: str | None = None
     class_id: UUID | None = None
+    class_name: str | None = None
 
 
 class DeletedStudentResponse(StudentResponse):
-    class_name: str | None = None
     deleted_at: datetime
 
 
@@ -340,11 +337,11 @@ class CourseResponse(BaseModel):
     name: str
     code: str
     teacher_id: UUID
-    grade_level: str
     term: str
     school_year: str
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
+    class_name: str | None = None
     subject_id: UUID | None = None
 
 
@@ -354,7 +351,6 @@ class CourseCreate(BaseModel):
     name: str | None = None
     code: str
     teacher_id: UUID
-    grade_level: str
     term: TrimesterTerm
     school_year: str
     language_group: LanguageGroup | None = None
@@ -366,7 +362,6 @@ class CourseUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
     teacher_id: UUID | None = None
-    grade_level: str | None = None
     term: TrimesterTerm | None = None
     school_year: str | None = None
     language_group: LanguageGroup | None = None

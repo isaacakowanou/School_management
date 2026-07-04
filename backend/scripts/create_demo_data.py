@@ -132,7 +132,6 @@ def get_or_create_student(db: Session, stats: DemoStats) -> Student:
             first_name="Demo",
             last_name="Student",
             student_number="DEMO-STU-001",
-            grade_level="12",
         )
         db.add(student)
         stats.create("student DEMO-STU-001")
@@ -142,11 +141,9 @@ def get_or_create_student(db: Session, stats: DemoStats) -> Student:
     if (
         student.first_name != "Demo"
         or student.last_name != "Student"
-        or student.grade_level != "12"
     ):
         student.first_name = "Demo"
         student.last_name = "Student"
-        student.grade_level = "12"
         stats.update("student DEMO-STU-001")
     return student
 
@@ -184,7 +181,6 @@ def get_or_create_course(db: Session, stats: DemoStats, *, teacher: Teacher) -> 
             name="Demo Mathematics",
             code="DEMO-MATH-2026",
             teacher=teacher,
-            grade_level="12",
             term=DEMO_TERM,
             school_year=DEMO_SCHOOL_YEAR,
         )
@@ -196,13 +192,11 @@ def get_or_create_course(db: Session, stats: DemoStats, *, teacher: Teacher) -> 
     if (
         course.name != "Demo Mathematics"
         or course.teacher_id != teacher.id
-        or course.grade_level != "12"
         or course.term != DEMO_TERM
         or course.school_year != DEMO_SCHOOL_YEAR
     ):
         course.name = "Demo Mathematics"
         course.teacher = teacher
-        course.grade_level = "12"
         course.term = DEMO_TERM
         course.school_year = DEMO_SCHOOL_YEAR
         stats.update("course DEMO-MATH-2026")
@@ -363,7 +357,7 @@ def build_report_data(
             "first_name": student.first_name,
             "last_name": student.last_name,
             "student_number": student.student_number,
-            "grade_level": student.grade_level,
+            "class_name": student.school_class.name_fr if student.school_class else None,
         },
         "term": DEMO_TERM,
         "school_year": DEMO_SCHOOL_YEAR,

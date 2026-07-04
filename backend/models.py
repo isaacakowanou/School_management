@@ -66,7 +66,6 @@ class Student(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    grade_level: Mapped[str] = mapped_column(String(50), nullable=False)
     school_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
     student_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
     educmaster_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -190,7 +189,6 @@ class Course(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
     teacher_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("teachers.id"), nullable=False)
-    grade_level: Mapped[str] = mapped_column(String(50), nullable=False)
     term: Mapped[str] = mapped_column(String(50), nullable=False)
     school_year: Mapped[str] = mapped_column(String(20), nullable=False)
     # A1.5 prep for A1.6 (three averages): which language track this course

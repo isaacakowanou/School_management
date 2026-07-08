@@ -288,7 +288,13 @@ def get_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CourseResponse:
-    course = get_course_or_404(db, course_id)
+    course = db.scalar(
+        select(Course)
+        .where(Course.id == course_id, Course.deleted_at.is_(None))
+        .options(joinedload(Course.school_class))
+    )
+    if course is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
     if current_user.role == "admin" or (
         current_user.role == "teacher" and teacher_can_read_course(db, current_user, course)
     ):

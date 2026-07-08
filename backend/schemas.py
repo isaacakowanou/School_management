@@ -446,6 +446,10 @@ class GradeResponse(BaseModel):
     submitted_by_teacher_id: UUID
 
 
+class NotifyGradesPayload(BaseModel):
+    student_ids: list[UUID]
+
+
 class CourseResultResponse(BaseModel):
     id: UUID
     student_id: UUID

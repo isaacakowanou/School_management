@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -9,8 +10,11 @@ from auth import get_current_user, require_admin
 from audit import create_audit_log
 from database import get_db
 from models import Course, Enrollment, Grade, GradeItem, Student, Teacher, User
-from schemas import GradeCreate, GradeResponse, GradeUpdate, StatusResponse
+from schemas import GradeCreate, GradeResponse, GradeUpdate, NotifyGradesPayload, StatusResponse
+from services.email_service import send_grades_notification
 from utils import get_current_teacher
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(tags=["grades"])
@@ -93,6 +97,42 @@ def validate_score(score: float, max_score: float) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="score must be greater than or equal to 0")
     if score > max_score:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="score cannot exceed max_score")
+
+
+@router.post("/courses/{course_id}/notify-grades")
+def notify_grades(
+    course_id: UUID,
+    payload: NotifyGradesPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    course = get_course_or_404(db, course_id)
+    if current_user.role != "admin":
+        get_writable_teacher_for_course(db, current_user, course)
+
+    enrolled_ids = set(
+        db.scalars(
+            select(Enrollment.student_id).where(
+                Enrollment.course_id == course_id,
+                Enrollment.deleted_at.is_(None),
+            )
+        ).all()
+    )
+
+    notified = 0
+    for student_id in payload.student_ids:
+        if student_id not in enrolled_ids:
+            continue
+        student = db.get(Student, student_id)
+        if student is None or student.deleted_at is not None:
+            continue
+        try:
+            send_grades_notification(db, course, student)
+            notified += 1
+        except Exception as exc:
+            logger.warning("Grade notification failed for student %s: %s", student_id, exc)
+
+    return {"notified": notified}
 
 
 @router.get("/courses/{course_id}/grades", response_model=list[GradeResponse])

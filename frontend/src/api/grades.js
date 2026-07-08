@@ -18,3 +18,12 @@ export function createGrade({ studentId, gradeItemId, score }) {
 export function updateGrade(gradeId, score) {
   return apiPut(`/grades/${gradeId}`, { score })
 }
+
+// POST /api/v1/courses/{courseId}/notify-grades -> fire grade notifications for changed students
+export async function notifyGradesChanged(courseId, studentIds) {
+  try {
+    await apiPost(`/courses/${courseId}/notify-grades`, { student_ids: studentIds })
+  } catch {
+    // silent-fail: notification is best-effort, grades already saved
+  }
+}

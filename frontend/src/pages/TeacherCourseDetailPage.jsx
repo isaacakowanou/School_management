@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { getCourse, listCourseStudents } from '../api/courses.js'
 import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
-import { listCourseGrades } from '../api/grades.js'
+import { listCourseGrades, notifyGradesChanged } from '../api/grades.js'
 import {
   calculateCourseResults,
   calculateSelectedCourseResults,
@@ -151,6 +151,7 @@ export default function TeacherCourseDetailPage() {
       )
       setCalcSummary(null)
       setCalcError(null)
+      notifyGradesChanged(courseId, changedStudentIds)
     }
 
     try {

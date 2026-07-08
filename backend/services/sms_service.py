@@ -173,3 +173,31 @@ def send_report_available_sms(
     except Exception as exc:
         logger.warning("Twilio report-available SMS failed for %s: %s", phone, exc)
         return [{"phone": phone, "sent": False, "success": False, "error": str(exc)}]
+
+
+def send_grades_available_sms(
+    phone: str,
+    student_name: str,
+    course_name: str,
+    term: str,
+    config: dict | None = None,
+) -> list[dict]:
+    """Notify a parent that grades have been recorded for a student, via SMS + WhatsApp."""
+    try:
+        cfg = config or _get_twilio_config()
+    except ValueError as exc:
+        logger.warning("Twilio config missing, skipping grades-available SMS: %s", exc)
+        return [{"phone": phone, "sent": False, "success": False, "error": str(exc)}]
+
+    app_url = cfg["app_base_url"].rstrip("/")
+    body = (
+        f"De nouvelles notes ont été enregistrées pour {student_name} — {course_name} ({term}).\n"
+        f"/ New grades recorded for {student_name} — {course_name} ({term}).\n"
+        f"Connectez-vous / Log in: {app_url}"
+    )
+
+    try:
+        return _send_sms_and_whatsapp(phone, body, cfg)
+    except Exception as exc:
+        logger.warning("Twilio grades-available SMS failed for %s: %s", phone, exc)
+        return [{"phone": phone, "sent": False, "success": False, "error": str(exc)}]

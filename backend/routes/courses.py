@@ -145,6 +145,7 @@ def create_course(
         language_group=language_group,
         class_id=payload.class_id,
         subject_id=payload.subject_id,
+        coefficient=payload.coefficient,
     )
     db.add(course)
     db.flush()
@@ -164,6 +165,7 @@ def create_course(
             "language_group": course.language_group,
             "class_id": course.class_id,
             "subject_id": course.subject_id,
+            "coefficient": course.coefficient,
         },
     )
     db.commit()
@@ -252,6 +254,7 @@ def clone_year(
                 language_group=source_course.language_group,
                 class_id=target_class_id,
                 subject_id=source_course.subject_id,
+                coefficient=source_course.coefficient,
             )
         )
     db.flush()
@@ -311,6 +314,7 @@ def update_course(
         "language_group": course.language_group,
         "class_id": course.class_id,
         "subject_id": course.subject_id,
+        "coefficient": course.coefficient,
     }
 
     # Resolve the course's effective subject after this update: an explicit
@@ -365,6 +369,9 @@ def update_course(
             get_class_or_404(db, payload.class_id)
         course.class_id = payload.class_id
 
+    if payload.coefficient is not None:
+        course.coefficient = payload.coefficient
+
     new_value = {
         "name": course.name,
         "code": course.code,
@@ -374,6 +381,7 @@ def update_course(
         "language_group": course.language_group,
         "class_id": course.class_id,
         "subject_id": course.subject_id,
+        "coefficient": course.coefficient,
     }
     if new_value != old_value:
         create_audit_log(

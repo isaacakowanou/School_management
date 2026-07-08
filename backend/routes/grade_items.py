@@ -8,7 +8,8 @@ from audit import create_audit_log
 from auth import get_current_user, require_admin
 from database import get_db
 from models import Course, Grade, GradeItem, User
-from schemas import GradeItemCreate, GradeItemResponse, GradeItemUpdate, StatusResponse
+from schemas import GradeItemCreate, GradeItemResponse, GradeItemType, GradeItemUpdate, StatusResponse
+from services.grade_calculator import is_beninese_mode
 from utils import get_current_teacher
 
 
@@ -23,6 +24,7 @@ def to_grade_item_response(grade_item: GradeItem) -> GradeItemResponse:
         category=grade_item.category,
         max_score=grade_item.max_score,
         weight=grade_item.weight,
+        item_type=grade_item.item_type,
         term=grade_item.term,
         due_date=grade_item.due_date,
     )
@@ -83,6 +85,7 @@ def grade_item_audit_value(grade_item: GradeItem) -> dict:
         "category": grade_item.category,
         "max_score": grade_item.max_score,
         "weight": grade_item.weight,
+        "item_type": grade_item.item_type,
         "term": grade_item.term,
         "due_date": grade_item.due_date,
     }
@@ -112,20 +115,61 @@ def create_grade_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GradeItemResponse:
-    title = clean_required_text(payload.title, "title")
-    category = clean_required_text(payload.category, "category")
     term = payload.term.value
-    validate_grade_item_values(max_score=payload.max_score, weight=payload.weight)
     course = get_course_or_404(db, payload.course_id)
     if not can_manage_course_grade_items(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    beninese = is_beninese_mode(course)
+
+    if beninese:
+        if payload.item_type is None:
+            raise HTTPException(
+                status_code=422,
+                detail="item_type is required for Beninese-mode courses (INTERRO, DEVOIR, or COMPOSITION)",
+            )
+        title = clean_required_text(payload.title, "title")
+        validate_grade_item_values(max_score=payload.max_score)
+        category = None
+        weight = None
+        item_type = payload.item_type.value
+
+        if payload.item_type in (GradeItemType.DEVOIR, GradeItemType.COMPOSITION):
+            existing = db.scalar(
+                select(GradeItem).where(
+                    GradeItem.course_id == course.id,
+                    GradeItem.item_type == payload.item_type.value,
+                    GradeItem.deleted_at.is_(None),
+                )
+            )
+            if existing is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"This course already has a {payload.item_type.value}. Only one is allowed per course.",
+                )
+    else:
+        if payload.item_type is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="item_type is only valid for Beninese-mode courses (French section, collège level)",
+            )
+        if payload.weight is None:
+            raise HTTPException(status_code=422, detail="weight is required for weighted-mode courses")
+        if payload.category is None:
+            raise HTTPException(status_code=422, detail="category is required for weighted-mode courses")
+        title = clean_required_text(payload.title, "title")
+        category = clean_required_text(payload.category, "category")
+        validate_grade_item_values(max_score=payload.max_score, weight=payload.weight)
+        weight = payload.weight
+        item_type = None
 
     grade_item = GradeItem(
         course=course,
         title=title,
         category=category,
         max_score=payload.max_score,
-        weight=payload.weight,
+        weight=weight,
+        item_type=item_type,
         term=term,
         due_date=payload.due_date,
     )
@@ -144,6 +188,7 @@ def create_grade_item(
             "category": grade_item.category,
             "max_score": grade_item.max_score,
             "weight": grade_item.weight,
+            "item_type": grade_item.item_type,
             "term": grade_item.term,
             "due_date": str(grade_item.due_date) if grade_item.due_date else None,
         },
@@ -161,20 +206,29 @@ def update_grade_item(
     current_user: User = Depends(get_current_user),
 ) -> GradeItemResponse:
     updated_fields = get_payload_fields(payload)
-    validate_grade_item_values(max_score=payload.max_score, weight=payload.weight)
     grade_item = get_grade_item_or_404(db, grade_item_id)
     if not can_manage_course_grade_items(db, current_user, grade_item.course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    if payload.item_type is not None:
+        raise HTTPException(status_code=422, detail="item_type cannot be changed after creation")
+
+    beninese = is_beninese_mode(grade_item.course)
+
+    if beninese:
+        validate_grade_item_values(max_score=payload.max_score)
+    else:
+        validate_grade_item_values(max_score=payload.max_score, weight=payload.weight)
 
     old_value = grade_item_audit_value(grade_item)
 
     if payload.title is not None:
         grade_item.title = clean_required_text(payload.title, "title")
-    if payload.category is not None:
+    if not beninese and payload.category is not None:
         grade_item.category = clean_required_text(payload.category, "category")
     if payload.max_score is not None:
         grade_item.max_score = payload.max_score
-    if payload.weight is not None:
+    if not beninese and payload.weight is not None:
         grade_item.weight = payload.weight
     if payload.term is not None:
         grade_item.term = payload.term.value

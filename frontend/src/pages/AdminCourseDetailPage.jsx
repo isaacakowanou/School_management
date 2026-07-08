@@ -42,6 +42,7 @@ const EMPTY_COURSE_EDIT_FORM = {
   languageGroup: '',
   classId: '',
   subjectId: '',
+  coefficient: '1',
 }
 
 const GRADE_ITEM_SUGGESTIONS = [
@@ -71,6 +72,7 @@ function courseToForm(course) {
     languageGroup: course?.language_group || '',
     classId: course?.class_id || '',
     subjectId: course?.subject_id || '',
+    coefficient: course?.coefficient != null ? String(course.coefficient) : '1',
   }
 }
 
@@ -552,7 +554,7 @@ export default function AdminCourseDetailPage() {
       </Link>
       <h2 className="page-title">{course.name}</h2>
       <p className="muted">
-        {course.code} · {course.class_name || '—'} · {course.term} · {course.school_year}
+        {course.code} · {course.class_name || '—'} · {course.term} · {course.school_year} · {t('courses.coefficient')}: {course.coefficient ?? 1}
       </p>
       <p className="muted">
         {t('common.teacher')}:{' '}
@@ -699,6 +701,20 @@ export default function AdminCourseDetailPage() {
               onChange={(value) => updateEditField('classId', value)}
               disabled={savingEdit}
             />
+          </label>
+
+          <label className="field">
+            <span>{t('courses.coefficient')}</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={editForm.coefficient}
+              onChange={(event) => updateEditField('coefficient', event.target.value)}
+              disabled={savingEdit}
+              required
+            />
+            <span className="muted">{t('courses.coefficientHint')}</span>
           </label>
 
           <datalist id="course-edit-school-year-options">

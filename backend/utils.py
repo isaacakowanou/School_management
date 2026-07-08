@@ -55,5 +55,7 @@ def to_course_response(course: Course) -> CourseResponse:
         language_group=course.language_group,
         class_id=course.class_id,
         class_name=course.school_class.name_fr if course.school_class else None,
+        class_school_level=course.school_class.school_level if course.school_class else None,
         subject_id=course.subject_id,
+        coefficient=course.coefficient,
     )

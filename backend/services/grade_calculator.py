@@ -114,6 +114,55 @@ def calculate_overall_average(course_averages):
     return round(sum(averages) / len(averages), 2)
 
 
+def is_beninese_mode(course) -> bool:
+    """True when this course uses the Beninese formula (FR section, collège level)."""
+    return (
+        getattr(course, "language_group", None) == "FRENCH"
+        and getattr(course, "school_class", None) is not None
+        and getattr(course.school_class, "school_level", None) == "college"
+    )
+
+
+def calculate_beninese_average(interros, devoir, composition):
+    """Beninese Moy_Int → MCC → Moy formula on the /20 scale.
+
+    Each item must be a dict or object with score and max_score fields.
+    Returns (moy, moy_int, mcc), all rounded to 2 decimal places.
+    """
+    if not interros:
+        raise ValueError("At least one interro is required for the Beninese formula")
+
+    def norm(item):
+        s = _as_number(_get_grade_value(item, "score"), "score")
+        m = _as_number(_get_grade_value(item, "max_score"), "max_score")
+        if m <= 0:
+            raise ValueError("max_score must be greater than 0")
+        if s < 0 or s > m:
+            raise ValueError("score must be between 0 and max_score")
+        return s / m * GRADE_SCALE_MAX
+
+    moy_int = sum(norm(i) for i in interros) / len(interros)
+    mcc = (moy_int + norm(devoir)) / 2
+    moy = (mcc + norm(composition)) / 2
+    return round(moy, 2), round(moy_int, 2), round(mcc, 2)
+
+
+def calculate_weighted_average(course_averages, coefficients):
+    """Coefficient-weighted mean of course averages on the /20 scale."""
+    if not course_averages:
+        raise ValueError("course averages list cannot be empty")
+    if len(course_averages) != len(coefficients):
+        raise ValueError("course_averages and coefficients must have the same length")
+
+    averages = [_as_number(a, "course average") for a in course_averages]
+    coefs = [_as_number(c, "coefficient") for c in coefficients]
+    total_coef = sum(coefs)
+    if total_coef <= 0:
+        raise ValueError("sum of coefficients must be greater than 0")
+
+    return round(sum(a * c for a, c in zip(averages, coefs)) / total_coef, 2)
+
+
 def calculate_gpa(course_averages):
     """Calculate GPA from course averages using the current letter-grade scale."""
     if not course_averages:

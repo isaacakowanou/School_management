@@ -15,7 +15,12 @@ from schemas import (
     CourseResultResponse,
     SkippedCourseResultStudent,
 )
-from services.grade_calculator import calculate_course_average, get_letter_grade
+from services.grade_calculator import (
+    calculate_beninese_average,
+    calculate_course_average,
+    get_letter_grade,
+    is_beninese_mode,
+)
 from utils import get_current_teacher
 
 
@@ -31,6 +36,10 @@ def to_course_result_response(course_result: CourseResult) -> CourseResultRespon
         average=course_result.average,
         letter_grade=course_result.letter_grade,
         scale=course_result.scale,
+        moy_int=course_result.moy_int,
+        mcc=course_result.mcc,
+        devoir_score=course_result.devoir_score,
+        composition_score=course_result.composition_score,
     )
 
 
@@ -66,23 +75,43 @@ def get_teacher_course_ids(db: Session, current_user: User) -> list[UUID]:
     return list(db.scalars(select(Course.id).where(Course.teacher_id == teacher.id, Course.deleted_at.is_(None))).all())
 
 
-def validate_course_grade_items(grade_items: list[GradeItem]) -> None:
+def validate_course_grade_items(grade_items: list[GradeItem], beninese: bool) -> None:
     if not grade_items:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Course has no grade items")
 
-    try:
-        calculate_course_average(
-            [
-                {
-                    "score": grade_item.max_score,
-                    "max_score": grade_item.max_score,
-                    "weight": grade_item.weight,
-                }
-                for grade_item in grade_items
-            ]
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if beninese:
+        interros = [item for item in grade_items if item.item_type == "INTERRO"]
+        devoirs = [item for item in grade_items if item.item_type == "DEVOIR"]
+        compositions = [item for item in grade_items if item.item_type == "COMPOSITION"]
+        if not interros:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Beninese-mode course has no Interro grade items",
+            )
+        if len(devoirs) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Beninese-mode course must have exactly one Devoir",
+            )
+        if len(compositions) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Beninese-mode course must have exactly one Composition",
+            )
+    else:
+        try:
+            calculate_course_average(
+                [
+                    {
+                        "score": grade_item.max_score,
+                        "max_score": grade_item.max_score,
+                        "weight": grade_item.weight,
+                    }
+                    for grade_item in grade_items
+                ]
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 def get_course_grade_items(db: Session, course: Course) -> list[GradeItem]:
@@ -91,7 +120,7 @@ def get_course_grade_items(db: Session, course: Course) -> list[GradeItem]:
         .where(GradeItem.course_id == course.id, GradeItem.deleted_at.is_(None))
         .order_by(GradeItem.created_at)
     ).all()
-    validate_course_grade_items(list(grade_items))
+    validate_course_grade_items(list(grade_items), is_beninese_mode(course))
     return list(grade_items)
 
 
@@ -144,9 +173,15 @@ def calculate_results_for_students(
     course: Course,
     grade_items: list[GradeItem],
     students: list[Student],
+    beninese: bool = False,
 ) -> tuple[list[CourseResult], list[SkippedCourseResultStudent]]:
     results: list[CourseResult] = []
     skipped_students: list[SkippedCourseResultStudent] = []
+
+    if beninese:
+        interro_items = [item for item in grade_items if item.item_type == "INTERRO"]
+        devoir_item = next((item for item in grade_items if item.item_type == "DEVOIR"), None)
+        composition_item = next((item for item in grade_items if item.item_type == "COMPOSITION"), None)
 
     for student in students:
         grades = db.scalars(
@@ -172,19 +207,39 @@ def calculate_results_for_students(
             )
             continue
 
-        grade_data = [
-            {
-                "score": grades_by_item_id[item.id].score,
-                "max_score": item.max_score,
-                "weight": item.weight,
+        if beninese:
+            interros = [
+                {"score": grades_by_item_id[item.id].score, "max_score": item.max_score}
+                for item in interro_items
+            ]
+            devoir = {"score": grades_by_item_id[devoir_item.id].score, "max_score": devoir_item.max_score}
+            composition = {
+                "score": grades_by_item_id[composition_item.id].score,
+                "max_score": composition_item.max_score,
             }
-            for item in grade_items
-        ]
-
-        try:
-            average = calculate_course_average(grade_data)
-        except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            try:
+                average, moy_int, mcc = calculate_beninese_average(interros, devoir, composition)
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            devoir_score = round(devoir["score"] / devoir["max_score"] * 20, 2)
+            composition_score = round(composition["score"] / composition["max_score"] * 20, 2)
+        else:
+            grade_data = [
+                {
+                    "score": grades_by_item_id[item.id].score,
+                    "max_score": item.max_score,
+                    "weight": item.weight,
+                }
+                for item in grade_items
+            ]
+            try:
+                average = calculate_course_average(grade_data)
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            moy_int = None
+            mcc = None
+            devoir_score = None
+            composition_score = None
 
         letter_grade = get_letter_grade(average)
         calculated_at = datetime.now(timezone.utc)
@@ -206,6 +261,10 @@ def calculate_results_for_students(
                 letter_grade=letter_grade,
                 scale="20",
                 calculated_at=calculated_at,
+                moy_int=moy_int,
+                mcc=mcc,
+                devoir_score=devoir_score,
+                composition_score=composition_score,
             )
             db.add(course_result)
         else:
@@ -215,6 +274,10 @@ def calculate_results_for_students(
             # row was previously a historical /100 result.
             course_result.scale = "20"
             course_result.calculated_at = calculated_at
+            course_result.moy_int = moy_int
+            course_result.mcc = mcc
+            course_result.devoir_score = devoir_score
+            course_result.composition_score = composition_score
 
         results.append(course_result)
 
@@ -233,11 +296,13 @@ def calculate_course_results(
 
     grade_items = get_course_grade_items(db, course)
     students = get_enrolled_students_for_course(db, course)
+    beninese = is_beninese_mode(course)
     results, skipped_students = calculate_results_for_students(
         db,
         course=course,
         grade_items=grade_items,
         students=students,
+        beninese=beninese,
     )
 
     create_audit_log(
@@ -278,11 +343,13 @@ def calculate_selected_course_results(
 
     grade_items = get_course_grade_items(db, course)
     students = get_selected_enrolled_students(db, course, payload.student_ids)
+    beninese = is_beninese_mode(course)
     results, skipped_students = calculate_results_for_students(
         db,
         course=course,
         grade_items=grade_items,
         students=students,
+        beninese=beninese,
     )
 
     create_audit_log(

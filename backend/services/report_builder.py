@@ -21,6 +21,7 @@ from services.class_stats import compute_class_stats
 from services.grade_calculator import (
     calculate_gpa,
     calculate_overall_average,
+    calculate_weighted_average,
     normalize_average_to_20,
 )
 
@@ -70,22 +71,34 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
             "average": normalize_average_to_20(course_result.average, course_result.scale),
             "letter_grade": course_result.letter_grade,
             "language_group": course_result.course.language_group,
+            "coefficient": course_result.course.coefficient,
+            "moy_int": course_result.moy_int,
+            "mcc": course_result.mcc,
+            "devoir_score": course_result.devoir_score,
+            "composition_score": course_result.composition_score,
         }
         for course_result in course_results
     ]
     course_averages = [course["average"] for course in courses]
+    coefficients = [course["coefficient"] for course in courses]
 
-    # A1.6 three averages, all on /20. Courses are grouped by language_group;
-    # untagged (null) courses are ignored entirely. A track with no courses
-    # yields null, and bilingual is null unless BOTH tracks have a value — we
-    # never average a real number against null.
+    # A1.6 three averages, coefficient-weighted within each language track.
+    # Untagged (null-language_group) courses are excluded from track averages.
     def _group_average(group: str) -> float | None:
-        values = [course["average"] for course in courses if course["language_group"] == group]
-        return calculate_overall_average(values) if values else None
+        group_courses = [c for c in courses if c["language_group"] == group]
+        if not group_courses:
+            return None
+        return calculate_weighted_average(
+            [c["average"] for c in group_courses],
+            [c["coefficient"] for c in group_courses],
+        )
 
     french_average = _group_average(LanguageGroup.FRENCH.value)
     english_average = _group_average(LanguageGroup.ENGLISH.value)
     if french_average is not None and english_average is not None:
+        # Bilingual = equal-weight blend of the two already-weighted track
+        # averages. The coefficient weighting is internal to each track;
+        # the two tracks themselves carry equal institutional weight.
         bilingual_average = calculate_overall_average([french_average, english_average])
     else:
         bilingual_average = None
@@ -101,7 +114,7 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
         "term": term,
         "school_year": school_year,
         "courses": courses,
-        "overall_average": calculate_overall_average(course_averages),
+        "overall_average": calculate_weighted_average(course_averages, coefficients),
         "french_average": french_average,
         "english_average": english_average,
         "bilingual_average": bilingual_average,
@@ -213,6 +226,11 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
             # snapshot ReportCardCourse rows don't carry language_group).
             "appreciation": appreciation_for_letter(course.letter_grade),
             "language_group": language_by_course_id.get(course.course_id),
+            "coefficient": course.coefficient,
+            "moy_int": course.moy_int,
+            "mcc": course.mcc,
+            "devoir_score": course.devoir_score,
+            "composition_score": course.composition_score,
         }
         for course in report_card.courses
     ]

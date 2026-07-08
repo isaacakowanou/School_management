@@ -244,6 +244,7 @@ class CourseRouteTests(unittest.TestCase):
                 "language_group": None,
                 "class_id": None,
                 "subject_id": None,
+                "coefficient": 1,
             },
         )
 

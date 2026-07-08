@@ -39,6 +39,12 @@ class SubjectLevelGroup(str, Enum):
     COLLEGE_SECOND_CYCLE = "COLLEGE_SECOND_CYCLE"
 
 
+class GradeItemType(str, Enum):
+    INTERRO = "INTERRO"
+    DEVOIR = "DEVOIR"
+    COMPOSITION = "COMPOSITION"
+
+
 class LetterGrade(str, Enum):
     # BISC 9-letter grade codes (A1.3). Single source of truth for the conduct /
     # work-habit dropdowns; the frontend constant mirrors these values.
@@ -345,7 +351,9 @@ class CourseResponse(BaseModel):
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
     class_name: str | None = None
+    class_school_level: str | None = None
     subject_id: UUID | None = None
+    coefficient: int = 1
 
 
 class CourseCreate(BaseModel):
@@ -359,6 +367,7 @@ class CourseCreate(BaseModel):
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
     subject_id: UUID | None = None
+    coefficient: int = 1
 
 
 class CourseUpdate(BaseModel):
@@ -370,6 +379,7 @@ class CourseUpdate(BaseModel):
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
     subject_id: UUID | None = None
+    coefficient: int | None = None
 
 
 class CourseCloneYearRequest(BaseModel):
@@ -399,10 +409,17 @@ class EnrollmentResponse(BaseModel):
 class GradeItemCreate(BaseModel):
     course_id: UUID
     title: str
-    category: str
+    # Null for Beninese-mode items; required for weighted-mode items (enforced
+    # in the route after mode detection).
+    category: str | None = None
     # Defaults to the /20 scale; teachers can still set a custom max (e.g. 10).
     max_score: float = 20
-    weight: float
+    # Null for Beninese-mode items (weight is meaningless); required for
+    # weighted-mode items — enforced in the route after mode detection.
+    weight: float | None = None
+    # INTERRO / DEVOIR / COMPOSITION for Beninese-mode courses; null (or
+    # omitted) for weighted-mode courses.
+    item_type: GradeItemType | None = None
     term: TrimesterTerm
     due_date: date | None = None
 
@@ -412,6 +429,8 @@ class GradeItemUpdate(BaseModel):
     category: str | None = None
     max_score: float | None = None
     weight: float | None = None
+    # item_type is immutable after creation — the route rejects any non-null value.
+    item_type: GradeItemType | None = None
     term: TrimesterTerm | None = None
     due_date: date | None = None
 
@@ -420,9 +439,10 @@ class GradeItemResponse(BaseModel):
     id: UUID
     course_id: UUID
     title: str
-    category: str
+    category: str | None = None
     max_score: float
-    weight: float
+    weight: float | None = None
+    item_type: str | None = None
     term: str
     due_date: date | None = None
 
@@ -460,6 +480,11 @@ class CourseResultResponse(BaseModel):
     # Grade scale of average: "20" for results calculated after the A1.2 switch,
     # "100" for historical results not yet recalculated.
     scale: str = "20"
+    # Beninese formula intermediates — null for weighted-mode results.
+    moy_int: float | None = None
+    mcc: float | None = None
+    devoir_score: float | None = None
+    composition_score: float | None = None
 
 
 class CourseResultCalculationRequest(BaseModel):
@@ -508,6 +533,11 @@ class ReportCardCourseResponse(BaseModel):
     course_name: str
     average: float
     letter_grade: str
+    coefficient: int = 1
+    moy_int: float | None = None
+    mcc: float | None = None
+    devoir_score: float | None = None
+    composition_score: float | None = None
 
 
 class ReportItemResponse(BaseModel):

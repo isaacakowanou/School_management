@@ -278,6 +278,7 @@ class GradeItemRouteTests(unittest.TestCase):
                 "category": "Homework",
                 "max_score": 100,
                 "weight": 0.3,
+                "item_type": None,
                 "term": "1er Trimestre",
                 "due_date": None,
             },

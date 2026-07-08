@@ -307,7 +307,30 @@
     "skippedStudents": "Skipped (missing grades):",
     "skippedLine": "{{name}} — missing: {{items}}",
     "letterGrade": "Letter",
-    "currentTeacher": "Current teacher"
+    "currentTeacher": "Current teacher",
+    "coefficient": "Coefficient",
+    "coefficientHint": "Weight for class average calculation (1 = standard)",
+    "benineseMode": "Beninese grading (collège — Moy Int → MCC → Moy)",
+    "addInterro": "Add Interro",
+    "addDevoir": "Add Devoir",
+    "addComposition": "Add Composition",
+    "itemType": "Type",
+    "interroLabel": "Interro",
+    "devoirLabel": "Devoir",
+    "compositionLabel": "Composition",
+    "benineseItemRequired": "Title, max score, item type, and term are required."
+  },
+  "gradeEntry": {
+    "student": "Student",
+    "moyInt": "Moy Int",
+    "mcc": "MCC",
+    "moy": "Moy",
+    "saveGrades": "Save grades",
+    "saving": "Saving…",
+    "saved": "Grades saved.",
+    "saveFailed": "Some grades could not be saved.",
+    "noGradeItems": "This course has no grade items yet.",
+    "noStudents": "No students are enrolled in this course yet."
   },
   "classes": {
     "subtitle": "Create and manage classes per school year and level.",

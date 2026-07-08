@@ -122,6 +122,11 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
                 course_name=course.course_name,
                 average=course.average,
                 letter_grade=course.letter_grade,
+                coefficient=course.coefficient,
+                moy_int=course.moy_int,
+                mcc=course.mcc,
+                devoir_score=course.devoir_score,
+                composition_score=course.composition_score,
             )
             for course in report_card.courses
         ],
@@ -353,6 +358,11 @@ def generate_report_card(
                 course_name=course["course_name"],
                 average=course["average"],
                 letter_grade=course["letter_grade"],
+                coefficient=course["coefficient"],
+                moy_int=course["moy_int"],
+                mcc=course["mcc"],
+                devoir_score=course["devoir_score"],
+                composition_score=course["composition_score"],
             )
         )
 
@@ -683,6 +693,11 @@ def regenerate_report_card(
                 course_name=course["course_name"],
                 average=course["average"],
                 letter_grade=course["letter_grade"],
+                coefficient=course["coefficient"],
+                moy_int=course["moy_int"],
+                mcc=course["mcc"],
+                devoir_score=course["devoir_score"],
+                composition_score=course["composition_score"],
             )
         )
 

@@ -200,6 +200,11 @@ class Course(Base):
     class_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
     )
+    # Beninese Ministry coefficient used to weight this course in the class
+    # average. Defaults to 1 (equal weight, i.e. unchanged behaviour for
+    # non-Beninese or non-college courses). Admin sets it when creating the
+    # course from the subject catalog.
+    coefficient: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
     # A1.9: catalog subject this course was created from. Nullable — free-text
     # courses (and all pre-A1.9 rows) stay null; name stays the operative
     # display column either way.
@@ -247,9 +252,14 @@ class GradeItem(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     course_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("courses.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Nullable for Beninese-mode items (where item_type carries the type info).
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     max_score: Mapped[float] = mapped_column(Float, nullable=False)
-    weight: Mapped[float] = mapped_column(Float, nullable=False)
+    # Null for Beninese-mode items; required for weighted-mode items.
+    weight: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # INTERRO / DEVOIR / COMPOSITION for Beninese-mode courses; null for
+    # weighted-mode items (the pre-existing path).
+    item_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     term: Mapped[str] = mapped_column(String(50), nullable=False)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -304,6 +314,11 @@ class CourseResult(Base):
     # A1.2 switch, "100" for historical results. Nullable at the DB level (added
     # nullable-first); the ORM always supplies a value.
     scale: Mapped[str] = mapped_column(String(10), nullable=True, default="20", server_default="20")
+    # Beninese formula intermediates — null for weighted-mode results.
+    moy_int: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mcc: Mapped[float | None] = mapped_column(Float, nullable=True)
+    devoir_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    composition_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     calculated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -380,6 +395,13 @@ class ReportCardCourse(Base):
     course_name: Mapped[str] = mapped_column(String(200), nullable=False)
     average: Mapped[float] = mapped_column(Float, nullable=False)
     letter_grade: Mapped[str] = mapped_column(String(5), nullable=False)
+    # Snapshot of Course.coefficient at report generation time.
+    coefficient: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
+    # Beninese formula intermediate snapshots — null for non-Beninese courses.
+    moy_int: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mcc: Mapped[float | None] = mapped_column(Float, nullable=True)
+    devoir_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    composition_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True

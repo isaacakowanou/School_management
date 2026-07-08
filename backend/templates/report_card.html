@@ -39,6 +39,9 @@
   /* Compact comments: 2-line boxes, narrow right-aligned signature column. */
   .cmt { height: 26px; }
   .sig { width: 12%; text-align: right; vertical-align: bottom; }
+  /* Beninese grading table: fixed layout, tighter padding than default. */
+  .ben-tbl { table-layout: fixed; }
+  .ben-tbl td, .ben-tbl th { padding: 2px 3px; }
 </style>
 </head>
 <body>
@@ -48,6 +51,16 @@
 {%- macro course_rows(courses) -%}
   {%- for c in courses -%}
   <tr><td>{{ c.course_name }}</td><td class="num">{{ gr(c.letter_grade) }}</td><td>{{ c.appreciation }}</td></tr>
+  {%- endfor -%}
+{%- endmacro -%}
+{%- macro fmt(v) -%}{%- if v is none -%}—{%- else -%}{{ '%.2f'|format(v) }}{%- endif -%}{%- endmacro -%}
+{%- macro beninese_course_rows(courses) -%}
+  {%- for c in courses -%}
+  {%- if c.moy_int is not none -%}
+  <tr><td>{{ c.course_name }}</td><td class="num">{{ fmt(c.moy_int) }}</td><td class="num">{{ fmt(c.devoir_score) }}</td><td class="num">{{ fmt(c.mcc) }}</td><td class="num">{{ fmt(c.composition_score) }}</td><td class="num bold">{{ fmt(c.average) }}</td><td class="num">{{ c.coefficient }}</td><td class="num">{{ gr(c.letter_grade) }}</td></tr>
+  {%- else -%}
+  <tr><td colspan="5">{{ c.course_name }}</td><td></td><td class="num">{{ c.coefficient }}</td><td class="num">{{ gr(c.letter_grade) }}</td></tr>
+  {%- endif -%}
   {%- endfor -%}
 {%- endmacro -%}
 
@@ -96,21 +109,46 @@
 <!-- 5. Main body: academics | conduct | work habits -->
 <table class="noborder block grid"><tr>
   <td class="noborder" style="width: 55%; padding-right: 4px;">
-    <table>
-      <tr><th style="width: 58%;">Subject / Matière</th><th>Grade</th><th>Appreciation</th></tr>
+    {%- set ns = namespace(has_beninese_fr=false) -%}
+    {%- for c in r.courses_by_language.french_courses -%}{%- if c.moy_int is not none -%}{%- set ns.has_beninese_fr = true -%}{%- endif -%}{%- endfor -%}
+    {% if ns.has_beninese_fr %}
       {% if r.courses_by_language.french_courses %}
-        <tr><td class="section-title" colspan="3">FRANÇAIS / FRENCH</td></tr>
-        {{ course_rows(r.courses_by_language.french_courses) }}
+      <table class="ben-tbl">
+        <tr><td class="section-title" colspan="8">FRANÇAIS / FRENCH</td></tr>
+        <tr><th style="width:33%;">Matière / Subject</th><th class="num small">Moy Int</th><th class="num small">Dev</th><th class="num small">MCC</th><th class="num small">Comp</th><th class="num small bold">Moy</th><th class="num small">Coef</th><th class="num small">Grade</th></tr>
+        {{ beninese_course_rows(r.courses_by_language.french_courses) }}
+      </table>
       {% endif %}
-      {% if r.courses_by_language.english_courses %}
-        <tr><td class="section-title" colspan="3">ENGLISH / ANGLAIS</td></tr>
-        {{ course_rows(r.courses_by_language.english_courses) }}
+      {% if r.courses_by_language.english_courses or r.courses_by_language.untagged_courses %}
+      <table style="margin-top: 2px;">
+        <tr><th style="width: 58%;">Subject / Matière</th><th>Grade</th><th>Appreciation</th></tr>
+        {% if r.courses_by_language.english_courses %}
+          <tr><td class="section-title" colspan="3">ENGLISH / ANGLAIS</td></tr>
+          {{ course_rows(r.courses_by_language.english_courses) }}
+        {% endif %}
+        {% if r.courses_by_language.untagged_courses %}
+          <tr><td class="section-title" colspan="3">OTHER / AUTRES</td></tr>
+          {{ course_rows(r.courses_by_language.untagged_courses) }}
+        {% endif %}
+      </table>
       {% endif %}
-      {% if r.courses_by_language.untagged_courses %}
-        <tr><td class="section-title" colspan="3">OTHER / AUTRES</td></tr>
-        {{ course_rows(r.courses_by_language.untagged_courses) }}
-      {% endif %}
-    </table>
+    {% else %}
+      <table>
+        <tr><th style="width: 58%;">Subject / Matière</th><th>Grade</th><th>Appreciation</th></tr>
+        {% if r.courses_by_language.french_courses %}
+          <tr><td class="section-title" colspan="3">FRANÇAIS / FRENCH</td></tr>
+          {{ course_rows(r.courses_by_language.french_courses) }}
+        {% endif %}
+        {% if r.courses_by_language.english_courses %}
+          <tr><td class="section-title" colspan="3">ENGLISH / ANGLAIS</td></tr>
+          {{ course_rows(r.courses_by_language.english_courses) }}
+        {% endif %}
+        {% if r.courses_by_language.untagged_courses %}
+          <tr><td class="section-title" colspan="3">OTHER / AUTRES</td></tr>
+          {{ course_rows(r.courses_by_language.untagged_courses) }}
+        {% endif %}
+      </table>
+    {% endif %}
   </td>
   <td class="noborder" style="width: 22.5%; padding-right: 4px;">
     <table class="cwt">

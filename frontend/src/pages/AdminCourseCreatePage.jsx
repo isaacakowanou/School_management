@@ -23,6 +23,7 @@ const EMPTY_FORM = {
   languageGroup: '',
   classId: '',
   subjectId: '',
+  coefficient: '1',
 }
 
 const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
@@ -252,6 +253,20 @@ export default function AdminCourseCreatePage() {
               onChange={(value) => updateField('classId', value)}
               disabled={saving}
             />
+          </label>
+
+          <label className="field">
+            <span>{t('courses.coefficient')}</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={form.coefficient}
+              onChange={(event) => updateField('coefficient', event.target.value)}
+              disabled={saving}
+              required
+            />
+            <span className="muted">{t('courses.coefficientHint')}</span>
           </label>
 
           <datalist id="course-school-year-options">

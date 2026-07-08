@@ -307,7 +307,30 @@
     "skippedStudents": "Ignoré(s) (notes manquantes) :",
     "skippedLine": "{{name}} — manquant : {{items}}",
     "letterGrade": "Mention",
-    "currentTeacher": "Enseignant actuel"
+    "currentTeacher": "Enseignant actuel",
+    "coefficient": "Coefficient",
+    "coefficientHint": "Coefficient de pondération pour la moyenne de classe (1 = standard)",
+    "benineseMode": "Notation béninoise (collège — Moy Int → MCC → Moy)",
+    "addInterro": "Ajouter une interro",
+    "addDevoir": "Ajouter un devoir",
+    "addComposition": "Ajouter une composition",
+    "itemType": "Type",
+    "interroLabel": "Interro",
+    "devoirLabel": "Devoir",
+    "compositionLabel": "Composition",
+    "benineseItemRequired": "Le titre, le score max, le type d'évaluation et le trimestre sont requis."
+  },
+  "gradeEntry": {
+    "student": "Élève",
+    "moyInt": "Moy Int",
+    "mcc": "MCC",
+    "moy": "Moy",
+    "saveGrades": "Enregistrer les notes",
+    "saving": "Enregistrement…",
+    "saved": "Notes enregistrées.",
+    "saveFailed": "Certaines notes n'ont pas pu être enregistrées.",
+    "noGradeItems": "Ce cours n'a pas encore d'éléments de notes.",
+    "noStudents": "Aucun élève n'est encore inscrit dans ce cours."
   },
   "classes": {
     "subtitle": "Créez et gérez les classes par année scolaire et niveau.",

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createGrade, updateGrade } from '../api/grades.js'
 import Empty from './Empty.jsx'
 
@@ -27,7 +28,31 @@ function isUnchanged(draftValue, existing) {
   return Number(trimmed) === Number(existing.score)
 }
 
-export default function GradeEntryTable({ students, gradeItems, grades, onSaved }) {
+const TYPE_ORDER = { INTERRO: 0, DEVOIR: 1, COMPOSITION: 2 }
+
+export default function GradeEntryTable({ students, gradeItems, grades, onSaved, gradingMode = 'WEIGHTED' }) {
+  const { t } = useTranslation()
+  const isBeninese = gradingMode === 'BENINESE'
+
+  // In Beninese mode: sort interros first, then devoir, then composition.
+  const orderedGradeItems = useMemo(() => {
+    if (!isBeninese) return gradeItems
+    return [...gradeItems].sort((a, b) => (TYPE_ORDER[a.item_type] ?? 3) - (TYPE_ORDER[b.item_type] ?? 3))
+  }, [gradeItems, isBeninese])
+
+  const interros = useMemo(
+    () => (isBeninese ? orderedGradeItems.filter((i) => i.item_type === 'INTERRO') : []),
+    [orderedGradeItems, isBeninese],
+  )
+  const devoir = useMemo(
+    () => (isBeninese ? (orderedGradeItems.find((i) => i.item_type === 'DEVOIR') ?? null) : null),
+    [orderedGradeItems, isBeninese],
+  )
+  const composition = useMemo(
+    () => (isBeninese ? (orderedGradeItems.find((i) => i.item_type === 'COMPOSITION') ?? null) : null),
+    [orderedGradeItems, isBeninese],
+  )
+
   const gradeByCell = useMemo(() => {
     const map = {}
     for (const grade of grades) {
@@ -39,14 +64,14 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved 
   const initialDrafts = useMemo(() => {
     const drafts = {}
     for (const student of students) {
-      for (const item of gradeItems) {
+      for (const item of orderedGradeItems) {
         const key = cellKey(student.id, item.id)
         const existing = gradeByCell[key]
         drafts[key] = existing ? String(existing.score) : ''
       }
     }
     return drafts
-  }, [students, gradeItems, gradeByCell])
+  }, [students, orderedGradeItems, gradeByCell])
 
   const [drafts, setDrafts] = useState(initialDrafts)
   const [cellErrors, setCellErrors] = useState({})
@@ -59,15 +84,50 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved 
     setCellErrors({})
   }, [initialDrafts])
 
-  if (gradeItems.length === 0) {
-    return <Empty message="This course has no grade items yet." />
+  if (orderedGradeItems.length === 0) {
+    return <Empty message={t('gradeEntry.noGradeItems')} />
   }
   if (students.length === 0) {
-    return <Empty message="No students are enrolled in this course yet." />
+    return <Empty message={t('gradeEntry.noStudents')} />
   }
 
   function setCell(key, value) {
     setDrafts((prev) => ({ ...prev, [key]: value }))
+  }
+
+  // Compute Beninese intermediates for one student from current draft values.
+  // Moy Int requires ALL interros to be filled; MCC requires Moy Int + Devoir;
+  // Moy requires MCC + Composition. Returns formatted strings or '—'.
+  function computeBeninese(studentId) {
+    const norms = []
+    let allFilled = interros.length > 0
+    for (const item of interros) {
+      const v = (drafts[cellKey(studentId, item.id)] ?? '').trim()
+      if (v === '') { allFilled = false; break }
+      const n = Number(v)
+      if (!Number.isFinite(n) || n < 0 || n > item.max_score) { allFilled = false; break }
+      norms.push((n / item.max_score) * 20)
+    }
+    const moyIntVal = allFilled ? norms.reduce((s, v) => s + v, 0) / norms.length : null
+
+    function normItem(item) {
+      if (!item) return null
+      const v = (drafts[cellKey(studentId, item.id)] ?? '').trim()
+      if (v === '') return null
+      const n = Number(v)
+      return Number.isFinite(n) && n >= 0 && n <= item.max_score ? (n / item.max_score) * 20 : null
+    }
+
+    const devoirNorm = normItem(devoir)
+    const mccVal = moyIntVal !== null && devoirNorm !== null ? (moyIntVal + devoirNorm) / 2 : null
+    const compNorm = normItem(composition)
+    const moyVal = mccVal !== null && compNorm !== null ? (mccVal + compNorm) / 2 : null
+
+    return {
+      moy_int: moyIntVal != null ? moyIntVal.toFixed(2) : '—',
+      mcc: mccVal != null ? mccVal.toFixed(2) : '—',
+      moy: moyVal != null ? moyVal.toFixed(2) : '—',
+    }
   }
 
   async function handleSave() {
@@ -79,7 +139,7 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved 
     let failed = 0
 
     for (const student of students) {
-      for (const item of gradeItems) {
+      for (const item of orderedGradeItems) {
         const key = cellKey(student.id, item.id)
         const draftValue = drafts[key] ?? ''
         const existing = gradeByCell[key]
@@ -120,54 +180,63 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved 
         <table className="table grade-matrix">
           <thead>
             <tr>
-              <th>Student</th>
-              {gradeItems.map((item) => (
+              <th>{t('gradeEntry.student')}</th>
+              {orderedGradeItems.map((item) => (
                 <th key={item.id} className="num">
                   {item.title}
                   <span className="grade-max">/ {item.max_score}</span>
                 </th>
               ))}
+              {isBeninese && <th className="num">{t('gradeEntry.moyInt')}</th>}
+              {isBeninese && <th className="num">{t('gradeEntry.mcc')}</th>}
+              {isBeninese && <th className="num">{t('gradeEntry.moy')}</th>}
             </tr>
           </thead>
           <tbody>
-            {students.map((student) => (
-              <tr key={student.id}>
-                <td className="nowrap">
-                  {student.last_name}, {student.first_name}
-                </td>
-                {gradeItems.map((item) => {
-                  const key = cellKey(student.id, item.id)
-                  const error = cellErrors[key]
-                  return (
-                    <td key={item.id} className="num grade-cell">
-                      <input
-                        className={`grade-input${error ? ' grade-input-error' : ''}`}
-                        type="number"
-                        min="0"
-                        max={item.max_score}
-                        step="any"
-                        value={drafts[key] ?? ''}
-                        onChange={(e) => setCell(key, e.target.value)}
-                        disabled={saving}
-                        aria-label={`${student.last_name} ${student.first_name} — ${item.title}`}
-                      />
-                      {error && <div className="grade-cell-error">{error}</div>}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
+            {students.map((student) => {
+              const ben = isBeninese ? computeBeninese(student.id) : null
+              return (
+                <tr key={student.id}>
+                  <td className="nowrap">
+                    {student.last_name}, {student.first_name}
+                  </td>
+                  {orderedGradeItems.map((item) => {
+                    const key = cellKey(student.id, item.id)
+                    const error = cellErrors[key]
+                    return (
+                      <td key={item.id} className="num grade-cell">
+                        <input
+                          className={`grade-input${error ? ' grade-input-error' : ''}`}
+                          type="number"
+                          min="0"
+                          max={item.max_score}
+                          step="any"
+                          value={drafts[key] ?? ''}
+                          onChange={(e) => setCell(key, e.target.value)}
+                          disabled={saving}
+                          aria-label={`${student.last_name} ${student.first_name} — ${item.title}`}
+                        />
+                        {error && <div className="grade-cell-error">{error}</div>}
+                      </td>
+                    )
+                  })}
+                  {isBeninese && <td className="num">{ben.moy_int}</td>}
+                  {isBeninese && <td className="num">{ben.mcc}</td>}
+                  {isBeninese && <td className="num">{ben.moy}</td>}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
 
       <div className="grade-actions">
         <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving…' : 'Save grades'}
+          {saving ? t('gradeEntry.saving') : t('gradeEntry.saveGrades')}
         </button>
         {summary && (
           <span className={`grade-summary${summary.failed ? ' grade-summary-warn' : ''}`}>
-            {summary.failed ? 'Some grades could not be saved.' : 'Grades saved.'}
+            {summary.failed ? t('gradeEntry.saveFailed') : t('gradeEntry.saved')}
           </span>
         )}
       </div>

@@ -1,0 +1,95 @@
+{
+  "note": "Coefficients extracted from Isaac Akowanou personal transcripts, Collège Les Palmiers, Cotonou. GGFK uses same Beninese Ministry system.",
+  "grading_formula": {
+    "description": "Beninese collège French-section grading formula",
+    "steps": [
+      "Moy_Int = average of all Interros (class quizzes, any number)",
+      "MCC (Moyenne de Contrôle Continu) = (Moy_Int + Devoir) / 2",
+      "Moy (final course average) = (MCC + Composition) / 2",
+      "Class average = SUM(Moy * Coef) / SUM(Coef)"
+    ],
+    "applies_to": "Collège French-section courses (language_group = FRENCH, class level = college)",
+    "does_not_apply_to": "English-section courses, Maternelle, Primaire — these keep free weighted grade items"
+  },
+  "coefficients_by_class": {
+    "6eme": {
+      "confirmed": true,
+      "total": 11,
+      "note": "All subjects coefficient 1 — no differentiation",
+      "subjects": {
+        "Communication écrite": 1, "Lecture": 1, "Anglais": 1,
+        "Histoire-Géographie": 1, "Maths": 1, "PCT": 1, "SVT": 1,
+        "ECM": 1, "Informatique": 1, "EPS": 1, "Conduite": 1
+      }
+    },
+    "5eme": {
+      "confirmed": true,
+      "total": 10,
+      "note": "All subjects coefficient 1 — no differentiation",
+      "subjects": {
+        "Communication écrite": 1, "Lecture": 1, "Anglais": 1,
+        "Histoire-Géographie": 1, "Maths": 1, "PCT": 1, "SVT": 1,
+        "ECM": 1, "Informatique": 1, "Conduite": 1
+      }
+    },
+    "4eme": {
+      "confirmed": true,
+      "total": 21,
+      "note": "Coefficients start here. Espagnol and Allemand as optional languages (coef 2 each).",
+      "subjects": {
+        "Communication écrite": 2, "Lecture": 2, "Anglais": 2,
+        "Allemand": 2, "Histoire-Géographie": 2, "Espagnol": 2,
+        "Maths": 3, "PCT": 2, "SVT": 2, "EPS": 1, "Conduite": 1
+      }
+    },
+    "3eme": {
+      "confirmed": true,
+      "total": 17,
+      "subjects": {
+        "Communication écrite": 2, "Lecture": 2, "Anglais": 2,
+        "Histoire-Géographie": 2, "Maths": 3, "PCT": 2, "SVT": 2,
+        "EPS": 1, "Conduite": 1
+      }
+    },
+    "2nde_D": {
+      "confirmed": true,
+      "total": 18,
+      "note": "Série D (biology track) — sciences all coef 3",
+      "subjects": {
+        "Français": 2, "Anglais": 2, "Histoire-Géographie": 2,
+        "Philosophie": 2, "Maths": 3, "PCT": 3, "SVT": 3,
+        "EPS": 1, "Conduite": 1
+      }
+    },
+    "2nde_C": {
+      "confirmed": true,
+      "total": 18,
+      "note": "Série C assumed same total as D but Maths higher — verify with mom",
+      "subjects": {
+        "Français": 2, "Anglais": 2, "Histoire-Géographie": 2,
+        "Philosophie": 2, "Maths": 4, "PCT": 3, "SVT": 2,
+        "EPS": 1, "Conduite": 1
+      }
+    },
+    "1ere_C_and_Tle_C": {
+      "confirmed": true,
+      "total": 23,
+      "note": "1ère C and Terminale C identical. Série C = Math/Physics focus.",
+      "subjects": {
+        "Français": 2, "Anglais": 2, "Histoire-Géographie": 2,
+        "Philosophie": 2, "Maths": 6, "PCT": 5, "SVT": 2,
+        "EPS": 1, "Conduite": 1
+      }
+    },
+    "1ere_D_and_Tle_D": {
+      "confirmed": false,
+      "total": 23,
+      "note": "1ère D and Terminale D — Série D = Biology focus. Assumed from 2nde D pattern, verify with mom.",
+      "subjects": {
+        "Français": 2, "Anglais": 2, "Histoire-Géographie": 2,
+        "Philosophie": 2, "Maths": 4, "PCT": 4, "SVT": 5,
+        "EPS": 1, "Conduite": 1
+      }
+    }
+  }
+}

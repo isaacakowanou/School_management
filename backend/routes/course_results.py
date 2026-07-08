@@ -75,9 +75,12 @@ def get_teacher_course_ids(db: Session, current_user: User) -> list[UUID]:
     return list(db.scalars(select(Course.id).where(Course.teacher_id == teacher.id, Course.deleted_at.is_(None))).all())
 
 
-def validate_course_grade_items(grade_items: list[GradeItem], beninese: bool) -> None:
+def validate_course_grade_items(grade_items: list[GradeItem], beninese: bool, term: str) -> None:
     if not grade_items:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Course has no grade items")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Course has no grade items for {term}",
+        )
 
     if beninese:
         interros = [item for item in grade_items if item.item_type == "INTERRO"]
@@ -86,17 +89,17 @@ def validate_course_grade_items(grade_items: list[GradeItem], beninese: bool) ->
         if not interros:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Beninese-mode course has no Interro grade items",
+                detail=f"Beninese-mode course has no Interro grade items for {term}",
             )
         if len(devoirs) != 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Beninese-mode course must have exactly one Devoir",
+                detail=f"Beninese-mode course must have exactly one Devoir for {term}",
             )
         if len(compositions) != 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Beninese-mode course must have exactly one Composition",
+                detail=f"Beninese-mode course must have exactly one Composition for {term}",
             )
     else:
         try:
@@ -115,12 +118,19 @@ def validate_course_grade_items(grade_items: list[GradeItem], beninese: bool) ->
 
 
 def get_course_grade_items(db: Session, course: Course) -> list[GradeItem]:
+    # Term-scoped: results are stored under course.term, so only that term's
+    # grade items may feed the average. Items tagged for another trimester
+    # (prepared in advance, or left over after the term advanced) are excluded.
     grade_items = db.scalars(
         select(GradeItem)
-        .where(GradeItem.course_id == course.id, GradeItem.deleted_at.is_(None))
+        .where(
+            GradeItem.course_id == course.id,
+            GradeItem.term == course.term,
+            GradeItem.deleted_at.is_(None),
+        )
         .order_by(GradeItem.created_at)
     ).all()
-    validate_course_grade_items(list(grade_items), is_beninese_mode(course))
+    validate_course_grade_items(list(grade_items), is_beninese_mode(course), course.term)
     return list(grade_items)
 
 

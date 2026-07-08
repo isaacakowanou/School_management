@@ -321,10 +321,15 @@ export default function TeacherCourseDetailPage() {
     course?.language_group === 'FRENCH' && course?.class_school_level === 'college'
   )
 
-  const hasDevoir = gradeItemList.some((i) => i.item_type === 'DEVOIR')
-  const hasComposition = gradeItemList.some((i) => i.item_type === 'COMPOSITION')
+  // Term-scoped: results are calculated from the course's current term only,
+  // so the entry matrix, the one-Devoir/one-Composition rule, and the weight
+  // summary all look at this term's items (the list table shows every term).
+  const currentTermItems = gradeItemList.filter((i) => i.term === course?.term)
 
-  const totalWeight = gradeItemList.reduce((sum, item) => sum + Number(item.weight || 0), 0)
+  const hasDevoir = currentTermItems.some((i) => i.item_type === 'DEVOIR')
+  const hasComposition = currentTermItems.some((i) => i.item_type === 'COMPOSITION')
+
+  const totalWeight = currentTermItems.reduce((sum, item) => sum + Number(item.weight || 0), 0)
   const isWeightReady = Math.abs(totalWeight - 1) <= WEIGHT_TOLERANCE
   const weightSummary = isWeightReady
     ? t('courses.weightReady', { total: formatWeight(totalWeight) })
@@ -696,7 +701,7 @@ export default function TeacherCourseDetailPage() {
           <h3 className="section-title">{t('courses.gradeEntry')}</h3>
           <GradeEntryTable
             students={students}
-            gradeItems={gradeItems}
+            gradeItems={currentTermItems}
             grades={grades}
             onSaved={handleGradesSaved}
             gradingMode={isBenineseMode ? 'BENINESE' : 'WEIGHTED'}

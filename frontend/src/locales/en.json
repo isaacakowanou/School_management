@@ -16,6 +16,8 @@
     "open": "Open →",
     "notSet": "Not set",
     "actionFailed": "Action failed.",
+    "notifyEmailFailed": "The account email could not be sent. Share the temporary password with them directly.",
+    "notifySmsFailed": "The account SMS could not be sent. Share the temporary password with them directly.",
     "optional": "Optional",
     "relationship": "Relationship",
     "schoolYear": "School year",

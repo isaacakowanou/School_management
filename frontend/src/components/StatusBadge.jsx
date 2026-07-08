@@ -1,10 +1,14 @@
+import { useTranslation } from 'react-i18next'
+
 // Parents only ever receive approved/sent reports, but admins also see drafts.
-const LABELS = {
-  draft: 'Draft',
-  approved: 'Approved',
-  sent: 'Sent',
+const LABEL_KEYS = {
+  draft: 'reports.statusDraft',
+  approved: 'reports.statusApproved',
+  sent: 'reports.statusSent',
 }
 
 export default function StatusBadge({ status }) {
-  return <span className={`badge badge-${status}`}>{LABELS[status] ?? status}</span>
+  const { t } = useTranslation()
+  const key = LABEL_KEYS[status]
+  return <span className={`badge badge-${status}`}>{key ? t(key) : status}</span>
 }

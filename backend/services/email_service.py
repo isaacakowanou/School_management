@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Course, Grade, GradeItem, Parent, ReportCard, Student, StudentParent
+from models import Course, Parent, ReportCard, Student, StudentParent
 
 
 SUPPORTED_EMAIL_PROVIDERS = {"resend", "smtp"}
@@ -48,6 +48,20 @@ def _select_email_provider() -> str:
     return "resend"
 
 
+def _warn_if_sandbox_sender(email_from: str) -> None:
+    # Resend's onboarding sender only delivers to the account owner's own
+    # inbox — parents receive nothing. A verified school-domain sender
+    # (EMAIL_FROM=notifications@<school-domain>) is required in production.
+    if email_from.lower().endswith("@resend.dev"):
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "EMAIL_FROM is a resend.dev sandbox address (%s): emails will only "
+            "reach the Resend account owner. Configure a verified school domain.",
+            email_from,
+        )
+
+
 def _get_email_config() -> dict:
     provider = _select_email_provider()
     app_base_url = _clean_env("APP_BASE_URL")
@@ -71,6 +85,7 @@ def _get_email_config() -> dict:
         ]
         if missing:
             raise _missing_config_error(missing)
+        _warn_if_sandbox_sender(config["email_from"])
         return config
 
     config = {
@@ -302,31 +317,29 @@ def _build_grades_email_body(
     student_name: str,
     course_name: str,
     term: str,
-    grade_lines: list[str],
     app_base_url: str,
 ) -> str:
-    lines_block = "\n".join(f"  {line}" for line in grade_lines) if grade_lines else "  —"
+    # Deliberately contains NO scores: grades are sensitive academic records
+    # and email is neither access-controlled nor reliably confidential. The
+    # parent logs in to see the actual notes (same pattern as the
+    # report-available email).
     portal = app_base_url.rstrip("/")
     return "\n".join(
         [
             f"Cher(e) {parent_name},",
             "",
-            f"Les notes de {student_name} ont été mises à jour pour le cours {course_name} ({term}).",
+            f"De nouvelles notes ont été enregistrées pour {student_name} dans le cours {course_name} ({term}).",
             "",
-            lines_block,
-            "",
-            "Connectez-vous pour voir le bulletin complet :",
+            "Connectez-vous à votre espace parent pour les consulter :",
             portal,
             "",
             "---",
             "",
             f"Dear {parent_name},",
             "",
-            f"Grades for {student_name} have been updated for the course {course_name} ({term}).",
+            f"New grades have been recorded for {student_name} in the course {course_name} ({term}).",
             "",
-            lines_block,
-            "",
-            "Log in to view the full report:",
+            "Log in to your parent portal to view them:",
             portal,
             "",
             "Best regards,",
@@ -341,14 +354,13 @@ def send_grade_notification_email(
     student_name: str,
     course_name: str,
     term: str,
-    grade_lines: list[str],
     config: dict | None = None,
 ) -> dict:
     config = config or _get_email_config()
     provider = config["provider"]
     subject = f"Nouvelles notes de {student_name} — {course_name}"
     body = _build_grades_email_body(
-        parent_name, student_name, course_name, term, grade_lines, config["app_base_url"]
+        parent_name, student_name, course_name, term, config["app_base_url"]
     )
     secrets = _config_secrets(config)
     clean_to_email = (to_email or "").strip()
@@ -401,22 +413,6 @@ def send_grades_notification(db: Session, course: Course, student: Student) -> l
         logging.getLogger(__name__).warning("Email config missing, skipping grade notification: %s", exc)
         return []
 
-    grades = db.scalars(
-        select(Grade)
-        .join(Grade.grade_item)
-        .where(
-            GradeItem.course_id == course.id,
-            GradeItem.deleted_at.is_(None),
-            Grade.student_id == student.id,
-            Grade.deleted_at.is_(None),
-        )
-        .order_by(GradeItem.title)
-    ).all()
-
-    grade_lines = [
-        f"{g.grade_item.title} : {g.score}/{g.grade_item.max_score}"
-        for g in grades
-    ]
     student_name = f"{student.first_name} {student.last_name}"
 
     parents = db.scalars(
@@ -441,7 +437,6 @@ def send_grades_notification(db: Session, course: Course, student: Student) -> l
                     student_name,
                     course.name,
                     course.term,
-                    grade_lines,
                     config=email_config,
                 )
             )

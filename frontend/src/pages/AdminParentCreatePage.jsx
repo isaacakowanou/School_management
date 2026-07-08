@@ -35,7 +35,13 @@ export default function AdminParentCreatePage() {
     setSaving(true)
     try {
       const data = await createParent(form)
-      setCreated({ name: data.name, email: data.email, tempPassword: data.temp_password })
+      setCreated({
+        name: data.name,
+        email: data.email,
+        tempPassword: data.temp_password,
+        emailSent: data.email_sent,
+        smsSent: data.sms_sent,
+      })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -86,6 +92,9 @@ export default function AdminParentCreatePage() {
           <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
             {t('parents.firstLoginHint')}
           </p>
+
+          {created.emailSent === false && <ErrorBanner message={t('common.notifyEmailFailed')} />}
+          {created.smsSent === false && <ErrorBanner message={t('common.notifySmsFailed')} />}
 
           <div className="grade-actions" style={{ marginTop: '1.5rem' }}>
             <button

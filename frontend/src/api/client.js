@@ -33,6 +33,20 @@ function authHeaders(extra = {}) {
   return headers
 }
 
+// FastAPI error details come in three shapes: a plain string (HTTPException),
+// a list of {loc, msg, ...} objects (Pydantic validation), or an object with
+// a message field (structured 409s). Surface a readable message for each so
+// users never see a bare "Request failed (422)".
+function errorMessage(detail, status) {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    const msg = detail[0]?.msg
+    if (typeof msg === 'string') return msg.replace(/^Value error, /, '')
+  }
+  if (detail && typeof detail.message === 'string') return detail.message
+  return `Request failed (${status})`
+}
+
 async function parseError(response) {
   let detail = null
   try {
@@ -41,8 +55,7 @@ async function parseError(response) {
   } catch {
     detail = null
   }
-  const message = typeof detail === 'string' ? detail : `Request failed (${response.status})`
-  return new ApiError(response.status, message, detail)
+  return new ApiError(response.status, errorMessage(detail, response.status), detail)
 }
 
 async function rawFetch(path, options) {

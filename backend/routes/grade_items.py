@@ -135,17 +135,20 @@ def create_grade_item(
         item_type = payload.item_type.value
 
         if payload.item_type in (GradeItemType.DEVOIR, GradeItemType.COMPOSITION):
+            # One Devoir / one Composition per trimester (not per course): the
+            # course spans the year and each trimester gets its own set.
             existing = db.scalar(
                 select(GradeItem).where(
                     GradeItem.course_id == course.id,
                     GradeItem.item_type == payload.item_type.value,
+                    GradeItem.term == term,
                     GradeItem.deleted_at.is_(None),
                 )
             )
             if existing is not None:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"This course already has a {payload.item_type.value}. Only one is allowed per course.",
+                    detail=f"This course already has a {payload.item_type.value} for {term}. Only one is allowed per term.",
                 )
     else:
         if payload.item_type is not None:
@@ -230,7 +233,24 @@ def update_grade_item(
         grade_item.max_score = payload.max_score
     if not beninese and payload.weight is not None:
         grade_item.weight = payload.weight
-    if payload.term is not None:
+    if payload.term is not None and payload.term.value != grade_item.term:
+        # Moving a Devoir/Composition into a term that already has one would
+        # break the one-per-term rule the create path enforces.
+        if grade_item.item_type in (GradeItemType.DEVOIR.value, GradeItemType.COMPOSITION.value):
+            existing = db.scalar(
+                select(GradeItem).where(
+                    GradeItem.course_id == grade_item.course_id,
+                    GradeItem.item_type == grade_item.item_type,
+                    GradeItem.term == payload.term.value,
+                    GradeItem.id != grade_item.id,
+                    GradeItem.deleted_at.is_(None),
+                )
+            )
+            if existing is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"This course already has a {grade_item.item_type} for {payload.term.value}. Only one is allowed per term.",
+                )
         grade_item.term = payload.term.value
     if "due_date" in updated_fields:
         grade_item.due_date = payload.due_date

@@ -16,6 +16,8 @@
     "open": "Ouvrir →",
     "notSet": "Non défini",
     "actionFailed": "Action échouée.",
+    "notifyEmailFailed": "L'e-mail de création de compte n'a pas pu être envoyé. Communiquez-leur directement le mot de passe temporaire.",
+    "notifySmsFailed": "Le SMS de création de compte n'a pas pu être envoyé. Communiquez-leur directement le mot de passe temporaire.",
     "optional": "Facultatif",
     "relationship": "Relation",
     "schoolYear": "Année scolaire",

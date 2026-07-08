@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 def _validate_password_strength(value: str) -> str:
@@ -312,6 +312,11 @@ class ParentResponse(BaseModel):
 
 class ParentCreateResponse(ParentResponse):
     temp_password: str
+    # Whether the account-created notification went out. None = not attempted
+    # (no email/phone on the account); False = attempted but failed, so the
+    # admin must hand the temp password over directly.
+    email_sent: bool | None = None
+    sms_sent: bool | None = None
 
 
 class TeacherCreate(BaseModel):
@@ -339,6 +344,10 @@ class TeacherResponse(BaseModel):
 
 class TeacherCreateResponse(TeacherResponse):
     temp_password: str
+    # Same semantics as ParentCreateResponse: None = not attempted,
+    # False = attempted but failed (admin must share the password directly).
+    email_sent: bool | None = None
+    sms_sent: bool | None = None
 
 
 class CourseResponse(BaseModel):
@@ -367,7 +376,9 @@ class CourseCreate(BaseModel):
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
     subject_id: UUID | None = None
-    coefficient: int = 1
+    # ge=1: a zero coefficient silently drops the course from the class
+    # average and a negative one corrupts it.
+    coefficient: int = Field(default=1, ge=1)
 
 
 class CourseUpdate(BaseModel):
@@ -379,7 +390,7 @@ class CourseUpdate(BaseModel):
     language_group: LanguageGroup | None = None
     class_id: UUID | None = None
     subject_id: UUID | None = None
-    coefficient: int | None = None
+    coefficient: int | None = Field(default=None, ge=1)
 
 
 class CourseCloneYearRequest(BaseModel):

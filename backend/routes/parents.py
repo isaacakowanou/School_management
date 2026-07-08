@@ -1,3 +1,4 @@
+import logging
 import secrets
 from datetime import datetime, timezone
 from uuid import UUID
@@ -14,6 +15,9 @@ from schemas import ParentCreate, ParentCreateResponse, ParentResponse, ParentSe
 from services.email_service import send_account_created_email
 from services.sms_service import send_account_created_sms
 from utils import to_student_response
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(tags=["parents"])
@@ -112,16 +116,24 @@ def create_parent(
     db.commit()
     db.refresh(parent)
 
+    # Notification outcome is surfaced to the admin (email_sent / sms_sent)
+    # so a failed send is visible and the temp password gets handed over
+    # directly instead of silently never arriving.
+    email_sent: bool | None = None
+    sms_sent: bool | None = None
     if email:
         try:
-            send_account_created_email(name=name, to_email=email, temp_password=temp_password)
-        except Exception:
-            pass
+            email_sent = bool(send_account_created_email(name=name, to_email=email, temp_password=temp_password).get("success"))
+        except Exception as exc:
+            email_sent = False
+            logger.warning("Account-created email failed for parent %s: %s", parent.id, exc)
     elif phone:
         try:
-            send_account_created_sms(name=name, phone=phone, temp_password=temp_password)
-        except Exception:
-            pass
+            results = send_account_created_sms(name=name, phone=phone, temp_password=temp_password)
+            sms_sent = any(result.get("success") for result in results)
+        except Exception as exc:
+            sms_sent = False
+            logger.warning("Account-created SMS failed for parent %s: %s", parent.id, exc)
 
     return ParentCreateResponse(
         id=parent.id,
@@ -130,6 +142,8 @@ def create_parent(
         email=user.email,
         phone=parent.phone,
         temp_password=temp_password,
+        email_sent=email_sent,
+        sms_sent=sms_sent,
     )
 
 

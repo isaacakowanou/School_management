@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from auth import get_current_user, require_admin
 from audit import create_audit_log
 from constants import CONDUCT_ITEMS, CONDUCT_ITEM_KEYS, WORK_HABIT_ITEMS, WORK_HABIT_ITEM_KEYS
-from database import get_db
+from database import SessionLocal, get_db
 from models import (
+    Class,
     Course,
     CourseResult,
     Parent,
+    PdfJob,
     ReportCard,
     ReportCardCourse,
     ReportConductItem,
@@ -25,6 +27,13 @@ from models import (
 from schemas import (
     AdminReportListItem,
     AdminReportCardResponse,
+    ClassPdfJobResponse,
+    ClassReportBatchApproveResponse,
+    ClassReportBatchGenerateResponse,
+    ClassReportBatchRequest,
+    ClassReportBatchSendResponse,
+    ClassReportStatusResponse,
+    ClassReportStatusRow,
     ReportCardCourseResponse,
     ReportCardResponse,
     ReportCardStalenessResponse,
@@ -35,13 +44,18 @@ from schemas import (
     ReportSendResponse,
 )
 from services.email_service import send_report_notification_to_parents
-from services.pdf_renderer import _build_pdf_filename, render_report_card_pdf_bytes
+from services.pdf_renderer import (
+    _build_pdf_filename,
+    _safe_filename_part,
+    render_class_bulletins_pdf_bytes,
+    render_report_card_pdf_bytes,
+)
 from services.report_builder import (
     build_report_card_data,
     build_report_card_data_from_report_card,
     get_report_card_staleness,
 )
-from utils import get_report_card_or_404
+from utils import get_class_or_404, get_report_card_or_404
 
 
 router = APIRouter(tags=["reports"])
@@ -312,29 +326,19 @@ def _email_error_summary(send_results: list[dict]) -> list[str]:
     return errors[:3]
 
 
-@router.post("/generate/{student_id}", response_model=ReportCardResponse, status_code=status.HTTP_201_CREATED)
-def generate_report_card(
-    student_id: UUID,
-    payload: ReportGenerateRequest,
-    db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
-) -> ReportCardResponse:
-    try:
-        report_data = build_report_card_data(db, student_id, payload.term.value, payload.school_year)
-    except ValueError as exc:
-        detail = str(exc)
-        if detail == "Student not found":
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+def _create_report_card(db: Session, student_id: UUID, term: str, school_year: str) -> ReportCard:
+    """Build and stage a draft report card + course snapshot rows.
 
-    report_data["status"] = "draft"
-    report_data["generated_date"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    report_data["ai_summary"] = None
+    Shared by the single and batch generate routes. Raises ValueError (from
+    build_report_card_data) for missing students or missing course results;
+    flushes but does NOT commit — the caller owns the transaction.
+    """
+    report_data = build_report_card_data(db, student_id, term, school_year)
 
     report_card = ReportCard(
         student_id=student_id,
-        term=payload.term.value,
-        school_year=payload.school_year,
+        term=term,
+        school_year=school_year,
         overall_average=report_data["overall_average"],
         french_average=report_data["french_average"],
         english_average=report_data["english_average"],
@@ -365,10 +369,434 @@ def generate_report_card(
                 composition_score=course["composition_score"],
             )
         )
+    return report_card
+
+
+@router.post("/generate/{student_id}", response_model=ReportCardResponse, status_code=status.HTTP_201_CREATED)
+def generate_report_card(
+    student_id: UUID,
+    payload: ReportGenerateRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ReportCardResponse:
+    try:
+        report_card = _create_report_card(db, student_id, payload.term.value, payload.school_year)
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "Student not found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
 
     db.commit()
     db.refresh(report_card)
     return to_report_card_response(report_card)
+
+
+# --- Conseil de classe: class-scoped status + batch actions -----------------
+# NOTE: these are static paths and must stay declared before the /{report_id}
+# routes further down, or FastAPI tries to parse them as report UUIDs.
+
+
+def _class_students(db: Session, class_id: UUID) -> list[Student]:
+    return list(
+        db.scalars(
+            select(Student)
+            .where(Student.class_id == class_id, Student.deleted_at.is_(None))
+            .order_by(Student.last_name, Student.first_name)
+        ).all()
+    )
+
+
+def _reports_by_student(
+    db: Session, student_ids: list[UUID], term: str, school_year: str
+) -> dict[UUID, ReportCard]:
+    """Latest non-deleted report card per student for (term, school_year)."""
+    if not student_ids:
+        return {}
+    report_cards = db.scalars(
+        select(ReportCard)
+        .where(
+            ReportCard.student_id.in_(student_ids),
+            ReportCard.term == term,
+            ReportCard.school_year == school_year,
+            ReportCard.deleted_at.is_(None),
+        )
+        .order_by(ReportCard.created_at)
+    ).all()
+    by_student: dict[UUID, ReportCard] = {}
+    for report_card in report_cards:
+        by_student[report_card.student_id] = report_card
+    return by_student
+
+
+@router.get("/class-status", response_model=ClassReportStatusResponse)
+def class_report_status(
+    class_id: UUID,
+    school_year: str,
+    term: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ClassReportStatusResponse:
+    school_class = get_class_or_404(db, class_id)
+    students = _class_students(db, class_id)
+    student_ids = [student.id for student in students]
+
+    results_by_student: dict[UUID, int] = {}
+    if student_ids:
+        results_by_student = dict(
+            db.execute(
+                select(CourseResult.student_id, func.count(CourseResult.id))
+                .join(Course, CourseResult.course_id == Course.id)
+                .where(
+                    CourseResult.student_id.in_(student_ids),
+                    CourseResult.term == term,
+                    Course.school_year == school_year,
+                    CourseResult.deleted_at.is_(None),
+                    Course.deleted_at.is_(None),
+                )
+                .group_by(CourseResult.student_id)
+            ).all()
+        )
+
+    reports_by_student = _reports_by_student(db, student_ids, term, school_year)
+    latest_by_key = _latest_course_result_times_by_report_key(db)
+
+    rows = []
+    without_report = 0
+    status_counts = {"draft": 0, "approved": 0, "sent": 0}
+    needs_review_count = 0
+    for student in students:
+        report_card = reports_by_student.get(student.id)
+        needs_review = False
+        if report_card is None:
+            without_report += 1
+        else:
+            status_counts[report_card.status] = status_counts.get(report_card.status, 0) + 1
+            needs_review = _report_needs_review(
+                report_card,
+                latest_by_key.get(_course_result_key(student.id, term, school_year)),
+            )
+            if needs_review:
+                needs_review_count += 1
+        rows.append(
+            ClassReportStatusRow(
+                student_id=student.id,
+                student_name=f"{student.last_name}, {student.first_name}",
+                student_number=student.student_number,
+                results_count=results_by_student.get(student.id, 0),
+                report_id=report_card.id if report_card else None,
+                report_status=report_card.status if report_card else None,
+                overall_average=report_card.overall_average if report_card else None,
+                french_average=report_card.french_average if report_card else None,
+                english_average=report_card.english_average if report_card else None,
+                bilingual_average=report_card.bilingual_average if report_card else None,
+                needs_review=needs_review,
+            )
+        )
+
+    return ClassReportStatusResponse(
+        class_id=class_id,
+        class_name=school_class.name_fr,
+        school_year=school_year,
+        term=term,
+        students=rows,
+        total_students=len(students),
+        without_report_count=without_report,
+        draft_count=status_counts["draft"],
+        approved_count=status_counts["approved"],
+        sent_count=status_counts["sent"],
+        needs_review_count=needs_review_count,
+    )
+
+
+@router.post("/batch-generate", response_model=ClassReportBatchGenerateResponse)
+def batch_generate_reports(
+    payload: ClassReportBatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ClassReportBatchGenerateResponse:
+    """Generate draft report cards for every student of the class who has
+    course results for the term and no report card yet. One transaction —
+    a class generates atomically or not at all."""
+    get_class_or_404(db, payload.class_id)
+    term = payload.term.value
+    students = _class_students(db, payload.class_id)
+    existing = _reports_by_student(db, [s.id for s in students], term, payload.school_year)
+
+    generated_ids = []
+    skipped_existing = 0
+    skipped_no_results = 0
+    for student in students:
+        if student.id in existing:
+            skipped_existing += 1
+            continue
+        try:
+            report_card = _create_report_card(db, student.id, term, payload.school_year)
+        except ValueError:
+            # "Student has no course results for the requested term and school
+            # year" — the only ValueError reachable for an existing student.
+            skipped_no_results += 1
+            continue
+        generated_ids.append(report_card.id)
+
+    if generated_ids:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="reports_batch_generated",
+            entity_type="report_batch",
+            entity_id=payload.class_id,
+            old_value=None,
+            new_value={
+                "class_id": payload.class_id,
+                "school_year": payload.school_year,
+                "term": term,
+                "generated_count": len(generated_ids),
+                "skipped_existing_count": skipped_existing,
+                "skipped_no_results_count": skipped_no_results,
+            },
+        )
+    db.commit()
+
+    return ClassReportBatchGenerateResponse(
+        status="ok",
+        generated_count=len(generated_ids),
+        skipped_existing_count=skipped_existing,
+        skipped_no_results_count=skipped_no_results,
+        report_ids=generated_ids,
+    )
+
+
+@router.post("/batch-approve", response_model=ClassReportBatchApproveResponse)
+def batch_approve_reports(
+    payload: ClassReportBatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ClassReportBatchApproveResponse:
+    """Approve every DRAFT report card of the class for the term.
+
+    Deliberately drafts-only: an approved/sent report flagged needs-review is
+    stale and must be regenerated (which resets it to draft) — batch approval
+    never silently re-blesses stale numbers."""
+    get_class_or_404(db, payload.class_id)
+    term = payload.term.value
+    students = _class_students(db, payload.class_id)
+    reports = _reports_by_student(db, [s.id for s in students], term, payload.school_year)
+
+    approved_at = datetime.now(timezone.utc)
+    approved_ids = []
+    for report_card in reports.values():
+        if report_card.status != "draft":
+            continue
+        report_card.status = "approved"
+        report_card.approved_by_admin_id = current_user.id
+        report_card.approved_at = approved_at
+        approved_ids.append(report_card.id)
+
+    if approved_ids:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="reports_batch_approved",
+            entity_type="report_batch",
+            entity_id=payload.class_id,
+            old_value=None,
+            new_value={
+                "class_id": payload.class_id,
+                "school_year": payload.school_year,
+                "term": term,
+                "approved_count": len(approved_ids),
+                "approved_at": approved_at,
+            },
+        )
+    db.commit()
+
+    return ClassReportBatchApproveResponse(
+        status="ok",
+        approved_count=len(approved_ids),
+        skipped_count=len(reports) - len(approved_ids),
+    )
+
+
+@router.post("/batch-send", response_model=ClassReportBatchSendResponse)
+def batch_send_reports(
+    payload: ClassReportBatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ClassReportBatchSendResponse:
+    """Send every approved/sent report of the class for the term.
+
+    Same policy as the single send: a report is only marked sent when at
+    least one notification actually went out. Per-report failures never
+    abort the batch — they are counted and reported."""
+    get_class_or_404(db, payload.class_id)
+    term = payload.term.value
+    students = _class_students(db, payload.class_id)
+    reports = _reports_by_student(db, [s.id for s in students], term, payload.school_year)
+
+    sent_count = 0
+    failed_count = 0
+    no_recipient_count = 0
+    outcomes = {}
+    sent_at = datetime.now(timezone.utc)
+    for report_card in reports.values():
+        if report_card.status not in {"approved", "sent"}:
+            continue
+        try:
+            send_results = send_report_notification_to_parents(db, report_card.id)
+        except ValueError:
+            # Email/SMS configuration missing — nothing could be attempted.
+            failed_count += 1
+            outcomes[str(report_card.id)] = "failed"
+            continue
+        if not send_results:
+            no_recipient_count += 1
+            outcomes[str(report_card.id)] = "no_recipient"
+            continue
+        if any(result.get("sent") for result in send_results):
+            report_card.status = "sent"
+            report_card.sent_at = sent_at
+            sent_count += 1
+            outcomes[str(report_card.id)] = "sent"
+        else:
+            failed_count += 1
+            outcomes[str(report_card.id)] = "failed"
+
+    if outcomes:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="reports_batch_sent",
+            entity_type="report_batch",
+            entity_id=payload.class_id,
+            old_value=None,
+            new_value={
+                "class_id": payload.class_id,
+                "school_year": payload.school_year,
+                "term": term,
+                "sent_count": sent_count,
+                "failed_count": failed_count,
+                "no_recipient_count": no_recipient_count,
+                "outcomes": outcomes,
+            },
+        )
+    db.commit()
+
+    return ClassReportBatchSendResponse(
+        status="ok",
+        sent_count=sent_count,
+        failed_count=failed_count,
+        no_recipient_count=no_recipient_count,
+    )
+
+
+def _class_pdf_reports(db: Session, class_id: UUID, term: str, school_year: str) -> list[ReportCard]:
+    """Approved/sent reports for the class print run, ordered like the paper
+    class list (student last name, first name)."""
+    return list(
+        db.scalars(
+            select(ReportCard)
+            .join(Student, ReportCard.student_id == Student.id)
+            .where(
+                Student.class_id == class_id,
+                Student.deleted_at.is_(None),
+                ReportCard.term == term,
+                ReportCard.school_year == school_year,
+                ReportCard.status.in_(sorted(PARENT_VISIBLE_STATUSES)),
+                ReportCard.deleted_at.is_(None),
+            )
+            .order_by(Student.last_name, Student.first_name)
+        ).all()
+    )
+
+
+def _run_class_pdf_job(job_id: UUID) -> None:
+    """Background task: render + merge every bulletin of the class.
+
+    Runs after the response is sent, so it opens its own session — the
+    request-scoped one is already closed.
+    """
+    db = SessionLocal()
+    try:
+        job = db.get(PdfJob, job_id)
+        if job is None:
+            return
+        try:
+            report_cards = _class_pdf_reports(db, job.class_id, job.term, job.school_year)
+            report_data_list = [
+                build_report_card_data_from_report_card(db, report_card) for report_card in report_cards
+            ]
+            job.pdf_bytes = render_class_bulletins_pdf_bytes(report_data_list)
+            job.report_count = len(report_data_list)
+            job.status = "done"
+        except Exception as exc:
+            job.status = "failed"
+            job.error = str(exc)[:500] or exc.__class__.__name__
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+    finally:
+        db.close()
+
+
+@router.post("/class-pdf", response_model=ClassPdfJobResponse)
+def create_class_pdf_job(
+    payload: ClassReportBatchRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ClassPdfJobResponse:
+    """Enqueue a merged-PDF render of every approved/sent bulletin in the
+    class. Returns a job id to poll — rendering 40 bulletins outlives the
+    request timeout on the free tier, so it runs as a background task."""
+    get_class_or_404(db, payload.class_id)
+    term = payload.term.value
+    if not _class_pdf_reports(db, payload.class_id, term, payload.school_year):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No approved or sent reports for this class and term",
+        )
+
+    # Opportunistic cleanup: finished/stale jobs older than an hour are dead
+    # weight (their blobs were either downloaded or abandoned).
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+    for old_job in db.scalars(select(PdfJob).where(PdfJob.created_at < cutoff)).all():
+        db.delete(old_job)
+
+    job = PdfJob(class_id=payload.class_id, school_year=payload.school_year, term=term, status="pending")
+    db.add(job)
+    db.commit()
+
+    background_tasks.add_task(_run_class_pdf_job, job.id)
+    return ClassPdfJobResponse(job_id=job.id, status="pending")
+
+
+@router.get("/class-pdf/{job_id}")
+def get_class_pdf_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> Response:
+    """Poll a class-PDF job. JSON while pending/failed; the PDF once done."""
+    job = db.get(PdfJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF job not found")
+
+    if job.status != "done":
+        return Response(
+            content=ClassPdfJobResponse(
+                job_id=job.id, status=job.status, error=job.error, report_count=job.report_count
+            ).model_dump_json(),
+            media_type="application/json",
+        )
+
+    school_class = db.get(Class, job.class_id)
+    class_part = _safe_filename_part(school_class.name_fr if school_class else "classe")
+    filename = f"{class_part}_{_safe_filename_part(job.term)}_{_safe_filename_part(job.school_year)}_bulletins.pdf"
+    return Response(
+        content=job.pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("", response_model=list[AdminReportListItem])

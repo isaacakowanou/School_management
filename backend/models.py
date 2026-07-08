@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship as orm_relationship
 from sqlalchemy.types import Uuid
 
@@ -479,6 +479,30 @@ class DeletionBatch(Base):
     restored_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     restored_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
     counts_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class PdfJob(Base):
+    """Background class-PDF render job (Conseil de classe print run).
+
+    The merged PDF bytes live in the row: deployment-safe on Render (survives
+    restarts and multi-instance routing within the polling window, unlike the
+    ephemeral disk). Jobs are short-lived — creating a new job deletes rows
+    older than an hour, so the table never accumulates blobs.
+    """
+
+    __tablename__ = "pdf_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    class_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("classes.id"), nullable=False)
+    school_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    term: Mapped[str] = mapped_column(String(50), nullable=False)
+    # pending -> done | failed
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pdf_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    report_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class AuditLog(Base):

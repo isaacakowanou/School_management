@@ -406,6 +406,43 @@ class CourseCloneYearResponse(BaseModel):
     unmatched_class_names: list[str]
 
 
+class TermAdvanceRequest(BaseModel):
+    school_year: str
+    target_term: TrimesterTerm
+
+
+class TermAdvanceCoursePreview(BaseModel):
+    course_id: UUID
+    code: str
+    name: str
+    current_term: str
+    already_on_target: bool
+    enrolled_count: int
+    # CourseResults calculated for the course's CURRENT term (the one being
+    # closed) — enrolled_count vs this count shows how complete the term is.
+    results_calculated_count: int
+    # Machine-readable warning keys the frontend translates:
+    # missing_interro / missing_devoir / missing_composition (Beninese-mode
+    # closing-term completeness) and non_canonical_term.
+    warnings: list[str]
+
+
+class TermAdvancePreviewResponse(BaseModel):
+    school_year: str
+    target_term: str
+    courses: list[TermAdvanceCoursePreview]
+    total_count: int
+    already_on_target_count: int
+
+
+class TermAdvanceResponse(BaseModel):
+    status: str
+    school_year: str
+    target_term: str
+    updated_count: int
+    skipped_count: int
+
+
 class EnrollmentCreate(BaseModel):
     student_id: UUID
     course_id: UUID
@@ -633,6 +670,73 @@ class ReportSendResponse(BaseModel):
     sent_count: int
     failed_count: int
     results: list[dict[str, Any]]
+
+
+class ClassReportBatchRequest(BaseModel):
+    class_id: UUID
+    school_year: str
+    term: TrimesterTerm
+
+
+class ClassReportStatusRow(BaseModel):
+    student_id: UUID
+    student_name: str
+    student_number: str
+    # CourseResults calculated for this student in (term, school_year) —
+    # 0 means batch-generate would skip them with no_results.
+    results_count: int
+    # Null report_id means no report card exists yet for this term+year.
+    report_id: UUID | None = None
+    report_status: str | None = None
+    overall_average: float | None = None
+    french_average: float | None = None
+    english_average: float | None = None
+    bilingual_average: float | None = None
+    needs_review: bool = False
+
+
+class ClassReportStatusResponse(BaseModel):
+    class_id: UUID
+    class_name: str
+    school_year: str
+    term: str
+    students: list[ClassReportStatusRow]
+    total_students: int
+    without_report_count: int
+    draft_count: int
+    approved_count: int
+    sent_count: int
+    needs_review_count: int
+
+
+class ClassReportBatchGenerateResponse(BaseModel):
+    status: str
+    generated_count: int
+    skipped_existing_count: int
+    skipped_no_results_count: int
+    report_ids: list[UUID]
+
+
+class ClassReportBatchApproveResponse(BaseModel):
+    status: str
+    approved_count: int
+    skipped_count: int
+
+
+class ClassReportBatchSendResponse(BaseModel):
+    status: str
+    sent_count: int
+    failed_count: int
+    no_recipient_count: int
+
+
+class ClassPdfJobResponse(BaseModel):
+    job_id: UUID
+    # pending -> done | failed. The status endpoint returns the PDF itself
+    # once done, so this JSON shape is only seen while pending or failed.
+    status: str
+    error: str | None = None
+    report_count: int | None = None
 
 
 class AIWarningResponse(BaseModel):

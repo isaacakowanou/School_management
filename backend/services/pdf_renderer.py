@@ -53,3 +53,28 @@ def render_report_card_pdf_bytes(report_data: dict) -> bytes:
     template = _environment.get_template("report_card.html")
     html = template.render(report_data=report_data, logo_data_uri=_logo_data_uri())
     return HTML(string=html, base_url=str(BASE_DIR)).write_pdf()
+
+
+def render_class_bulletins_pdf_bytes(report_data_list: list[dict]) -> bytes:
+    """Render every bulletin and merge them into one multi-page PDF.
+
+    WeasyPrint documents merge natively (Document.copy over concatenated
+    pages), so a class print run needs no extra dependency and no template
+    changes — each bulletin keeps its own @page layout.
+    """
+    if not report_data_list:
+        raise ValueError("report_data_list cannot be empty")
+
+    from weasyprint import HTML
+
+    template = _environment.get_template("report_card.html")
+    logo = _logo_data_uri()
+    documents = [
+        HTML(
+            string=template.render(report_data=report_data, logo_data_uri=logo),
+            base_url=str(BASE_DIR),
+        ).render()
+        for report_data in report_data_list
+    ]
+    all_pages = [page for document in documents for page in document.pages]
+    return documents[0].copy(all_pages).write_pdf()

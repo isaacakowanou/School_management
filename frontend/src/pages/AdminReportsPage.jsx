@@ -115,8 +115,15 @@ export default function AdminReportsPage() {
 
   return (
     <section className="admin-page">
-      <h2 className="page-title">{t('nav.reports')}</h2>
-      <p className="muted">{t('reports.subtitle')}</p>
+      <div className="report-header">
+        <div>
+          <h2 className="page-title">{t('nav.reports')}</h2>
+          <p className="muted">{t('reports.subtitle')}</p>
+        </div>
+        <Link to="/admin/reports/class" className="btn btn-primary">
+          {t('classReports.title')}
+        </Link>
+      </div>
 
       {error && <ErrorBanner message={error} />}
       {!error && reports === null && <Spinner label={t('reports.loading')} />}

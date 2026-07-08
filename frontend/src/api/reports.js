@@ -65,3 +65,46 @@ export function regenerateReport(reportId) {
 export function updateReportDetails(reportId, payload) {
   return apiPatch(`/reports/${reportId}`, payload)
 }
+
+// --- Conseil de classe: class-scoped status + batch actions (admin only) ---
+
+// GET /api/v1/reports/class-status -> one row per student of the class
+export function getClassReportStatus({ classId, schoolYear, term }) {
+  const params = new URLSearchParams({ class_id: classId, school_year: schoolYear, term })
+  return apiGet(`/reports/class-status?${params}`)
+}
+
+function classBatchBody({ classId, schoolYear, term }) {
+  return { class_id: classId, school_year: schoolYear, term }
+}
+
+// POST /api/v1/reports/batch-generate -> drafts for every student with results and no report
+export function batchGenerateReports(args) {
+  return apiPost('/reports/batch-generate', classBatchBody(args))
+}
+
+// POST /api/v1/reports/batch-approve -> approves DRAFT reports only
+export function batchApproveReports(args) {
+  return apiPost('/reports/batch-approve', classBatchBody(args))
+}
+
+// POST /api/v1/reports/batch-send -> sends approved reports (marked sent only on notification success)
+export function batchSendReports(args) {
+  return apiPost('/reports/batch-send', classBatchBody(args))
+}
+
+// POST /api/v1/reports/class-pdf -> enqueue a merged class-PDF render job
+export function createClassPdfJob(args) {
+  return apiPost('/reports/class-pdf', classBatchBody(args))
+}
+
+// GET /api/v1/reports/class-pdf/{job_id} -> JSON status while pending/failed,
+// the PDF blob once done. The caller polls until it gets a pdf.
+export async function pollClassPdfJob(jobId) {
+  const blob = await apiGetBlob(`/reports/class-pdf/${jobId}`)
+  if (blob.type === 'application/pdf') {
+    return { status: 'done', blob }
+  }
+  const body = JSON.parse(await blob.text())
+  return { status: body.status, error: body.error || null }
+}

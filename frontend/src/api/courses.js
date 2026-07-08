@@ -81,6 +81,22 @@ export function cloneYearCourses({ sourceYear, targetYear }) {
   })
 }
 
+// GET /api/v1/courses/advance-term/preview (admin). Readiness report for a
+// school-year-wide trimester change; warnings are informational only.
+export function previewAdvanceTerm({ schoolYear, targetTerm }) {
+  const params = new URLSearchParams({ school_year: schoolYear, target_term: targetTerm })
+  return apiGet(`/courses/advance-term/preview?${params}`)
+}
+
+// POST /api/v1/courses/advance-term (admin). Sets every course of the school
+// year to the target trimester; idempotent (already-on-target are skipped).
+export function advanceTerm({ schoolYear, targetTerm }) {
+  return apiPost('/courses/advance-term', {
+    school_year: schoolYear,
+    target_term: targetTerm,
+  })
+}
+
 // POST /api/v1/enrollments (admin)
 export function enrollStudentInCourse(courseId, studentId) {
   return apiPost('/enrollments', {

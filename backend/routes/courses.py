@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from audit import create_audit_log
 from auth import get_current_user, require_admin
+from constants import TRIMESTER_TERMS
 from database import get_db
 from models import Class, Course, CourseResult, Enrollment, Grade, GradeItem, ReportCardCourse, Subject, Teacher, User
 from schemas import (
@@ -16,7 +17,13 @@ from schemas import (
     CourseUpdate,
     LanguageGroup,
     StatusResponse,
+    TermAdvanceCoursePreview,
+    TermAdvancePreviewResponse,
+    TermAdvanceRequest,
+    TermAdvanceResponse,
+    TrimesterTerm,
 )
+from services.grade_calculator import is_beninese_mode
 from utils import get_class_or_404, get_current_teacher, get_subject_or_404, to_course_response
 
 
@@ -279,6 +286,148 @@ def clone_year(
         status="ok",
         created_count=len(source_courses),
         unmatched_class_names=sorted(unmatched_class_names),
+    )
+
+
+# NOTE: the advance-term routes are static paths and MUST stay declared before
+# the /{course_id} routes below, or FastAPI tries to parse "advance-term" as a
+# course UUID (same constraint as /clone-year).
+
+
+@router.get("/advance-term/preview", response_model=TermAdvancePreviewResponse)
+def preview_advance_term(
+    school_year: str,
+    target_term: TrimesterTerm,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> TermAdvancePreviewResponse:
+    """Readiness report for a school-year-wide trimester change.
+
+    Warnings are informational only — the POST never blocks on them. The
+    counts show how complete each course's CLOSING term is before the switch.
+    """
+    courses = db.scalars(
+        select(Course)
+        .options(joinedload(Course.school_class))
+        .where(Course.school_year == school_year, Course.deleted_at.is_(None))
+        .order_by(Course.name, Course.code)
+    ).all()
+
+    course_ids = [course.id for course in courses]
+    enrolled_by_course: dict[UUID, int] = {}
+    results_by_course_term: dict[tuple[UUID, str], int] = {}
+    items_by_course_term_type: dict[tuple[UUID, str, str | None], int] = {}
+    if course_ids:
+        enrolled_by_course = dict(
+            db.execute(
+                select(Enrollment.course_id, func.count(Enrollment.id))
+                .where(Enrollment.course_id.in_(course_ids), Enrollment.deleted_at.is_(None))
+                .group_by(Enrollment.course_id)
+            ).all()
+        )
+        results_by_course_term = {
+            (course_id, term): count
+            for course_id, term, count in db.execute(
+                select(CourseResult.course_id, CourseResult.term, func.count(CourseResult.id))
+                .where(CourseResult.course_id.in_(course_ids), CourseResult.deleted_at.is_(None))
+                .group_by(CourseResult.course_id, CourseResult.term)
+            ).all()
+        }
+        items_by_course_term_type = {
+            (course_id, term, item_type): count
+            for course_id, term, item_type, count in db.execute(
+                select(GradeItem.course_id, GradeItem.term, GradeItem.item_type, func.count(GradeItem.id))
+                .where(GradeItem.course_id.in_(course_ids), GradeItem.deleted_at.is_(None))
+                .group_by(GradeItem.course_id, GradeItem.term, GradeItem.item_type)
+            ).all()
+        }
+
+    previews = []
+    already_on_target = 0
+    for course in courses:
+        warnings = []
+        if course.term not in TRIMESTER_TERMS:
+            warnings.append("non_canonical_term")
+        if is_beninese_mode(course):
+            for item_type, key in (
+                ("INTERRO", "missing_interro"),
+                ("DEVOIR", "missing_devoir"),
+                ("COMPOSITION", "missing_composition"),
+            ):
+                if not items_by_course_term_type.get((course.id, course.term, item_type)):
+                    warnings.append(key)
+        on_target = course.term == target_term.value
+        if on_target:
+            already_on_target += 1
+        previews.append(
+            TermAdvanceCoursePreview(
+                course_id=course.id,
+                code=course.code,
+                name=course.name,
+                current_term=course.term,
+                already_on_target=on_target,
+                enrolled_count=enrolled_by_course.get(course.id, 0),
+                results_calculated_count=results_by_course_term.get((course.id, course.term), 0),
+                warnings=warnings,
+            )
+        )
+
+    return TermAdvancePreviewResponse(
+        school_year=school_year,
+        target_term=target_term.value,
+        courses=previews,
+        total_count=len(previews),
+        already_on_target_count=already_on_target,
+    )
+
+
+@router.post("/advance-term", response_model=TermAdvanceResponse)
+def advance_term(
+    payload: TermAdvanceRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> TermAdvanceResponse:
+    """Set every course of a school year to the target trimester.
+
+    Idempotent: courses already on the target term are skipped. Warnings from
+    the preview never block — the school calendar wins. Backward moves are
+    allowed (mistake recovery) and audit-logged like any other change.
+    """
+    target = payload.target_term.value
+    courses = db.scalars(
+        select(Course).where(Course.school_year == payload.school_year, Course.deleted_at.is_(None))
+    ).all()
+
+    updated_codes = []
+    for course in courses:
+        if course.term != target:
+            course.term = target
+            updated_codes.append(course.code)
+
+    if updated_codes:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="courses_term_advanced",
+            entity_type="course_term_advance",
+            entity_id=uuid4(),
+            old_value=None,
+            new_value={
+                "school_year": payload.school_year,
+                "target_term": target,
+                "updated_count": len(updated_codes),
+                "skipped_count": len(courses) - len(updated_codes),
+                "updated_codes": sorted(updated_codes),
+            },
+        )
+    db.commit()
+
+    return TermAdvanceResponse(
+        status="ok",
+        school_year=payload.school_year,
+        target_term=target,
+        updated_count=len(updated_codes),
+        skipped_count=len(courses) - len(updated_codes),
     )
 
 

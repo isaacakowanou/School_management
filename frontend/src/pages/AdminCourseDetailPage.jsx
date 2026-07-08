@@ -31,6 +31,8 @@ const EMPTY_GRADE_ITEM_FORM = {
   maxScore: '20',
   weight: '',
   term: '',
+  dueDate: '',
+  itemType: '',
 }
 
 const EMPTY_COURSE_EDIT_FORM = {
@@ -84,6 +86,7 @@ function gradeItemToForm(gradeItem) {
     weight: gradeItem?.weight != null ? String(gradeItem.weight) : '',
     term: gradeItem?.term || '',
     dueDate: gradeItem?.due_date || '',
+    itemType: gradeItem?.item_type || '',
   }
 }
 
@@ -418,23 +421,34 @@ export default function AdminCourseDetailPage() {
 
     const maxScore = Number(gradeItemForm.maxScore)
     const weight = Number(gradeItemForm.weight)
-    if (
-      !gradeItemForm.title.trim() ||
-      !gradeItemForm.category.trim() ||
-      !gradeItemForm.term.trim() ||
-      !Number.isFinite(maxScore) ||
-      !Number.isFinite(weight)
-    ) {
-      setGradeItemError(t('courses.gradeItemRequired'))
-      return
-    }
-    if (maxScore <= 0) {
-      setGradeItemError(t('courses.maxScorePositive'))
-      return
-    }
-    if (weight <= 0 || weight > 1) {
-      setGradeItemError(t('courses.weightRange'))
-      return
+    if (isBenineseMode) {
+      if (!gradeItemForm.title.trim() || !gradeItemForm.itemType || !gradeItemForm.term.trim() || !Number.isFinite(maxScore)) {
+        setGradeItemError(t('courses.benineseItemRequired'))
+        return
+      }
+      if (maxScore <= 0) {
+        setGradeItemError(t('courses.maxScorePositive'))
+        return
+      }
+    } else {
+      if (
+        !gradeItemForm.title.trim() ||
+        !gradeItemForm.category.trim() ||
+        !gradeItemForm.term.trim() ||
+        !Number.isFinite(maxScore) ||
+        !Number.isFinite(weight)
+      ) {
+        setGradeItemError(t('courses.gradeItemRequired'))
+        return
+      }
+      if (maxScore <= 0) {
+        setGradeItemError(t('courses.maxScorePositive'))
+        return
+      }
+      if (weight <= 0 || weight > 1) {
+        setGradeItemError(t('courses.weightRange'))
+        return
+      }
     }
 
     setAddingGradeItem(true)
@@ -462,23 +476,34 @@ export default function AdminCourseDetailPage() {
 
     const maxScore = Number(editGradeItemForm.maxScore)
     const weight = Number(editGradeItemForm.weight)
-    if (
-      !editGradeItemForm.title.trim() ||
-      !editGradeItemForm.category.trim() ||
-      !editGradeItemForm.term.trim() ||
-      !Number.isFinite(maxScore) ||
-      !Number.isFinite(weight)
-    ) {
-      setGradeItemEditError(t('courses.gradeItemRequired'))
-      return
-    }
-    if (maxScore <= 0) {
-      setGradeItemEditError(t('courses.maxScorePositive'))
-      return
-    }
-    if (weight <= 0 || weight > 1) {
-      setGradeItemEditError(t('courses.weightRange'))
-      return
+    if (isBenineseMode) {
+      if (!editGradeItemForm.title.trim() || !editGradeItemForm.term.trim() || !Number.isFinite(maxScore)) {
+        setGradeItemEditError(t('courses.benineseItemRequired'))
+        return
+      }
+      if (maxScore <= 0) {
+        setGradeItemEditError(t('courses.maxScorePositive'))
+        return
+      }
+    } else {
+      if (
+        !editGradeItemForm.title.trim() ||
+        !editGradeItemForm.category.trim() ||
+        !editGradeItemForm.term.trim() ||
+        !Number.isFinite(maxScore) ||
+        !Number.isFinite(weight)
+      ) {
+        setGradeItemEditError(t('courses.gradeItemRequired'))
+        return
+      }
+      if (maxScore <= 0) {
+        setGradeItemEditError(t('courses.maxScorePositive'))
+        return
+      }
+      if (weight <= 0 || weight > 1) {
+        setGradeItemEditError(t('courses.weightRange'))
+        return
+      }
     }
 
     setSavingGradeItemEdit(true)
@@ -539,13 +564,38 @@ export default function AdminCourseDetailPage() {
     )
   }
 
-  const totalWeight = gradeItems.reduce((sum, item) => sum + Number(item.weight || 0), 0)
+  // Grading mode mirrors TeacherCourseDetailPage: Beninese formula applies to
+  // French-section collège courses; everything term-scoped to course.term.
+  const isBenineseMode = !!(
+    course.language_group === 'FRENCH' && course.class_school_level === 'college'
+  )
+  const currentTermItems = gradeItems.filter((item) => item.term === course.term)
+  const hasDevoir = currentTermItems.some((item) => item.item_type === 'DEVOIR')
+  const hasComposition = currentTermItems.some((item) => item.item_type === 'COMPOSITION')
+
+  const totalWeight = currentTermItems.reduce((sum, item) => sum + Number(item.weight || 0), 0)
   const isWeightReady = Math.abs(totalWeight - 1) <= WEIGHT_TOLERANCE
   const weightSummary = isWeightReady
     ? t('courses.weightReady', { total: formatWeight(totalWeight) })
     : totalWeight < 1
       ? t('courses.weightMissing', { total: formatWeight(totalWeight), amount: formatWeight(1 - totalWeight) })
       : t('courses.weightOver', { total: formatWeight(totalWeight), amount: formatWeight(totalWeight - 1) })
+
+  // Open the add form pre-loaded for a Beninese item type.
+  function openBenineseForm(itemType) {
+    const titleMap = { INTERRO: 'Interro', DEVOIR: 'Devoir', COMPOSITION: 'Composition' }
+    setGradeItemForm({
+      ...EMPTY_GRADE_ITEM_FORM,
+      title: titleMap[itemType] || '',
+      term: course.term || '',
+      itemType,
+    })
+    setGradeItemError(null)
+    setGradeItemMessage(null)
+    setEditingGradeItemId(null)
+    setGradeItemEditError(null)
+    setShowGradeItemForm(true)
+  }
 
   return (
     <section className="admin-page">
@@ -555,6 +605,7 @@ export default function AdminCourseDetailPage() {
       <h2 className="page-title">{course.name}</h2>
       <p className="muted">
         {course.code} · {course.class_name || '—'} · {course.term} · {course.school_year} · {t('courses.coefficient')}: {course.coefficient ?? 1}
+        {isBenineseMode && <> · <em>{t('courses.benineseMode')}</em></>}
       </p>
       <p className="muted">
         {t('common.teacher')}:{' '}
@@ -845,27 +896,57 @@ export default function AdminCourseDetailPage() {
       <h3 className="section-title">{t('courses.gradeItems')}</h3>
       {!showGradeItemForm && (
         <div className="grade-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              setGradeItemError(null)
-              setGradeItemMessage(null)
-              setEditingGradeItemId(null)
-              setGradeItemEditError(null)
-              setShowGradeItemForm(true)
-            }}
-          >
-            {t('courses.addGradeItem')}
-          </button>
+          {isBenineseMode ? (
+            <>
+              <button type="button" className="btn btn-primary" onClick={() => openBenineseForm('INTERRO')}>
+                {t('courses.addInterro')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => openBenineseForm('DEVOIR')}
+                disabled={hasDevoir}
+              >
+                {t('courses.addDevoir')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => openBenineseForm('COMPOSITION')}
+                disabled={hasComposition}
+              >
+                {t('courses.addComposition')}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setGradeItemError(null)
+                setGradeItemMessage(null)
+                setEditingGradeItemId(null)
+                setGradeItemEditError(null)
+                setShowGradeItemForm(true)
+              }}
+            >
+              {t('courses.addGradeItem')}
+            </button>
+          )}
         </div>
       )}
       {gradeItemMessage && <p className="grade-summary">{gradeItemMessage}</p>}
       {gradeItemError && !showGradeItemForm && <ErrorBanner message={gradeItemError} />}
-      <div className="state state-empty weight-summary">
-        <strong>{weightSummary}</strong>
-        <p>{t('courses.weightHint')}</p>
-      </div>
+      {isBenineseMode ? (
+        <div className="state state-empty weight-summary">
+          <strong>{t('courses.benineseMode')}</strong>
+        </div>
+      ) : (
+        <div className="state state-empty weight-summary">
+          <strong>{weightSummary}</strong>
+          <p>{t('courses.weightHint')}</p>
+        </div>
+      )}
       {showGradeItemForm && (
         <form className="card admin-form" onSubmit={handleAddGradeItem}>
           <label className="field">
@@ -879,16 +960,18 @@ export default function AdminCourseDetailPage() {
             />
           </label>
 
-          <label className="field">
-            <span>{t('courses.category')}</span>
-            <input
-              value={gradeItemForm.category}
-              onChange={(event) => updateGradeItemField('category', event.target.value)}
-              disabled={addingGradeItem}
-              list="grade-item-category-options"
-              required
-            />
-          </label>
+          {!isBenineseMode && (
+            <label className="field">
+              <span>{t('courses.category')}</span>
+              <input
+                value={gradeItemForm.category}
+                onChange={(event) => updateGradeItemField('category', event.target.value)}
+                disabled={addingGradeItem}
+                list="grade-item-category-options"
+                required
+              />
+            </label>
+          )}
 
           <label className="field">
             <span>{t('courses.maxScore')}</span>
@@ -903,20 +986,22 @@ export default function AdminCourseDetailPage() {
             />
           </label>
 
-          <label className="field">
-            <span>{t('courses.weight')}</span>
-            <input
-              type="number"
-              min="0.01"
-              max="1"
-              step="0.01"
-              value={gradeItemForm.weight}
-              onChange={(event) => updateGradeItemField('weight', event.target.value)}
-              disabled={addingGradeItem}
-              required
-            />
-            <p className="muted">{t('courses.weightExample')}</p>
-          </label>
+          {!isBenineseMode && (
+            <label className="field">
+              <span>{t('courses.weight')}</span>
+              <input
+                type="number"
+                min="0.01"
+                max="1"
+                step="0.01"
+                value={gradeItemForm.weight}
+                onChange={(event) => updateGradeItemField('weight', event.target.value)}
+                disabled={addingGradeItem}
+                required
+              />
+              <p className="muted">{t('courses.weightExample')}</p>
+            </label>
+          )}
 
           <label className="field">
             <span>{t('common.term')}</span>
@@ -966,9 +1051,9 @@ export default function AdminCourseDetailPage() {
             <thead>
               <tr>
                 <th>{t('courses.title')}</th>
-                <th>{t('courses.category')}</th>
+                {isBenineseMode ? <th>{t('courses.itemType')}</th> : <th>{t('courses.category')}</th>}
                 <th className="num">{t('courses.maxScore')}</th>
-                <th className="num">{t('courses.weight')}</th>
+                {!isBenineseMode && <th className="num">{t('courses.weight')}</th>}
                 <th>{t('common.term')}</th>
                 <th>{t('courses.dueDate')}</th>
                 <th></th>
@@ -979,9 +1064,13 @@ export default function AdminCourseDetailPage() {
                 <Fragment key={item.id}>
                   <tr>
                     <td>{item.title}</td>
-                    <td className="nowrap">{item.category}</td>
+                    {isBenineseMode ? (
+                      <td className="nowrap">{item.item_type}</td>
+                    ) : (
+                      <td className="nowrap">{item.category}</td>
+                    )}
                     <td className="num">{item.max_score}</td>
-                    <td className="num">{item.weight}</td>
+                    {!isBenineseMode && <td className="num">{item.weight}</td>}
                     <td className="nowrap">{item.term}</td>
                     <td className="nowrap">{item.due_date || '—'}</td>
                     <td className="nowrap">
@@ -1013,7 +1102,7 @@ export default function AdminCourseDetailPage() {
                   </tr>
                   {editingGradeItemId === item.id && (
                     <tr>
-                      <td colSpan="7">
+                      <td colSpan={isBenineseMode ? '6' : '7'}>
                         <form className="card admin-form" onSubmit={(event) => handleEditGradeItem(event, item.id)}>
                           <label className="field">
                             <span>{t('courses.title')}</span>
@@ -1026,16 +1115,18 @@ export default function AdminCourseDetailPage() {
                             />
                           </label>
 
-                          <label className="field">
-                            <span>{t('courses.category')}</span>
-                            <input
-                              value={editGradeItemForm.category}
-                              onChange={(event) => updateEditGradeItemField('category', event.target.value)}
-                              disabled={savingGradeItemEdit}
-                              list="grade-item-edit-category-options"
-                              required
-                            />
-                          </label>
+                          {!isBenineseMode && (
+                            <label className="field">
+                              <span>{t('courses.category')}</span>
+                              <input
+                                value={editGradeItemForm.category}
+                                onChange={(event) => updateEditGradeItemField('category', event.target.value)}
+                                disabled={savingGradeItemEdit}
+                                list="grade-item-edit-category-options"
+                                required
+                              />
+                            </label>
+                          )}
 
                           <label className="field">
                             <span>{t('courses.maxScore')}</span>
@@ -1050,20 +1141,22 @@ export default function AdminCourseDetailPage() {
                             />
                           </label>
 
-                          <label className="field">
-                            <span>{t('courses.weight')}</span>
-                            <input
-                              type="number"
-                              min="0.01"
-                              max="1"
-                              step="0.01"
-                              value={editGradeItemForm.weight}
-                              onChange={(event) => updateEditGradeItemField('weight', event.target.value)}
-                              disabled={savingGradeItemEdit}
-                              required
-                            />
-                            <p className="muted">{t('courses.weightExample')}</p>
-                          </label>
+                          {!isBenineseMode && (
+                            <label className="field">
+                              <span>{t('courses.weight')}</span>
+                              <input
+                                type="number"
+                                min="0.01"
+                                max="1"
+                                step="0.01"
+                                value={editGradeItemForm.weight}
+                                onChange={(event) => updateEditGradeItemField('weight', event.target.value)}
+                                disabled={savingGradeItemEdit}
+                                required
+                              />
+                              <p className="muted">{t('courses.weightExample')}</p>
+                            </label>
+                          )}
 
                           <label className="field">
                             <span>{t('common.term')}</span>

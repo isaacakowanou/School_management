@@ -2,10 +2,12 @@
 // values match the backend LanguageGroup enum; labels are display-only and
 // never sent to the backend.
 export const SCHOOL_GROUPS = [
-  { value: 'FRENCH', label: 'French' },
-  { value: 'ENGLISH', label: 'English' },
+  { value: 'FRENCH', labelKey: 'subjects.sectionFrench' },
+  { value: 'ENGLISH', labelKey: 'subjects.sectionEnglish' },
 ]
 
-export function schoolGroupLabel(value) {
-  return SCHOOL_GROUPS.find((group) => group.value === value)?.label || ''
+export function schoolGroupLabel(value, t) {
+  const group = SCHOOL_GROUPS.find((item) => item.value === value)
+  if (!group) return ''
+  return t ? t(group.labelKey) : group.value
 }

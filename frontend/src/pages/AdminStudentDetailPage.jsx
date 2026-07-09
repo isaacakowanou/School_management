@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   getStudent,
   getStudentParents,
   linkStudentParent,
   unlinkStudentParent,
+  deleteStudent,
   updateStudent,
 } from '../api/students.js'
 import { listParents } from '../api/parents.js'
@@ -13,7 +14,7 @@ import { listClasses } from '../api/classes.js'
 import { getCourse } from '../api/courses.js'
 import { listStudentCourseResults } from '../api/courseResults.js'
 import { generateReport, getStudentReports } from '../api/reports.js'
-import { SCHOOL_LEVELS, schoolLevelLabel } from '../constants/schoolLevels.js'
+import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
 import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -38,6 +39,7 @@ function reportPeriodKey(period) {
 
 export default function AdminStudentDetailPage() {
   const { studentId } = useParams()
+  const navigate = useNavigate()
   const { t } = useTranslation()
   const [student, setStudent] = useState(null)
   const [parents, setParents] = useState([])
@@ -59,6 +61,7 @@ export default function AdminStudentDetailPage() {
   const [showEditForm, setShowEditForm] = useState(false)
   const [editForm, setEditForm] = useState(studentToForm(null))
   const [savingEdit, setSavingEdit] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [editError, setEditError] = useState(null)
   const [editMessage, setEditMessage] = useState(null)
   const [classes, setClasses] = useState([])
@@ -98,6 +101,7 @@ export default function AdminStudentDetailPage() {
     setShowEditForm(false)
     setEditForm(studentToForm(null))
     setSavingEdit(false)
+    setDeleting(false)
     setEditError(null)
     setEditMessage(null)
 
@@ -285,6 +289,22 @@ export default function AdminStudentDetailPage() {
     }
   }
 
+  async function handleDeleteStudent() {
+    const name = `${student.first_name} ${student.last_name}`
+    if (!window.confirm(t('students.confirmDelete', { name }))) return
+    setEditError(null)
+    setEditMessage(null)
+    setDeleting(true)
+    try {
+      await deleteStudent(studentId)
+      navigate('/admin/students', { replace: true, state: { message: t('students.movedToTrash', { name }) } })
+    } catch (err) {
+      setEditError(err.message)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (error) {
     return (
       <section className="admin-page">
@@ -309,33 +329,49 @@ export default function AdminStudentDetailPage() {
       <Link to="/admin/students" className="back-link">
         ← {t('students.title')}
       </Link>
-      <h2 className="page-title">
-        {student.first_name} {student.last_name}
-      </h2>
-      <p className="muted">
-        {student.class_name || '—'}
-        {student.school_level ? ` · ${schoolLevelLabel(student.school_level)}` : ''} · #
-        {student.student_number}
-      </p>
-      {!showEditForm && (
-        <div className="grade-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              setEditError(null)
-              setEditMessage(null)
-              setEditForm(studentToForm(student))
-              setShowEditForm(true)
-            }}
-          >
-            {t('common.edit')}
-          </button>
+      <div className="detail-header">
+        <div>
+          <h2 className="page-title">
+            {student.first_name} {student.last_name}
+          </h2>
+          <p className="muted">
+            {student.class_name || '—'}
+            {student.school_level ? ` · ${t(`schoolLevels.${student.school_level}`)}` : ''} · #
+            {student.student_number}
+          </p>
         </div>
-      )}
+        {!showEditForm && (
+          <div className="detail-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setEditError(null)
+                setEditMessage(null)
+                setEditForm(studentToForm(student))
+                setShowEditForm(true)
+              }}
+            >
+              {t('common.edit')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-danger-subtle"
+              onClick={handleDeleteStudent}
+              disabled={deleting}
+            >
+              {deleting ? t('students.moving') : t('common.delete')}
+            </button>
+          </div>
+        )}
+      </div>
+      {editError && !showEditForm && <ErrorBanner message={editError} />}
       {editMessage && <p className="grade-summary">{editMessage}</p>}
       {showEditForm && (
-        <form className="card admin-form" onSubmit={handleEditStudent}>
+        <form className="card admin-form detail-form" onSubmit={handleEditStudent}>
+          <div className="section-heading">
+            <h3>{t('common.edit')}</h3>
+          </div>
           <label className="field">
             <span>{t('students.firstName')}</span>
             <input
@@ -369,16 +405,15 @@ export default function AdminStudentDetailPage() {
           <label className="field">
             <span>{t('students.schoolLevel')}</span>
             <select
-              className="grade-input"
+              className="grade-input full-width-input"
               value={editForm.schoolLevel}
               onChange={(event) => updateEditField('schoolLevel', event.target.value)}
               disabled={savingEdit}
-              style={{ width: '100%', textAlign: 'left' }}
             >
               <option value="">{t('common.notSet')}</option>
               {SCHOOL_LEVELS.map((level) => (
                 <option key={level.value} value={level.value}>
-                  {level.label}
+                  {t(`schoolLevels.${level.value}`)}
                 </option>
               ))}
             </select>
@@ -405,7 +440,11 @@ export default function AdminStudentDetailPage() {
           </label>
 
           <div className="grade-actions">
-            <button type="submit" className="btn btn-primary" disabled={savingEdit}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={savingEdit}
+            >
               {savingEdit ? t('common.saving') : t('common.saveChanges')}
             </button>
             <button type="button" className="btn btn-ghost" disabled={savingEdit} onClick={cancelEdit}>
@@ -416,9 +455,9 @@ export default function AdminStudentDetailPage() {
         </form>
       )}
 
-      <h3 className="section-title">{t('students.parentsSection')}</h3>
-      {!showLinkParentForm && (
-        <div className="grade-actions">
+      <div className="section-heading">
+        <h3 className="section-title">{t('students.parentsSection')}</h3>
+        {!showLinkParentForm && (
           <button
             type="button"
             className="btn btn-primary"
@@ -430,8 +469,8 @@ export default function AdminStudentDetailPage() {
           >
             {t('students.linkParent')}
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {linkMessage && <p className="grade-summary">{linkMessage}</p>}
       {linkError && !showLinkParentForm && <ErrorBanner message={linkError} />}
       {showLinkParentForm && (
@@ -521,12 +560,12 @@ export default function AdminStudentDetailPage() {
                   <td className="nowrap">{parent.phone || '—'}</td>
                   <td className="nowrap">{parent.relationship || '—'}</td>
                   <td className="nowrap">
-                    <Link className="back-link" to={`/admin/parents/${parent.id}`}>
+                    <Link className="link-action" to={`/admin/parents/${parent.id}`}>
                       {t('common.open')}
                     </Link>
                     <button
                       type="button"
-                      className="btn btn-ghost"
+                      className="link-action link-action-danger"
                       disabled={unlinkingParentId === parent.id}
                       onClick={() => handleUnlinkParent(parent)}
                     >
@@ -540,7 +579,9 @@ export default function AdminStudentDetailPage() {
         </div>
       )}
 
-      <h3 className="section-title">{t('nav.reports')}</h3>
+      <div className="section-heading">
+        <h3 className="section-title">{t('nav.reports')}</h3>
+      </div>
       {reportMessage && <p className="grade-summary">{reportMessage}</p>}
       {reportError && <ErrorBanner message={reportError} />}
       {reports.length === 0 ? (
@@ -605,7 +646,7 @@ export default function AdminStudentDetailPage() {
                   </td>
                   <td className="num">{formatReportAverage(report.bilingual_average ?? report.overall_average, report.scale)}</td>
                   <td className="nowrap">
-                    <Link className="back-link" to={`/admin/reports/${report.id}`}>
+                    <Link className="link-action" to={`/admin/reports/${report.id}`}>
                       {t('common.open')}
                     </Link>
                   </td>

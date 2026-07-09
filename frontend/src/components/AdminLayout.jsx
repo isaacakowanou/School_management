@@ -85,7 +85,7 @@ export default function AdminLayout() {
                     }
                   >
                     <Icon className="admin-nav-icon" size={18} aria-hidden="true" />
-                    <span>{t(item.key)}</span>
+                    <span title={t(item.key)}>{t(item.key)}</span>
                   </NavLink>
                 )
               })}

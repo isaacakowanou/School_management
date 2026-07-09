@@ -66,6 +66,7 @@ export default function LoginPage() {
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
             autoComplete="username"
+            placeholder={t('login.identifierPlaceholder')}
             required
           />
         </label>
@@ -142,8 +143,8 @@ export default function LoginPage() {
           {submitting ? t('login.submitting') : t('login.submit')}
         </button>
 
-        <p style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.875rem' }}>
-          <Link to="/forgot-password" style={{ color: 'var(--color-primary, #2563eb)' }}>
+        <p className="login-help">
+          <Link to="/forgot-password">
             {t('login.forgotPassword')}
           </Link>
         </p>

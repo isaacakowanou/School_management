@@ -239,7 +239,7 @@ export default function AdminCourseCreatePage() {
               <option value="">{t('common.notSet')}</option>
               {SCHOOL_GROUPS.map((group) => (
                 <option key={group.value} value={group.value}>
-                  {group.label}
+                  {t(group.labelKey)}
                 </option>
               ))}
             </select>

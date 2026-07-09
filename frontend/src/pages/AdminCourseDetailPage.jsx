@@ -602,47 +602,51 @@ export default function AdminCourseDetailPage() {
       <Link to="/admin/courses" className="back-link">
         ← {t('nav.courses')}
       </Link>
-      <h2 className="page-title">{course.name}</h2>
-      <p className="muted">
-        {course.code} · {course.class_name || '—'} · {course.term} · {course.school_year} · {t('courses.coefficient')}: {course.coefficient ?? 1}
-        {isBenineseMode && <> · <em>{t('courses.benineseMode')}</em></>}
-      </p>
-      <p className="muted">
-        {t('common.teacher')}:{' '}
-        {teacher ? (
-          <Link className="back-link" to={`/admin/teachers/${teacher.id}`}>
-            {teacher.name}
-          </Link>
-        ) : (
-          <span className="audit-id" title={course.teacher_id}>
-            {course.teacher_id}
-          </span>
-        )}
-      </p>
-      {!showEditForm && (
-        <div className="grade-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              setEditError(null)
-              setEditMessage(null)
-              setEditForm(courseToForm(course))
-              setShowEditForm(true)
-            }}
-          >
-            {t('common.edit')}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={handleDeleteCourse}
-            disabled={deletingCourse}
-          >
-            {deletingCourse ? t('courses.deleting') : t('common.delete')}
-          </button>
+      <div className="detail-header">
+        <div>
+          <h2 className="page-title">{course.name}</h2>
+          <p className="muted">
+            {course.code} · {course.class_name || '—'} · {course.term} · {course.school_year} · {t('courses.coefficient')}: {course.coefficient ?? 1}
+            {isBenineseMode && <> · <em>{t('courses.benineseMode')}</em></>}
+          </p>
+          <p className="muted">
+            {t('common.teacher')}:{' '}
+            {teacher ? (
+              <Link className="link-action" to={`/admin/teachers/${teacher.id}`}>
+                {teacher.name}
+              </Link>
+            ) : (
+              <span className="audit-id" title={course.teacher_id}>
+                {course.teacher_id}
+              </span>
+            )}
+          </p>
         </div>
-      )}
+        {!showEditForm && (
+          <div className="detail-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setEditError(null)
+                setEditMessage(null)
+                setEditForm(courseToForm(course))
+                setShowEditForm(true)
+              }}
+            >
+              {t('common.edit')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-danger-subtle"
+              onClick={handleDeleteCourse}
+              disabled={deletingCourse}
+            >
+              {deletingCourse ? t('courses.deleting') : t('common.delete')}
+            </button>
+          </div>
+        )}
+      </div>
       {editMessage && <p className="grade-summary">{editMessage}</p>}
       {courseDeleteError && <ErrorBanner message={courseDeleteError} />}
       {showEditForm && (
@@ -738,7 +742,7 @@ export default function AdminCourseDetailPage() {
               <option value="">{t('common.notSet')}</option>
               {SCHOOL_GROUPS.map((group) => (
                 <option key={group.value} value={group.value}>
-                  {group.label}
+                  {t(group.labelKey)}
                 </option>
               ))}
             </select>
@@ -786,9 +790,9 @@ export default function AdminCourseDetailPage() {
         </form>
       )}
 
-      <h3 className="section-title">{t('courses.enrolledStudents')}</h3>
-      {!showEnrollForm && (
-        <div className="grade-actions">
+      <div className="section-heading">
+        <h3 className="section-title">{t('courses.enrolledStudents')}</h3>
+        {!showEnrollForm && (
           <button
             type="button"
             className="btn btn-primary"
@@ -800,8 +804,8 @@ export default function AdminCourseDetailPage() {
           >
             {t('courses.enrollStudent')}
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {enrollMessage && <p className="grade-summary">{enrollMessage}</p>}
       {enrollError && !showEnrollForm && <ErrorBanner message={enrollError} />}
       {showEnrollForm && (
@@ -873,13 +877,13 @@ export default function AdminCourseDetailPage() {
                   </td>
                   <td className="nowrap">{student.student_number}</td>
                   <td className="nowrap">{student.class_name || '—'}</td>
-                  <td className="nowrap">
-                    <Link className="back-link" to={`/admin/students/${student.id}`}>
+                  <td className="nowrap row-actions">
+                    <Link className="link-action" to={`/admin/students/${student.id}`}>
                       {t('common.open')}
                     </Link>
                     <button
                       type="button"
-                      className="btn btn-ghost"
+                      className="link-action link-action-danger"
                       disabled={unenrollingStudentId === student.id}
                       onClick={() => handleUnenrollStudent(student)}
                     >
@@ -893,9 +897,10 @@ export default function AdminCourseDetailPage() {
         </div>
       )}
 
-      <h3 className="section-title">{t('courses.gradeItems')}</h3>
-      {!showGradeItemForm && (
-        <div className="grade-actions">
+      <div className="section-heading">
+        <h3 className="section-title">{t('courses.gradeItems')}</h3>
+        {!showGradeItemForm && (
+          <div className="grade-actions">
           {isBenineseMode ? (
             <>
               <button type="button" className="btn btn-primary" onClick={() => openBenineseForm('INTERRO')}>
@@ -933,8 +938,9 @@ export default function AdminCourseDetailPage() {
               {t('courses.addGradeItem')}
             </button>
           )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
       {gradeItemMessage && <p className="grade-summary">{gradeItemMessage}</p>}
       {gradeItemError && !showGradeItemForm && <ErrorBanner message={gradeItemError} />}
       {isBenineseMode ? (
@@ -948,7 +954,9 @@ export default function AdminCourseDetailPage() {
         </div>
       )}
       {showGradeItemForm && (
-        <form className="card admin-form" onSubmit={handleAddGradeItem}>
+        <div className="modal-backdrop" onClick={() => !addingGradeItem && setShowGradeItemForm(false)}>
+          <form className="card admin-form modal-card" onClick={(event) => event.stopPropagation()} onSubmit={handleAddGradeItem}>
+          <h3 className="section-title">{t('courses.addGradeItem')}</h3>
           <label className="field">
             <span>{t('courses.title')}</span>
             <input
@@ -1041,6 +1049,7 @@ export default function AdminCourseDetailPage() {
           </div>
           {gradeItemError && <ErrorBanner message={gradeItemError} />}
         </form>
+        </div>
       )}
 
       {gradeItems.length === 0 ? (
@@ -1073,10 +1082,10 @@ export default function AdminCourseDetailPage() {
                     {!isBenineseMode && <td className="num">{item.weight}</td>}
                     <td className="nowrap">{item.term}</td>
                     <td className="nowrap">{item.due_date || '—'}</td>
-                    <td className="nowrap">
+                    <td className="nowrap row-actions">
                       <button
                         type="button"
-                        className="btn btn-ghost"
+                        className="link-action"
                         disabled={savingGradeItemEdit || deletingGradeItemId === item.id}
                         onClick={() => {
                           setShowGradeItemForm(false)
@@ -1091,10 +1100,9 @@ export default function AdminCourseDetailPage() {
                       </button>
                       <button
                         type="button"
-                        className="btn btn-ghost"
+                        className="link-action link-action-danger"
                         disabled={savingGradeItemEdit || deletingGradeItemId === item.id}
                         onClick={() => handleDeleteGradeItem(item)}
-                        style={{ marginLeft: 8 }}
                       >
                         {deletingGradeItemId === item.id ? t('courses.deleting') : t('common.delete')}
                       </button>

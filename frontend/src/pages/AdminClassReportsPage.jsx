@@ -199,12 +199,17 @@ export default function AdminClassReportsPage() {
         </div>
       </div>
 
-      <div className="card admin-form">
-        <label className="field">
+      <div className="card workflow-card">
+        <strong>{t('classReports.flowTitle')}</strong>
+        <p className="muted">{t('classReports.flowSteps')}</p>
+      </div>
+
+      <div className="list-toolbar">
+        <label className="toolbar-field">
           <span>{t('students.class')}</span>
           <ClassSelect classes={classes} value={classId} onChange={setClassId} disabled={busy} />
         </label>
-        <label className="field">
+        <label className="toolbar-field">
           <span>{t('common.term')}</span>
           <TermSelect value={term} onChange={setTerm} disabled={busy} required={false} />
         </label>
@@ -231,7 +236,7 @@ export default function AdminClassReportsPage() {
             })}
           </p>
 
-          <div className="grade-actions">
+          <div className="grade-actions batch-actions">
             <button
               type="button"
               className="btn btn-primary"
@@ -297,7 +302,7 @@ export default function AdminClassReportsPage() {
                     <tr key={row.student_id}>
                       <td className="nowrap">
                         {row.report_id ? (
-                          <Link className="back-link" to={`/admin/reports/${row.report_id}`}>
+                          <Link className="link-action" to={`/admin/reports/${row.report_id}`}>
                             {row.student_name}
                           </Link>
                         ) : (
@@ -315,9 +320,7 @@ export default function AdminClassReportsPage() {
                           <span className="muted">{t('classReports.noResults')}</span>
                         )}
                         {row.needs_review && (
-                          <span
-                            style={{ color: 'var(--color-danger, #b91c1c)', marginLeft: 8 }}
-                          >
+                          <span className="needs-review-text">
                             {t('classReports.needsReview')}
                           </span>
                         )}
@@ -331,7 +334,7 @@ export default function AdminClassReportsPage() {
                         {row.needs_review && (
                           <button
                             type="button"
-                            className="btn btn-ghost"
+                            className="link-action"
                             disabled={busy}
                             onClick={() => handleRegenerate(row)}
                           >

@@ -38,6 +38,14 @@ function hasValue(value) {
   return value !== null && value !== undefined
 }
 
+function itemGrades(items, grades) {
+  return Object.fromEntries((items ?? []).map((item) => [item.item_key, grades[item.item_key] || '']))
+}
+
+function storedItemGrades(items) {
+  return Object.fromEntries((items ?? []).map((item) => [item.item_key, item.letter_grade ?? '']))
+}
+
 export default function AdminReportDetailPage() {
   const { reportId } = useParams()
   const { t } = useTranslation()
@@ -157,6 +165,36 @@ export default function AdminReportDetailPage() {
       document.removeEventListener('visibilitychange', refreshWhenVisible)
     }
   }, [loadStaleness])
+
+  useEffect(() => {
+    if (!report) return undefined
+    const current = {
+      conduct: itemGrades(report.conduct_items, conductGrades),
+      workHabits: itemGrades(report.work_habit_items, workHabitGrades),
+      comments,
+      summary: summaryDraft,
+    }
+    const stored = {
+      conduct: storedItemGrades(report.conduct_items),
+      workHabits: storedItemGrades(report.work_habit_items),
+      comments: {
+        teacher_comment_fr: report.teacher_comment_fr ?? '',
+        teacher_comment_en: report.teacher_comment_en ?? '',
+        principal_comment_fr: report.principal_comment_fr ?? '',
+        principal_comment_en: report.principal_comment_en ?? '',
+      },
+      summary: report.ai_summary ?? '',
+    }
+    if (JSON.stringify(current) === JSON.stringify(stored)) return undefined
+
+    function handleBeforeUnload(event) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [report, conductGrades, workHabitGrades, comments, summaryDraft])
 
   // Run an action, surface a readable error, and refresh the report on success.
   async function runAction(name, fn, { refresh = true, successMessage = null } = {}) {
@@ -294,6 +332,26 @@ export default function AdminReportDetailPage() {
   const isApproved = report.status === 'approved'
   const isSent = report.status === 'sent'
   const busy = pending !== null
+  const summaryDirty = summaryDraft !== (report.ai_summary ?? '')
+  const detailsDirty = (() => {
+    const current = {
+      conduct: itemGrades(report.conduct_items, conductGrades),
+      workHabits: itemGrades(report.work_habit_items, workHabitGrades),
+      comments,
+    }
+    const stored = {
+      conduct: storedItemGrades(report.conduct_items),
+      workHabits: storedItemGrades(report.work_habit_items),
+      comments: {
+        teacher_comment_fr: report.teacher_comment_fr ?? '',
+        teacher_comment_en: report.teacher_comment_en ?? '',
+        principal_comment_fr: report.principal_comment_fr ?? '',
+        principal_comment_en: report.principal_comment_en ?? '',
+      },
+    }
+    return JSON.stringify(current) !== JSON.stringify(stored)
+  })()
+  const hasUnsavedChanges = summaryDirty || detailsDirty
   const staleReason = staleness?.reason
     ? staleness.reason.includes('could not be built')
       ? t('reports.staleReasonIncomplete')
@@ -329,10 +387,64 @@ export default function AdminReportDetailPage() {
         <ReportAverages report={report} />
         <div className="stat">
           <div className="stat-label">{t('common.status')}</div>
-          <div className="stat-value" style={{ fontSize: '1.1rem' }}>
+          <div className="stat-value stat-value-compact">
             <StatusBadge status={report.status} />
           </div>
         </div>
+      </div>
+
+      {(isApproved || isSent) && (
+        <div className="state state-warning" role="status">
+          {t('reports.approvedSentEditWarning')}
+        </div>
+      )}
+
+      <div className="report-sticky-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={handleSaveDetails}
+          disabled={busy || !detailsDirty}
+        >
+          {pending === 'details' ? t('common.saving') : t('reports.saveDetails')}
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={handleSaveSummary}
+          disabled={busy || !summaryDirty}
+        >
+          {pending === 'save' ? t('common.saving') : t('reports.saveSummary')}
+        </button>
+        {isDraft && (
+          <>
+            <button type="button" className="btn btn-ghost" onClick={handleCheck} disabled={busy}>
+              {pending === 'check' ? t('reports.checking') : t('reports.check')}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={handleGenerateSummary} disabled={busy}>
+              {pending === 'summary' ? t('reports.generating') : t('reports.generateSummary')}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={handleApprove} disabled={busy || hasUnsavedChanges}>
+              {pending === 'approve' ? t('reports.approving') : t('reports.approve')}
+            </button>
+          </>
+        )}
+        {(isApproved || isSent) && (
+          <button type="button" className="btn btn-ghost" onClick={handleSend} disabled={busy || hasUnsavedChanges}>
+            {pending === 'send'
+              ? isSent
+                ? t('reports.resending')
+                : t('reports.sending')
+              : isSent
+                ? t('reports.resend')
+                : t('reports.send')}
+          </button>
+        )}
+        {(isApproved || isSent) && (
+          <button type="button" className="btn btn-ghost" onClick={handleDownload} disabled={busy || hasUnsavedChanges}>
+            {pending === 'pdf' ? t('reports.preparing') : t('reports.downloadPdf')}
+          </button>
+        )}
       </div>
 
       {staleness?.is_stale && (
@@ -368,57 +480,6 @@ export default function AdminReportDetailPage() {
           </button>
         </section>
       )}
-
-      {/* ---- Workflow actions ---- */}
-      <h3 className="section-title">{t('reports.actionsSection')}</h3>
-      <div className="grade-actions">
-        {isDraft && (
-          <>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={handleCheck}
-              disabled={busy}
-            >
-              {pending === 'check' ? t('reports.checking') : t('reports.check')}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={handleGenerateSummary}
-              disabled={busy}
-            >
-              {pending === 'summary' ? t('reports.generating') : t('reports.generateSummary')}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleApprove}
-              disabled={busy}
-            >
-              {pending === 'approve' ? t('reports.approving') : t('reports.approve')}
-            </button>
-          </>
-        )}
-
-        {(isApproved || isSent) && (
-          <button type="button" className="btn btn-primary" onClick={handleSend} disabled={busy}>
-            {pending === 'send'
-              ? isSent
-                ? t('reports.resending')
-                : t('reports.sending')
-              : isSent
-                ? t('reports.resend')
-                : t('reports.send')}
-          </button>
-        )}
-
-        {(isApproved || isSent) && (
-          <button type="button" className="btn btn-ghost" onClick={handleDownload} disabled={busy}>
-            {pending === 'pdf' ? t('reports.preparing') : t('reports.downloadPdf')}
-          </button>
-        )}
-      </div>
 
       {actionMessage && <p className="grade-summary">{actionMessage}</p>}
       {actionError && <ErrorBanner message={actionError} />}
@@ -470,7 +531,7 @@ export default function AdminReportDetailPage() {
       )}
 
       {/* ---- Conduct ---- */}
-      <h3 className="section-title">Conduct / Conduite</h3>
+      <h3 className="section-title">{t('reports.conductSection')}</h3>
       <table className="table">
         <thead>
           <tr>
@@ -505,7 +566,7 @@ export default function AdminReportDetailPage() {
       </table>
 
       {/* ---- Work habits ---- */}
-      <h3 className="section-title">Work Habits / Habitudes de travail</h3>
+      <h3 className="section-title">{t('reports.workHabitsSection')}</h3>
       <table className="table">
         <thead>
           <tr>
@@ -545,7 +606,7 @@ export default function AdminReportDetailPage() {
         <label className="field" key={field}>
           <span>{label}</span>
           <textarea
-            style={{ width: '100%', minHeight: 90, padding: '10px 12px' }}
+            className="textarea-field"
             value={comments[field]}
             onChange={(e) => setComments((c) => ({ ...c, [field]: e.target.value }))}
             disabled={busy}
@@ -562,8 +623,7 @@ export default function AdminReportDetailPage() {
       <h3 className="section-title">{t('reports.parentSummarySection')}</h3>
       <div>
         <textarea
-          className="field"
-          style={{ width: '100%', minHeight: 140, padding: '10px 12px' }}
+          className="textarea-field textarea-field-large"
           value={summaryDraft}
           onChange={(e) => setSummaryDraft(e.target.value)}
           placeholder={t('reports.summaryPlaceholder')}

@@ -9,11 +9,11 @@ export function classOptionLabel(cls, multiYear) {
 
 // Groups a flat class list into optgroup-ready sections by school level (in
 // SCHOOL_LEVELS order), each sorted by sort_order. Empty groups are dropped.
-export function buildClassOptionGroups(classes) {
+export function buildClassOptionGroups(classes, t) {
   const multiYear = new Set(classes.map((c) => c.school_year)).size > 1
   return SCHOOL_LEVELS.map((level) => ({
     level: level.value,
-    label: level.label,
+    label: t ? t(`schoolLevels.${level.value}`) : level.label,
     options: classes
       .filter((c) => c.school_level === level.value)
       .slice()

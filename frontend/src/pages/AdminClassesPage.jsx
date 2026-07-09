@@ -32,6 +32,8 @@ export default function AdminClassesPage() {
 
   const [quickAdd, setQuickAdd] = useState({})
   const [quickAddError, setQuickAddError] = useState({})
+  const [addLevel, setAddLevel] = useState('maternelle')
+  const [showAddDialog, setShowAddDialog] = useState(false)
 
   const [editing, setEditing] = useState(null)
   const [editForm, setEditForm] = useState(null)
@@ -102,6 +104,12 @@ export default function AdminClassesPage() {
     setQuickAdd((q) => ({ ...q, [levelValue]: { ...quickAddFor(levelValue), [field]: value } }))
   }
 
+  function openAddDialog() {
+    setAddLevel(SCHOOL_LEVELS[0].value)
+    setQuickAddError({})
+    setShowAddDialog(true)
+  }
+
   async function handleQuickAdd(event, levelValue) {
     event.preventDefault()
     setMessage(null)
@@ -123,6 +131,7 @@ export default function AdminClassesPage() {
       })
       await refresh()
       setQuickAdd((q) => ({ ...q, [levelValue]: emptyQuickAdd() }))
+      setShowAddDialog(false)
       setMessage(t('classes.added'))
     } catch (err) {
       setQuickAddError((e) => ({ ...e, [levelValue]: err.message }))
@@ -288,14 +297,12 @@ export default function AdminClassesPage() {
           <p className="muted">{t('classes.subtitle')}</p>
         </div>
         {classes && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <label className="field" style={{ marginBottom: 0 }}>
+          <div className="detail-actions">
+            <label className="toolbar-field">
               <span>{t('common.schoolYear')}</span>
               <select
-                className="grade-input"
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                style={{ width: 'auto', textAlign: 'left' }}
               >
                 {years.map((year) => (
                   <option key={year} value={year}>
@@ -304,6 +311,9 @@ export default function AdminClassesPage() {
                 ))}
               </select>
             </label>
+            <button type="button" className="btn btn-primary" onClick={openAddDialog} disabled={pending}>
+              {t('classes.addClass')}
+            </button>
             <button type="button" className="btn btn-primary" onClick={openBulkDialog} disabled={pending}>
               {t('classes.createGGFK')}
             </button>
@@ -318,45 +328,11 @@ export default function AdminClassesPage() {
       {classes &&
         SCHOOL_LEVELS.map((level) => {
           const list = classesByLevel[level.value] || []
-          const qa = quickAddFor(level.value)
           return (
             <div key={level.value}>
-              <h3 className="section-title">{t('classes.level_' + level.value)}</h3>
-
-              <form
-                onSubmit={(e) => handleQuickAdd(e, level.value)}
-                style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}
-              >
-                <label className="field" style={{ marginBottom: 0 }}>
-                  <span>{t('classes.nameFr')}</span>
-                  <input
-                    value={qa.nameFr}
-                    onChange={(e) => setQuickAddField(level.value, 'nameFr', e.target.value)}
-                    disabled={pending}
-                  />
-                </label>
-                <label className="field" style={{ marginBottom: 0 }}>
-                  <span>{t('classes.nameEn')}</span>
-                  <input
-                    value={qa.nameEn}
-                    onChange={(e) => setQuickAddField(level.value, 'nameEn', e.target.value)}
-                    disabled={pending}
-                  />
-                </label>
-                <label className="field" style={{ marginBottom: 0 }}>
-                  <span>{t('classes.stream')}</span>
-                  <input
-                    value={qa.stream}
-                    onChange={(e) => setQuickAddField(level.value, 'stream', e.target.value)}
-                    disabled={pending}
-                    style={{ maxWidth: 90 }}
-                  />
-                </label>
-                <button type="submit" className="btn btn-primary" disabled={pending}>
-                  {t('common.add')}
-                </button>
-              </form>
-              {quickAddError[level.value] && <ErrorBanner message={quickAddError[level.value]} />}
+              <div className="section-heading">
+                <h3 className="section-title">{t('classes.level_' + level.value)}</h3>
+              </div>
 
               {list.length === 0 ? (
                 <Empty message={t('classes.emptyLevel', { level: t('classes.level_' + level.value), year: selectedYear })} />
@@ -382,10 +358,10 @@ export default function AdminClassesPage() {
                           <td className="nowrap">{cls.stream || '—'}</td>
                           <td className="num">{cls.student_count}</td>
                           <td className="num">{cls.course_count}</td>
-                          <td className="nowrap">
+                          <td className="nowrap row-actions">
                             <button
                               type="button"
-                              className="btn btn-ghost"
+                              className="link-action"
                               onClick={() => openEnrollDialog(cls)}
                               disabled={pending || cls.student_count === 0 || cls.course_count === 0}
                               title={
@@ -400,7 +376,7 @@ export default function AdminClassesPage() {
                             </button>
                             <button
                               type="button"
-                              className="btn btn-ghost"
+                              className="link-action"
                               onClick={() => openEdit(cls)}
                               disabled={pending}
                             >
@@ -408,7 +384,7 @@ export default function AdminClassesPage() {
                             </button>
                             <button
                               type="button"
-                              className="btn btn-ghost"
+                              className="link-action link-action-danger"
                               onClick={() => handleDelete(cls)}
                               disabled={pending}
                             >
@@ -425,25 +401,72 @@ export default function AdminClassesPage() {
           )
         })}
 
+      {showAddDialog && (
+        <div className="modal-backdrop" onClick={() => !pending && setShowAddDialog(false)}>
+          <div className="card modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3 className="section-title">{t('classes.addClass')}</h3>
+            <form className="admin-form" onSubmit={(e) => handleQuickAdd(e, addLevel)}>
+              <label className="field">
+                <span>{t('classes.schoolLevel')}</span>
+                <select
+                  className="grade-input full-width-input"
+                  value={addLevel}
+                  onChange={(e) => setAddLevel(e.target.value)}
+                  disabled={pending}
+                >
+                  {SCHOOL_LEVELS.map((level) => (
+                    <option key={level.value} value={level.value}>
+                      {t('classes.level_' + level.value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>{t('classes.nameFr')}</span>
+                <input
+                  value={quickAddFor(addLevel).nameFr}
+                  onChange={(e) => setQuickAddField(addLevel, 'nameFr', e.target.value)}
+                  disabled={pending}
+                />
+              </label>
+              <label className="field">
+                <span>{t('classes.nameEn')}</span>
+                <input
+                  value={quickAddFor(addLevel).nameEn}
+                  onChange={(e) => setQuickAddField(addLevel, 'nameEn', e.target.value)}
+                  disabled={pending}
+                />
+              </label>
+              <label className="field">
+                <span>{t('classes.stream')}</span>
+                <input
+                  value={quickAddFor(addLevel).stream}
+                  onChange={(e) => setQuickAddField(addLevel, 'stream', e.target.value)}
+                  disabled={pending}
+                />
+              </label>
+              <div className="grade-actions">
+                <button type="submit" className="btn btn-primary" disabled={pending}>
+                  {pending ? t('common.saving') : t('common.add')}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setShowAddDialog(false)}
+                  disabled={pending}
+                >
+                  {t('common.cancel')}
+                </button>
+              </div>
+              {quickAddError[addLevel] && <ErrorBanner message={quickAddError[addLevel]} />}
+            </form>
+          </div>
+        </div>
+      )}
+
       {showBulkDialog && (
-        <div
-          onClick={() => setShowBulkDialog(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 1000,
-          }}
-        >
-          <div
-            className="card"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
-          >
+        <div className="modal-backdrop" onClick={() => setShowBulkDialog(false)}>
+          <div className="card modal-card" onClick={(e) => e.stopPropagation()}>
             <h3 className="section-title">{t('classes.createGGFK')}</h3>
             <p className="muted">{t('classes.bulkDialogDesc')}</p>
             <form className="admin-form" onSubmit={handleBulkCreate}>
@@ -494,24 +517,8 @@ export default function AdminClassesPage() {
       )}
 
       {enrollDialog && (
-        <div
-          onClick={() => !enrolling && setEnrollDialog(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 1000,
-          }}
-        >
-          <div
-            className="card"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 520, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
-          >
+        <div className="modal-backdrop" onClick={() => !enrolling && setEnrollDialog(null)}>
+          <div className="card modal-card" onClick={(e) => e.stopPropagation()}>
             <h3 className="section-title">{t('classes.enrollDialogTitle', { name: enrollDialog.cls.name_fr })}</h3>
             <p className="muted">{t('classes.enrollDialogDesc', { year: enrollDialog.cls.school_year })}</p>
 
@@ -579,24 +586,8 @@ export default function AdminClassesPage() {
       )}
 
       {editing && editForm && (
-        <div
-          onClick={() => setEditing(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 1000,
-          }}
-        >
-          <div
-            className="card"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
-          >
+        <div className="modal-backdrop" onClick={() => setEditing(null)}>
+          <div className="card modal-card" onClick={(e) => e.stopPropagation()}>
             <h3 className="section-title">{t('classes.editTitle')}</h3>
             <form className="admin-form" onSubmit={handleSaveEdit}>
               <label className="field">
@@ -619,11 +610,10 @@ export default function AdminClassesPage() {
               <label className="field">
                 <span>{t('classes.schoolLevel')}</span>
                 <select
-                  className="grade-input"
+                  className="grade-input full-width-input"
                   value={editForm.schoolLevel}
                   onChange={(e) => updateEditField('schoolLevel', e.target.value)}
                   disabled={pending}
-                  style={{ width: '100%', textAlign: 'left' }}
                 >
                   {SCHOOL_LEVELS.map((level) => (
                     <option key={level.value} value={level.value}>

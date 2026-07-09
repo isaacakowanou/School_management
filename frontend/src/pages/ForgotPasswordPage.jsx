@@ -24,7 +24,7 @@ export default function ForgotPasswordPage() {
       await forgotPassword(identifier.trim())
       setStep(2)
     } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.')
+      setError(err.message || t('forgotPassword.requestError'))
     } finally {
       setSubmitting(false)
     }
@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
     event.preventDefault()
     setError(null)
     if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters.')
+      setError(t('forgotPassword.passwordTooShort'))
       return
     }
     setSubmitting(true)
@@ -42,7 +42,7 @@ export default function ForgotPasswordPage() {
       await resetPassword(identifier.trim(), otp.trim(), newPassword)
       setDone(true)
     } catch (err) {
-      setError(err.message || 'Invalid code or identifier. Please try again.')
+      setError(err.message || t('forgotPassword.resetError'))
     } finally {
       setSubmitting(false)
     }
@@ -86,6 +86,7 @@ export default function ForgotPasswordPage() {
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               autoComplete="off"
+              placeholder={t('forgotPassword.identifierPlaceholder')}
               required
               disabled={submitting}
             />

@@ -10,6 +10,19 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 
 const ENTITY_TYPES = ['student', 'parent', 'teacher', 'class', 'course', 'grade_item', 'report']
 
+function dangerLabel(t, key) {
+  return t(`dangerZone.labels.${key}`, { defaultValue: key })
+}
+
+function warningLabel(t, warning) {
+  const key = {
+    'Parent profiles are not moved when deleting a student.': 'studentKeepsParents',
+    'Students are not moved when deleting a parent.': 'parentKeepsStudents',
+    'Students are not moved when deleting a class.': 'classKeepsStudents',
+  }[warning]
+  return key ? t(`dangerZone.warnings.${key}`) : warning
+}
+
 function CountsTable({ counts, t }) {
   const rows = Object.entries(counts || {})
   if (rows.length === 0) return <p className="muted">{t('dangerZone.noDependents')}</p>
@@ -25,7 +38,7 @@ function CountsTable({ counts, t }) {
         <tbody>
           {rows.map(([table, count]) => (
             <tr key={table}>
-              <td>{table}</td>
+              <td>{dangerLabel(t, table)}</td>
               <td className="num">{count}</td>
             </tr>
           ))}
@@ -172,7 +185,7 @@ export default function AdminDangerZonePage() {
           >
             {ENTITY_TYPES.map((type) => (
               <option key={type} value={type}>
-                {type}
+                {dangerLabel(t, type)}
               </option>
             ))}
           </select>
@@ -185,7 +198,7 @@ export default function AdminDangerZonePage() {
               setQuery(event.target.value)
               setSelected(null)
             }}
-            placeholder="Type stress, math, 6ème..."
+            placeholder={t('dangerZone.searchPlaceholder')}
           />
         </label>
         {searching && <p className="muted">{t('dangerZone.searching')}</p>}
@@ -214,7 +227,7 @@ export default function AdminDangerZonePage() {
         )}
         <label>
           {t('dangerZone.note')}
-          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Demo cleanup" />
+          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t('dangerZone.notePlaceholder')} />
         </label>
         <button type="submit" className="btn btn-primary" disabled={loading || !selected}>
           {loading ? t('dangerZone.checking') : t('dangerZone.preview')}
@@ -232,7 +245,7 @@ export default function AdminDangerZonePage() {
           {preview.warnings?.length > 0 && (
             <ul>
               {preview.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
+                <li key={warning}>{warningLabel(t, warning)}</li>
               ))}
             </ul>
           )}

@@ -143,38 +143,45 @@ export default function AdminTeacherDetailPage() {
       <Link to="/admin/teachers" className="back-link">
         ← {t('nav.teachers')}
       </Link>
-      <h2 className="page-title">{teacher.name}</h2>
-      <p className="muted">
-        {teacher.email || '—'} · {teacher.phone || '—'} · {t('common.employeeNumber')} #{teacher.employee_number}
-      </p>
-      {!showEditForm && (
-        <div className="grade-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              setEditError(null)
-              setEditMessage(null)
-              setEditForm(teacherToForm(teacher))
-              setShowEditForm(true)
-            }}
-          >
-            {t('common.edit')}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={handleDeleteTeacher}
-            disabled={deleting}
-          >
-            {deleting ? t('common.deleting') : t('common.delete')}
-          </button>
+      <div className="detail-header">
+        <div>
+          <h2 className="page-title">{teacher.name}</h2>
+          <p className="muted">
+            {teacher.email || '—'} · {teacher.phone || '—'} · {t('common.employeeNumber')} #{teacher.employee_number}
+          </p>
         </div>
-      )}
+        {!showEditForm && (
+          <div className="detail-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setEditError(null)
+                setEditMessage(null)
+                setEditForm(teacherToForm(teacher))
+                setShowEditForm(true)
+              }}
+            >
+              {t('common.edit')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-danger-subtle"
+              onClick={handleDeleteTeacher}
+              disabled={deleting}
+            >
+              {deleting ? t('common.deleting') : t('common.delete')}
+            </button>
+          </div>
+        )}
+      </div>
       {editMessage && <p className="grade-summary">{editMessage}</p>}
       {editError && !showEditForm && <ErrorBanner message={editError} />}
       {showEditForm && (
-        <form className="card admin-form" onSubmit={handleEditTeacher}>
+        <form className="card admin-form detail-form" onSubmit={handleEditTeacher}>
+          <div className="section-heading">
+            <h3>{t('common.edit')}</h3>
+          </div>
           <label className="field">
             <span>{t('common.name')}</span>
             <input
@@ -228,7 +235,9 @@ export default function AdminTeacherDetailPage() {
         </form>
       )}
 
-      <h3 className="section-title">{t('teachers.assignedCourses')}</h3>
+      <div className="section-heading">
+        <h3 className="section-title">{t('teachers.assignedCourses')}</h3>
+      </div>
       {courses.length === 0 ? (
         <Empty message={t('teachers.noCourses')} />
       ) : (
@@ -253,7 +262,7 @@ export default function AdminTeacherDetailPage() {
                   <td className="nowrap">{course.term}</td>
                   <td className="nowrap">{course.school_year}</td>
                   <td className="nowrap">
-                    <Link className="back-link" to={`/admin/courses/${course.id}`}>
+                    <Link className="link-action" to={`/admin/courses/${course.id}`}>
                       {t('common.open')}
                     </Link>
                   </td>

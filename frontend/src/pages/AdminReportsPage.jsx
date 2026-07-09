@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { listReports } from '../api/reports.js'
+import { listClasses } from '../api/classes.js'
+import { listStudents } from '../api/students.js'
 import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -43,6 +45,11 @@ export default function AdminReportsPage() {
   const [error, setError] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [needsReviewOnly, setNeedsReviewOnly] = useState(false)
+  const [search, setSearch] = useState('')
+  const [classFilter, setClassFilter] = useState('')
+  const [classes, setClasses] = useState([])
+  const [studentClassById, setStudentClassById] = useState(new Map())
+  const [visibleCount, setVisibleCount] = useState(25)
 
   const refreshReports = useCallback(async () => {
     try {
@@ -58,9 +65,12 @@ export default function AdminReportsPage() {
     let cancelled = false
     setError(null)
     setReports(null)
-    listReports()
-      .then((data) => {
-        if (!cancelled) setReports(data)
+    Promise.all([listReports(), listClasses().catch(() => []), listStudents().catch(() => [])])
+      .then(([reportData, classData, studentData]) => {
+        if (cancelled) return
+        setReports(reportData)
+        setClasses(classData)
+        setStudentClassById(new Map(studentData.map((student) => [student.id, student.class_id || ''])))
       })
       .catch((err) => {
         if (!cancelled) setError(err.message)
@@ -88,11 +98,17 @@ export default function AdminReportsPage() {
   const filtered = useMemo(() => {
     if (!reports) return []
     return reports.filter((report) => {
+      const query = search.trim().toLowerCase()
+      const haystack = `${report.student_name || ''} ${report.student_number || ''}`.toLowerCase()
+      if (query && !haystack.includes(query)) return false
       if (statusFilter !== 'all' && report.status !== statusFilter) return false
       if (needsReviewOnly && !report.needs_review) return false
+      if (classFilter && studentClassById.get(report.student_id) !== classFilter) return false
       return true
     })
-  }, [reports, statusFilter, needsReviewOnly])
+  }, [reports, search, statusFilter, needsReviewOnly, classFilter, studentClassById])
+
+  const visibleReports = filtered.slice(0, visibleCount)
 
   const statusLabel = (key) => {
     const map = {
@@ -130,14 +146,26 @@ export default function AdminReportsPage() {
 
       {!error && reports && (
         <>
-          <div className="filters">
-            <label className="field">
+          <div className="list-toolbar">
+            <label className="toolbar-field">
+              <span>{t('common.search')}</span>
+              <input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value)
+                  setVisibleCount(25)
+                }}
+                placeholder={t('reports.searchPlaceholder')}
+              />
+            </label>
+            <label className="toolbar-field">
               <span>{t('common.status')}</span>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="grade-input"
-                style={{ width: 'auto', textAlign: 'left' }}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value)
+                  setVisibleCount(25)
+                }}
               >
                 {STATUS_KEYS.map((key) => (
                   <option key={key} value={key}>
@@ -146,24 +174,47 @@ export default function AdminReportsPage() {
                 ))}
               </select>
             </label>
+            <label className="toolbar-field">
+              <span>{t('reports.classFilter')}</span>
+              <select
+                value={classFilter}
+                onChange={(event) => {
+                  setClassFilter(event.target.value)
+                  setVisibleCount(25)
+                }}
+              >
+                <option value="">{t('common.all')}</option>
+                {classes.map((cls) => (
+                  <option key={cls.id} value={cls.id}>
+                    {cls.name_fr}{cls.name_en ? ` (${cls.name_en})` : ''} · {cls.school_year}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="filter-check">
               <input
                 type="checkbox"
                 checked={needsReviewOnly}
-                onChange={(e) => setNeedsReviewOnly(e.target.checked)}
+                onChange={(e) => {
+                  setNeedsReviewOnly(e.target.checked)
+                  setVisibleCount(25)
+                }}
               />
               <span>{t('reports.needsReviewOnly')}</span>
             </label>
-          </div>
-          <div className="status-help" aria-label="Report status meanings">
-            {STATUS_HELP_KEYS.map((key) => (
-              <span key={key} className="status-help-item">
-                <StatusBadge status={key} /> {statusHelpText(key)}
-              </span>
-            ))}
-            <span className="status-help-item">
-              <span className="badge badge-review">{t('reports.needsReview')}</span> {t('reports.needsReviewCopy')}
-            </span>
+            <details className="status-popover">
+              <summary aria-label={t('reports.statusLegend')}>?</summary>
+              <div className="status-popover-panel">
+                {STATUS_HELP_KEYS.map((key) => (
+                  <span key={key} className="status-help-item">
+                    <StatusBadge status={key} /> {statusHelpText(key)}
+                  </span>
+                ))}
+                <span className="status-help-item">
+                  <span className="badge badge-review">{t('reports.needsReview')}</span> {t('reports.needsReviewCopy')}
+                </span>
+              </div>
+            </details>
           </div>
 
           {filtered.length === 0 ? (
@@ -182,7 +233,7 @@ export default function AdminReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((report) => (
+                  {visibleReports.map((report) => (
                     <tr key={report.id}>
                       <td>
                         <div className="student-cell-main">
@@ -199,7 +250,7 @@ export default function AdminReportsPage() {
                       </td>
                       <td className="num">{formatReportAverage(report.bilingual_average ?? report.overall_average, report.scale)}</td>
                       <td className="nowrap">
-                        <Link className="back-link" to={`/admin/reports/${report.id}`}>
+                        <Link className="link-action" to={`/admin/reports/${report.id}`}>
                           {t('common.open')}
                         </Link>
                       </td>
@@ -207,6 +258,15 @@ export default function AdminReportsPage() {
                   ))}
                 </tbody>
               </table>
+              {filtered.length > visibleReports.length && (
+                <button
+                  type="button"
+                  className="btn btn-ghost show-more-btn"
+                  onClick={() => setVisibleCount((count) => count + 25)}
+                >
+                  {t('common.showMore', { count: Math.min(25, filtered.length - visibleReports.length) })}
+                </button>
+              )}
             </div>
           )}
         </>

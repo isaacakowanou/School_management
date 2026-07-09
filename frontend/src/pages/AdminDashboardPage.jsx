@@ -56,11 +56,11 @@ export default function AdminDashboardPage() {
     try {
       setStats(await getAdminStats())
     } catch (err) {
-      setError(err.message)
+      setError(err.status === 0 || err.status === 404 ? t('adminDashboard.backendWakeup') : err.message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     loadStats()

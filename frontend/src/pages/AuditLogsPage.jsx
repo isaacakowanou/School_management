@@ -1,11 +1,11 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getAuditLogs } from '../api/auditLogs.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 
-const EMPTY_FILTERS = { entity_type: '', entity_id: '', actor_user_id: '' }
+const EMPTY_FILTERS = { entity_type: '', entity_id: '', actor_user_id: '', action: '', date_from: '', date_to: '' }
 
 function formatTime(iso) {
   if (!iso) return '—'
@@ -41,6 +41,10 @@ function ActorCell({ log, unknownActorLabel }) {
   )
 }
 
+function actionLabel(t, action) {
+  return t(`auditLogs.actions.${action}`, { defaultValue: action.replaceAll('_', ' ') })
+}
+
 export default function AuditLogsPage() {
   const { t } = useTranslation()
   const [draft, setDraft] = useState(EMPTY_FILTERS)
@@ -48,12 +52,15 @@ export default function AuditLogsPage() {
   const [logs, setLogs] = useState(null)
   const [error, setError] = useState(null)
   const [expandedLogId, setExpandedLogId] = useState(null)
+  const [visibleCount, setVisibleCount] = useState(25)
+  const [copiedId, setCopiedId] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     setError(null)
     setLogs(null)
     setExpandedLogId(null)
+    setVisibleCount(25)
     getAuditLogs(filters)
       .then((data) => {
         if (!cancelled) setLogs(data)
@@ -72,6 +79,9 @@ export default function AuditLogsPage() {
       entity_type: draft.entity_type.trim(),
       entity_id: draft.entity_id.trim(),
       actor_user_id: draft.actor_user_id.trim(),
+      action: draft.action,
+      date_from: draft.date_from,
+      date_to: draft.date_to,
     })
   }
 
@@ -84,6 +94,33 @@ export default function AuditLogsPage() {
     setExpandedLogId((current) => (current === logId ? null : logId))
   }
 
+  async function copyEntityId(value) {
+    if (!value) return
+    await navigator.clipboard.writeText(value)
+    setCopiedId(value)
+    window.setTimeout(() => setCopiedId(null), 1600)
+  }
+
+  const actionOptions = useMemo(() => {
+    const set = new Set((logs || []).map((log) => log.action).filter(Boolean))
+    if (draft.action) set.add(draft.action)
+    return Array.from(set).sort()
+  }, [logs, draft.action])
+
+  const filteredLogs = useMemo(() => {
+    const from = draft.date_from ? new Date(`${draft.date_from}T00:00:00`) : null
+    const to = draft.date_to ? new Date(`${draft.date_to}T23:59:59`) : null
+    return (logs || []).filter((log) => {
+      if (draft.action && log.action !== draft.action) return false
+      const createdAt = log.created_at ? new Date(log.created_at) : null
+      if (from && createdAt && createdAt < from) return false
+      if (to && createdAt && createdAt > to) return false
+      return true
+    })
+  }, [logs, draft.action, draft.date_from, draft.date_to])
+
+  const visibleLogs = filteredLogs.slice(0, visibleCount)
+
   return (
     <section className="admin-page">
       <h2 className="page-title">{t('nav.auditLogs')}</h2>
@@ -95,7 +132,7 @@ export default function AuditLogsPage() {
           <input
             value={draft.entity_type}
             onChange={(e) => setDraft({ ...draft, entity_type: e.target.value })}
-            placeholder="e.g. report_card"
+            placeholder={t('auditLogs.entityPlaceholder')}
           />
         </label>
         <label className="field">
@@ -103,7 +140,7 @@ export default function AuditLogsPage() {
           <input
             value={draft.entity_id}
             onChange={(e) => setDraft({ ...draft, entity_id: e.target.value })}
-            placeholder="UUID"
+            placeholder={t('auditLogs.uuidPlaceholder')}
           />
         </label>
         <label className="field">
@@ -111,7 +148,37 @@ export default function AuditLogsPage() {
           <input
             value={draft.actor_user_id}
             onChange={(e) => setDraft({ ...draft, actor_user_id: e.target.value })}
-            placeholder="UUID"
+            placeholder={t('auditLogs.uuidPlaceholder')}
+          />
+        </label>
+        <label className="field">
+          <span>{t('auditLogs.actionFilter')}</span>
+          <select
+            value={draft.action}
+            onChange={(e) => setDraft({ ...draft, action: e.target.value })}
+          >
+            <option value="">{t('auditLogs.allActions')}</option>
+            {actionOptions.map((action) => (
+              <option key={action} value={action}>
+                {actionLabel(t, action)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>{t('auditLogs.dateFrom')}</span>
+          <input
+            type="date"
+            value={draft.date_from}
+            onChange={(e) => setDraft({ ...draft, date_from: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>{t('auditLogs.dateTo')}</span>
+          <input
+            type="date"
+            value={draft.date_to}
+            onChange={(e) => setDraft({ ...draft, date_to: e.target.value })}
           />
         </label>
         <div className="filters-actions">
@@ -126,8 +193,9 @@ export default function AuditLogsPage() {
 
       {error && <ErrorBanner message={error} />}
       {!error && logs === null && <Spinner label={t('auditLogs.loading')} />}
-      {!error && logs && logs.length === 0 && <Empty message={t('auditLogs.empty')} />}
-      {!error && logs && logs.length > 0 && (
+      {copiedId && <p className="grade-summary">{t('auditLogs.copiedId')}</p>}
+      {!error && logs && filteredLogs.length === 0 && <Empty message={t('auditLogs.empty')} />}
+      {!error && logs && filteredLogs.length > 0 && (
         <div className="table-scroll">
           <table className="table audit-table">
             <thead>
@@ -141,7 +209,7 @@ export default function AuditLogsPage() {
               </tr>
             </thead>
             <tbody>
-              {logs.map((log) => {
+              {visibleLogs.map((log) => {
                 const isExpanded = expandedLogId === log.id
                 const oldValue = formatJson(log.old_value)
                 const newValue = formatJson(log.new_value)
@@ -152,12 +220,17 @@ export default function AuditLogsPage() {
                       <td>
                         <ActorCell log={log} unknownActorLabel={t('auditLogs.unknownActor')} />
                       </td>
-                      <td>{log.action}</td>
+                      <td title={log.action}>{actionLabel(t, log.action)}</td>
                       <td className="nowrap">{log.entity_type}</td>
                       <td>
-                        <span className="audit-id" title={log.entity_id}>
+                        <button
+                          type="button"
+                          className="audit-id audit-id-button"
+                          title={log.entity_id}
+                          onClick={() => copyEntityId(log.entity_id)}
+                        >
                           {log.entity_id}
-                        </span>
+                        </button>
                       </td>
                       <td className="nowrap">
                         <button
@@ -191,6 +264,15 @@ export default function AuditLogsPage() {
               })}
             </tbody>
           </table>
+          {filteredLogs.length > visibleLogs.length && (
+            <button
+              type="button"
+              className="btn btn-ghost show-more-btn"
+              onClick={() => setVisibleCount((count) => count + 25)}
+            >
+              {t('common.showMore', { count: Math.min(25, filteredLogs.length - visibleLogs.length) })}
+            </button>
+          )}
         </div>
       )}
     </section>

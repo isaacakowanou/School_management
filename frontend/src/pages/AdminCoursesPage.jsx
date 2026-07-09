@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { advanceTerm, cloneYearCourses, listCourses, previewAdvanceTerm } from '../api/courses.js'
+import { advanceTerm, cloneYearCourses, deleteCourse, listCourses, previewAdvanceTerm } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
+import { listClasses } from '../api/classes.js'
 import { schoolGroupLabel } from '../constants/schoolGroups.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import TermSelect from '../components/TermSelect.jsx'
+import { TRIMESTER_TERMS } from '../constants/terms.js'
 
 // Machine-readable preview warning keys -> i18n labels.
 const ADVANCE_WARNING_KEYS = {
@@ -25,8 +27,15 @@ export default function AdminCoursesPage() {
   const { t } = useTranslation()
   const [courses, setCourses] = useState(null)
   const [teachers, setTeachers] = useState([])
+  const [classes, setClasses] = useState([])
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(location.state?.message || null)
+  const [search, setSearch] = useState('')
+  const [classFilter, setClassFilter] = useState('')
+  const [termFilter, setTermFilter] = useState('')
+  const [yearFilter, setYearFilter] = useState('')
+  const [visibleCount, setVisibleCount] = useState(25)
+  const [deletingId, setDeletingId] = useState(null)
 
   const [showCloneDialog, setShowCloneDialog] = useState(false)
   const [cloneSourceYear, setCloneSourceYear] = useState('')
@@ -72,6 +81,12 @@ export default function AdminCoursesPage() {
       } catch {
         /* non-fatal */
       }
+      try {
+        const classList = await listClasses()
+        if (!cancelled) setClasses(classList)
+      } catch {
+        /* non-fatal */
+      }
     }
 
     load()
@@ -98,6 +113,22 @@ export default function AdminCoursesPage() {
     () => Array.from(courseCountByYear.keys()).sort().reverse(),
     [courseCountByYear],
   )
+
+  const filteredCourses = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return (courses || []).filter((course) => {
+      const teacherName = teacherNameById.get(course.teacher_id) || ''
+      const haystack = `${course.name} ${course.code} ${teacherName}`.toLowerCase()
+      if (query && !haystack.includes(query)) return false
+      if (classFilter === '__none__') return !course.class_id
+      if (classFilter && course.class_id !== classFilter) return false
+      if (termFilter && course.term !== termFilter) return false
+      if (yearFilter && course.school_year !== yearFilter) return false
+      return true
+    })
+  }, [courses, search, classFilter, termFilter, yearFilter, teacherNameById])
+
+  const visibleCourses = filteredCourses.slice(0, visibleCount)
 
   const cloneSourceCount = courseCountByYear.get(cloneSourceYear) || 0
   const cloneTargetCount = courseCountByYear.get(cloneTargetYear.trim()) || 0
@@ -204,12 +235,41 @@ export default function AdminCoursesPage() {
     }
   }
 
+  async function handleDelete(course) {
+    if (!window.confirm(t('courses.confirmDelete', { name: course.name }))) return
+    setError(null)
+    setNotice(null)
+    setDeletingId(course.id)
+    try {
+      await deleteCourse(course.id)
+      const refreshed = await listCourses()
+      setCourses(refreshed)
+      setNotice(t('courses.deleted'))
+    } catch (err) {
+      if (err.status === 409 && err.detail && typeof err.detail === 'object') {
+        setError(
+          t('courses.deleteBlocked', {
+            enrollments: err.detail.enrollment_count,
+            gradeItems: err.detail.grade_item_count,
+            grades: err.detail.grade_count,
+            results: err.detail.course_result_count,
+            snapshots: err.detail.report_snapshot_count,
+          }),
+        )
+      } else {
+        setError(err.message)
+      }
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   return (
     <section className="admin-page">
       <div className="report-header">
         <div>
           <h2 className="page-title">{t('nav.courses')}</h2>
-          <p className="muted">{t('courses.subtitle')}</p>
+          <p className="muted">{t('courses.count', { count: courses?.length ?? 0 })}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -239,45 +299,126 @@ export default function AdminCoursesPage() {
       {!error && courses === null && <Spinner label={t('courses.loading')} />}
       {!error && courses && courses.length === 0 && <Empty message={t('courses.empty')} />}
       {!error && courses && courses.length > 0 && (
-        <div className="table-scroll">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t('common.name')}</th>
-                <th>{t('courses.code')}</th>
-                <th>{t('common.teacher')}</th>
-                <th>{t('students.class')}</th>
-                <th>{t('common.term')}</th>
-                <th>{t('common.schoolYear')}</th>
-                <th>{t('courses.group')}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {courses.map((course) => (
-                <tr key={course.id}>
-                  <td>{course.name}</td>
-                  <td className="nowrap">{course.code}</td>
-                  <td>
-                    {teacherNameById.get(course.teacher_id) || (
-                      <span className="audit-id" title={course.teacher_id}>
-                        {course.teacher_id}
-                      </span>
-                    )}
-                  </td>
-                  <td className="nowrap">{course.class_name || '—'}</td>
-                  <td className="nowrap">{course.term}</td>
-                  <td className="nowrap">{course.school_year}</td>
-                  <td className="nowrap">{schoolGroupLabel(course.language_group) || '—'}</td>
-                  <td className="nowrap">
-                    <Link className="back-link" to={`/admin/courses/${course.id}`}>
-                      {t('common.open')}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="list-stack">
+          <div className="list-toolbar list-toolbar-wide">
+            <label className="toolbar-field">
+              <span>{t('common.search')}</span>
+              <input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value)
+                  setVisibleCount(25)
+                }}
+                placeholder={t('courses.searchPlaceholder')}
+              />
+            </label>
+            <label className="toolbar-field">
+              <span>{t('students.class')}</span>
+              <select
+                value={classFilter}
+                onChange={(event) => {
+                  setClassFilter(event.target.value)
+                  setVisibleCount(25)
+                }}
+              >
+                <option value="">{t('common.all')}</option>
+                <option value="__none__">{t('courses.withoutClass')}</option>
+                {classes.map((cls) => (
+                  <option key={cls.id} value={cls.id}>
+                    {cls.name_fr}{cls.name_en ? ` (${cls.name_en})` : ''} · {cls.school_year}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="toolbar-field">
+              <span>{t('common.term')}</span>
+              <select
+                value={termFilter}
+                onChange={(event) => {
+                  setTermFilter(event.target.value)
+                  setVisibleCount(25)
+                }}
+              >
+                <option value="">{t('common.all')}</option>
+                {TRIMESTER_TERMS.map((term) => (
+                  <option key={term} value={term}>{term}</option>
+                ))}
+              </select>
+            </label>
+            <label className="toolbar-field">
+              <span>{t('common.schoolYear')}</span>
+              <select
+                value={yearFilter}
+                onChange={(event) => {
+                  setYearFilter(event.target.value)
+                  setVisibleCount(25)
+                }}
+              >
+                <option value="">{t('common.all')}</option>
+                {schoolYears.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {filteredCourses.length === 0 ? (
+            <Empty message={t('courses.emptyFiltered')} />
+          ) : (
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>{t('common.name')}</th>
+                    <th>{t('courses.code')}</th>
+                    <th>{t('common.teacher')}</th>
+                    <th>{t('students.class')}</th>
+                    <th>{t('common.term')}</th>
+                    <th>{t('common.schoolYear')}</th>
+                    <th>{t('courses.group')}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleCourses.map((course) => (
+                    <tr key={course.id}>
+                      <td>{course.name}</td>
+                      <td className="nowrap">{course.code}</td>
+                      <td>
+                        {teacherNameById.get(course.teacher_id) || (
+                          <span className="audit-id" title={course.teacher_id}>
+                            {course.teacher_id}
+                          </span>
+                        )}
+                      </td>
+                      <td className="nowrap">{course.class_name || '—'}</td>
+                      <td className="nowrap">{course.term}</td>
+                      <td className="nowrap">{course.school_year}</td>
+                      <td className="nowrap">{schoolGroupLabel(course.language_group, t) || '—'}</td>
+                      <td className="nowrap row-actions">
+                        <Link className="link-action" to={`/admin/courses/${course.id}`}>
+                          {t('common.open')}
+                        </Link>
+                        <button
+                          type="button"
+                          className="link-action link-action-danger"
+                          onClick={() => handleDelete(course)}
+                          disabled={deletingId === course.id}
+                        >
+                          {deletingId === course.id ? t('courses.deleting') : t('common.delete')}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {filteredCourses.length > visibleCount && (
+            <button type="button" className="btn btn-ghost show-more-btn" onClick={() => setVisibleCount((count) => count + 25)}>
+              {t('common.showMore', { count: Math.min(25, filteredCourses.length - visibleCount) })}
+            </button>
+          )}
         </div>
       )}
 

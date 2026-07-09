@@ -10,7 +10,7 @@ export function derivedCourseName(subject) {
 
 // Group subjects into <optgroup> data, French section first (bulletin order;
 // the backend already sorts within each section by sort_order).
-export function buildSubjectOptionGroups(subjects) {
+export function buildSubjectOptionGroups(subjects, t) {
   const groups = []
   for (const section of ['FRENCH', 'ENGLISH']) {
     const options = (subjects || [])
@@ -19,7 +19,7 @@ export function buildSubjectOptionGroups(subjects) {
     if (options.length) {
       groups.push({
         section,
-        label: section === 'FRENCH' ? 'Section française' : 'English section',
+        label: t ? t(`subjects.sectionGroup${section}`) : section,
         options,
       })
     }

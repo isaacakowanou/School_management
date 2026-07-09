@@ -1,20 +1,52 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import {
+  BookOpen,
+  FileText,
+  GraduationCap,
+  LayoutDashboard,
+  Library,
+  School,
+  ScrollText,
+  ShieldAlert,
+  Trash2,
+  UserRound,
+  Users,
+} from 'lucide-react'
 import { useAuth } from '../auth/AuthContext.jsx'
 import LanguageSwitcher from './LanguageSwitcher.jsx'
 
-const NAV_ITEMS = [
-  { to: '/admin', key: 'nav.dashboard', end: true },
-  { to: '/admin/reports', key: 'nav.reports', end: false },
-  { to: '/admin/students', key: 'nav.students', end: false },
-  { to: '/admin/teachers', key: 'nav.teachers', end: false },
-  { to: '/admin/parents', key: 'nav.parents', end: false },
-  { to: '/admin/courses', key: 'nav.courses', end: false },
-  { to: '/admin/classes', key: 'nav.classes', end: false },
-  { to: '/admin/subjects', key: 'nav.subjects', end: false },
-  { to: '/admin/trash', key: 'nav.trash', end: false },
-  { to: '/admin/danger-zone', key: 'nav.dangerZone', end: false },
-  { to: '/admin/audit-logs', key: 'nav.auditLogs', end: false },
+const NAV_GROUPS = [
+  {
+    items: [
+      { to: '/admin', key: 'nav.dashboard', end: true, icon: LayoutDashboard },
+    ],
+  },
+  {
+    labelKey: 'navSections.management',
+    items: [
+      { to: '/admin/students', key: 'nav.students', end: false, icon: GraduationCap },
+      { to: '/admin/teachers', key: 'nav.teachers', end: false, icon: Users },
+      { to: '/admin/parents', key: 'nav.parents', end: false, icon: UserRound },
+      { to: '/admin/classes', key: 'nav.classes', end: false, icon: School },
+      { to: '/admin/courses', key: 'nav.courses', end: false, icon: BookOpen },
+      { to: '/admin/subjects', key: 'nav.subjects', end: false, icon: Library },
+    ],
+  },
+  {
+    labelKey: 'navSections.reports',
+    items: [
+      { to: '/admin/reports', key: 'nav.reports', end: false, icon: FileText },
+    ],
+  },
+  {
+    labelKey: 'navSections.system',
+    items: [
+      { to: '/admin/audit-logs', key: 'nav.auditLogs', end: false, icon: ScrollText },
+      { to: '/admin/trash', key: 'nav.trash', end: false, icon: Trash2 },
+      { to: '/admin/danger-zone', key: 'nav.dangerZone', end: false, icon: ShieldAlert },
+    ],
+  },
 ]
 
 export default function AdminLayout() {
@@ -38,17 +70,27 @@ export default function AdminLayout() {
 
       <div className="admin-shell">
         <nav className="admin-sidebar" aria-label="Admin navigation">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                `admin-nav-link${isActive ? ' admin-nav-link-active' : ''}`
-              }
-            >
-              {t(item.key)}
-            </NavLink>
+          {NAV_GROUPS.map((group, groupIndex) => (
+            <div className="admin-nav-group" key={group.labelKey || 'primary'}>
+              {group.labelKey && <div className="admin-nav-section">{t(group.labelKey)}</div>}
+              {group.items.map((item) => {
+                const Icon = item.icon
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) =>
+                      `admin-nav-link${isActive ? ' admin-nav-link-active' : ''}`
+                    }
+                  >
+                    <Icon className="admin-nav-icon" size={18} aria-hidden="true" />
+                    <span>{t(item.key)}</span>
+                  </NavLink>
+                )
+              })}
+              {groupIndex < NAV_GROUPS.length - 1 && <div className="admin-nav-divider" aria-hidden="true" />}
+            </div>
           ))}
         </nav>
 

@@ -2,7 +2,7 @@
   "common": {
     "logout": "Se déconnecter",
     "settings": "Paramètres",
-    "schoolName": "Bulletins scolaires",
+    "schoolName": "GGFK",
     "name": "Nom",
     "email": "Email",
     "phone": "Téléphone",
@@ -49,6 +49,11 @@
     "trash": "Corbeille",
     "dangerZone": "Zone de danger",
     "auditLogs": "Journaux d'audit"
+  },
+  "navSections": {
+    "management": "Gestion",
+    "reports": "Bulletins",
+    "system": "Système"
   },
   "login": {
     "title": "Bulletins scolaires",

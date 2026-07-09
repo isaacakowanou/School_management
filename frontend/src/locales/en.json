@@ -2,7 +2,7 @@
   "common": {
     "logout": "Log out",
     "settings": "Settings",
-    "schoolName": "School Reports",
+    "schoolName": "GGFK",
     "name": "Name",
     "email": "Email",
     "phone": "Phone",
@@ -49,6 +49,11 @@
     "trash": "Trash",
     "dangerZone": "Danger Zone",
     "auditLogs": "Audit logs"
+  },
+  "navSections": {
+    "management": "Management",
+    "reports": "Reports",
+    "system": "System"
   },
   "login": {
     "title": "School Reports",

@@ -383,6 +383,10 @@ class CourseResponse(BaseModel):
     class_school_level: str | None = None
     subject_id: UUID | None = None
     coefficient: int = 1
+    student_count: int = 0
+    grade_item_count: int = 0
+    filled_score_count: int = 0
+    possible_score_count: int = 0
 
 
 class CourseCreate(BaseModel):

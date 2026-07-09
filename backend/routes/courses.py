@@ -8,7 +8,7 @@ from audit import create_audit_log
 from auth import get_current_user, require_admin
 from constants import TRIMESTER_TERMS
 from database import get_db
-from models import Class, Course, CourseResult, Enrollment, Grade, GradeItem, ReportCardCourse, Subject, Teacher, User
+from models import Class, Course, CourseResult, Enrollment, Grade, GradeItem, ReportCardCourse, Student, Subject, Teacher, User
 from schemas import (
     CourseCloneYearRequest,
     CourseCloneYearResponse,
@@ -85,6 +85,82 @@ _SUBJECT_LANGUAGE_CONFLICT = "language_group conflicts with the subject's sectio
 _SUBJECT_NAME_CONFLICT = "name is derived from the subject; omit it or clear subject_id"
 
 
+def course_list_stats(db: Session, courses: list[Course]) -> dict[UUID, dict[str, int]]:
+    course_ids = [course.id for course in courses]
+    if not course_ids:
+        return {}
+
+    stats = {
+        course.id: {
+            "student_count": 0,
+            "grade_item_count": 0,
+            "filled_score_count": 0,
+            "possible_score_count": 0,
+        }
+        for course in courses
+    }
+
+    student_counts = dict(
+        db.execute(
+            select(Enrollment.course_id, func.count(func.distinct(Student.id)))
+            .join(Student, Student.id == Enrollment.student_id)
+            .where(
+                Enrollment.course_id.in_(course_ids),
+                Enrollment.deleted_at.is_(None),
+                Student.deleted_at.is_(None),
+            )
+            .group_by(Enrollment.course_id)
+        ).all()
+    )
+    grade_item_counts = dict(
+        db.execute(
+            select(GradeItem.course_id, func.count(GradeItem.id))
+            .join(Course, Course.id == GradeItem.course_id)
+            .where(
+                GradeItem.course_id.in_(course_ids),
+                GradeItem.term == Course.term,
+                GradeItem.deleted_at.is_(None),
+                Course.deleted_at.is_(None),
+            )
+            .group_by(GradeItem.course_id)
+        ).all()
+    )
+    filled_score_counts = dict(
+        db.execute(
+            select(GradeItem.course_id, func.count(Grade.id))
+            .join(GradeItem, GradeItem.id == Grade.grade_item_id)
+            .join(Course, Course.id == GradeItem.course_id)
+            .join(Student, Student.id == Grade.student_id)
+            .join(
+                Enrollment,
+                (Enrollment.student_id == Grade.student_id)
+                & (Enrollment.course_id == GradeItem.course_id),
+            )
+            .where(
+                GradeItem.course_id.in_(course_ids),
+                GradeItem.term == Course.term,
+                Grade.deleted_at.is_(None),
+                GradeItem.deleted_at.is_(None),
+                Course.deleted_at.is_(None),
+                Student.deleted_at.is_(None),
+                Enrollment.deleted_at.is_(None),
+            )
+            .group_by(GradeItem.course_id)
+        ).all()
+    )
+
+    for course_id in course_ids:
+        student_count = student_counts.get(course_id, 0)
+        grade_item_count = grade_item_counts.get(course_id, 0)
+        stats[course_id] = {
+            "student_count": student_count,
+            "grade_item_count": grade_item_count,
+            "filled_score_count": filled_score_counts.get(course_id, 0),
+            "possible_score_count": student_count * grade_item_count,
+        }
+    return stats
+
+
 @router.get("", response_model=list[CourseResponse])
 def list_courses(
     school_year: str | None = None,
@@ -102,14 +178,16 @@ def list_courses(
 
     if current_user.role == "admin":
         courses = db.scalars(query).all()
-        return [to_course_response(course) for course in courses]
+        stats = course_list_stats(db, courses)
+        return [to_course_response(course, stats.get(course.id)) for course in courses]
 
     if current_user.role == "teacher":
         teacher = get_current_teacher(db, current_user)
         if teacher is None:
             return []
         courses = db.scalars(query.where(Course.teacher_id == teacher.id)).all()
-        return [to_course_response(course) for course in courses]
+        stats = course_list_stats(db, courses)
+        return [to_course_response(course, stats.get(course.id)) for course in courses]
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 

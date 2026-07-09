@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createGrade, updateGrade } from '../api/grades.js'
 import Empty from './Empty.jsx'
@@ -13,9 +13,9 @@ function validateCell(value, maxScore) {
   const trimmed = value.trim()
   if (trimmed === '') return { skip: true }
   const num = Number(trimmed)
-  if (!Number.isFinite(num)) return { ok: false, message: 'Not a number' }
-  if (num < 0) return { ok: false, message: 'Must be ≥ 0' }
-  if (num > maxScore) return { ok: false, message: `Max ${maxScore}` }
+  if (!Number.isFinite(num)) return { ok: false, messageKey: 'gradeEntry.errorNotNumber' }
+  if (num < 0) return { ok: false, messageKey: 'gradeEntry.errorMin' }
+  if (num > maxScore) return { ok: false, messageKey: 'gradeEntry.errorMax', messageOptions: { max: maxScore } }
   return { ok: true, value: num }
 }
 
@@ -33,6 +33,8 @@ const TYPE_ORDER = { INTERRO: 0, DEVOIR: 1, COMPOSITION: 2 }
 export default function GradeEntryTable({ students, gradeItems, grades, onSaved, gradingMode = 'WEIGHTED' }) {
   const { t } = useTranslation()
   const isBeninese = gradingMode === 'BENINESE'
+  const inputRefs = useRef(new Map())
+  const [studentQuery, setStudentQuery] = useState('')
 
   // In Beninese mode: sort interros first, then devoir, then composition.
   const orderedGradeItems = useMemo(() => {
@@ -84,6 +86,39 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
     setCellErrors({})
   }, [initialDrafts])
 
+  const hasUnsavedChanges = useMemo(() => (
+    Object.keys(initialDrafts).some((key) => (drafts[key] ?? '') !== (initialDrafts[key] ?? ''))
+  ), [drafts, initialDrafts])
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined
+
+    function handleBeforeUnload(event) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
+
+  const filteredStudents = useMemo(() => {
+    const query = studentQuery.trim().toLowerCase()
+    if (!query) return students
+    return students.filter((student) => (
+      `${student.first_name} ${student.last_name} ${student.student_number || ''}`
+        .toLowerCase()
+        .includes(query)
+    ))
+  }, [studentQuery, students])
+
+  function gradeItemKind(item) {
+    if (isBeninese && item.item_type) {
+      return t(`courses.${item.item_type.toLowerCase()}Label`, { defaultValue: item.item_type })
+    }
+    return item.category || t('courses.gradeItem')
+  }
+
   if (orderedGradeItems.length === 0) {
     return <Empty message={t('gradeEntry.noGradeItems')} />
   }
@@ -93,6 +128,28 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
 
   function setCell(key, value) {
     setDrafts((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function setInputRef(key, node) {
+    if (node) inputRefs.current.set(key, node)
+    else inputRefs.current.delete(key)
+  }
+
+  function handleCellKeyDown(event, studentIndex, itemIndex) {
+    if ((event.key !== 'Enter' && event.key !== 'Tab') || event.shiftKey) return
+    event.preventDefault()
+
+    let nextStudentIndex = studentIndex + 1
+    let nextItemIndex = itemIndex
+    if (nextStudentIndex >= filteredStudents.length) {
+      nextStudentIndex = 0
+      nextItemIndex = itemIndex + 1
+    }
+    if (nextItemIndex >= orderedGradeItems.length) return
+
+    const nextStudent = filteredStudents[nextStudentIndex]
+    const nextItem = orderedGradeItems[nextItemIndex]
+    inputRefs.current.get(cellKey(nextStudent.id, nextItem.id))?.focus()
   }
 
   // Compute Beninese intermediates for one student from current draft values.
@@ -148,7 +205,7 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
         const result = validateCell(draftValue, item.max_score)
         if (result.skip) continue
         if (!result.ok) {
-          nextErrors[key] = result.message
+          nextErrors[key] = t(result.messageKey, result.messageOptions)
           failed += 1
           continue
         }
@@ -169,13 +226,51 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
     }
 
     setCellErrors(nextErrors)
+    if (saved > 0 && onSaved) {
+      try {
+        await onSaved(Array.from(changedStudentIds))
+        setSummary({ saved, failed, recalculated: true })
+      } catch {
+        setSummary({ saved, failed: failed + 1, recalculationFailed: true })
+      }
+    } else {
+      setSummary({ saved, failed })
+    }
     setSaving(false)
-    setSummary({ saved, failed })
-    if (saved > 0 && onSaved) onSaved(Array.from(changedStudentIds))
   }
 
   return (
     <div>
+      <label className="field grade-search-field">
+        <span>{t('gradeEntry.searchStudents')}</span>
+        <input
+          value={studentQuery}
+          onChange={(event) => setStudentQuery(event.target.value)}
+          placeholder={t('gradeEntry.searchPlaceholder')}
+        />
+      </label>
+
+      <div className="report-sticky-actions grade-save-bar">
+        <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? t('gradeEntry.saving') : t('gradeEntry.saveGrades')}
+        </button>
+        {hasUnsavedChanges && !saving && <span className="grade-summary">{t('gradeEntry.unsaved')}</span>}
+        {summary && (
+          <span className={`grade-summary${summary.failed ? ' grade-summary-warn' : ''}`}>
+            {summary.recalculationFailed
+              ? t('gradeEntry.savedRecalcFailed')
+              : summary.failed
+                ? t('gradeEntry.saveFailed')
+                : summary.recalculated
+                  ? t('gradeEntry.savedAndRecalculated')
+                  : t('gradeEntry.saved')}
+          </span>
+        )}
+      </div>
+
+      {filteredStudents.length === 0 ? (
+        <Empty message={t('gradeEntry.noMatchingStudents')} />
+      ) : (
       <div className="table-scroll">
         <table className="table grade-matrix">
           <thead>
@@ -183,8 +278,8 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
               <th>{t('gradeEntry.student')}</th>
               {orderedGradeItems.map((item) => (
                 <th key={item.id} className="num">
-                  {item.title}
-                  <span className="grade-max">/ {item.max_score}</span>
+                  <span title={`${gradeItemKind(item)} · / ${item.max_score}`}>{item.title}</span>
+                  <span className="grade-max">{gradeItemKind(item)} · / {item.max_score}</span>
                 </th>
               ))}
               {isBeninese && <th className="num">{t('gradeEntry.moyInt')}</th>}
@@ -193,14 +288,14 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
             </tr>
           </thead>
           <tbody>
-            {students.map((student) => {
+            {filteredStudents.map((student, studentIndex) => {
               const ben = isBeninese ? computeBeninese(student.id) : null
               return (
                 <tr key={student.id}>
                   <td className="nowrap">
                     {student.last_name}, {student.first_name}
                   </td>
-                  {orderedGradeItems.map((item) => {
+                  {orderedGradeItems.map((item, itemIndex) => {
                     const key = cellKey(student.id, item.id)
                     const error = cellErrors[key]
                     return (
@@ -213,6 +308,8 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
                           step="any"
                           value={drafts[key] ?? ''}
                           onChange={(e) => setCell(key, e.target.value)}
+                          onKeyDown={(event) => handleCellKeyDown(event, studentIndex, itemIndex)}
+                          ref={(node) => setInputRef(key, node)}
                           disabled={saving}
                           aria-label={`${student.last_name} ${student.first_name} — ${item.title}`}
                         />
@@ -229,17 +326,7 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
           </tbody>
         </table>
       </div>
-
-      <div className="grade-actions">
-        <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? t('gradeEntry.saving') : t('gradeEntry.saveGrades')}
-        </button>
-        {summary && (
-          <span className={`grade-summary${summary.failed ? ' grade-summary-warn' : ''}`}>
-            {summary.failed ? t('gradeEntry.saveFailed') : t('gradeEntry.saved')}
-          </span>
-        )}
-      </div>
+      )}
     </div>
   )
 }

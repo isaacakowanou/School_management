@@ -6,7 +6,6 @@ import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeIt
 import { listCourseGrades, notifyGradesChanged } from '../api/grades.js'
 import {
   calculateCourseResults,
-  calculateSelectedCourseResults,
   listCourseResults,
 } from '../api/courseResults.js'
 import { formatReportAverage } from '../utils/format.js'
@@ -91,7 +90,6 @@ export default function TeacherCourseDetailPage() {
   const [calculating, setCalculating] = useState(false)
   const [calcSummary, setCalcSummary] = useState(null)
   const [calcError, setCalcError] = useState(null)
-  const [pendingRecalcStudentIds, setPendingRecalcStudentIds] = useState([])
   const [showGradeItemForm, setShowGradeItemForm] = useState(false)
   const [gradeItemForm, setGradeItemForm] = useState(EMPTY_GRADE_ITEM_FORM)
   const [addingGradeItem, setAddingGradeItem] = useState(false)
@@ -112,7 +110,6 @@ export default function TeacherCourseDetailPage() {
     setResults(null)
     setCalcSummary(null)
     setCalcError(null)
-    setPendingRecalcStudentIds([])
     setShowGradeItemForm(false)
     setGradeItemForm(EMPTY_GRADE_ITEM_FORM)
     setAddingGradeItem(false)
@@ -153,11 +150,20 @@ export default function TeacherCourseDetailPage() {
     }
   }, [courseId])
 
+  const recalculateAllResults = useCallback(async () => {
+    const res = await calculateCourseResults(courseId)
+    setCalcSummary({
+      calculated_count: res.calculated_count,
+      skipped_students: res.skipped_students || [],
+      no_changes: false,
+    })
+    const refreshed = await listCourseResults(courseId)
+    setResults(refreshed)
+    return res
+  }, [courseId])
+
   const handleGradesSaved = useCallback(async (changedStudentIds = []) => {
     if (changedStudentIds.length > 0) {
-      setPendingRecalcStudentIds((current) =>
-        Array.from(new Set([...current, ...changedStudentIds])),
-      )
       setCalcSummary(null)
       setCalcError(null)
       notifyGradesChanged(courseId, changedStudentIds)
@@ -169,7 +175,16 @@ export default function TeacherCourseDetailPage() {
     } catch {
       /* non-fatal: keep current matrix state */
     }
-  }, [courseId])
+
+    if (changedStudentIds.length > 0) {
+      try {
+        await recalculateAllResults()
+      } catch (err) {
+        setCalcError(err.message)
+        throw err
+      }
+    }
+  }, [courseId, recalculateAllResults])
 
   function updateGradeItemField(field, value) {
     setGradeItemForm((current) => ({ ...current, [field]: value }))
@@ -272,33 +287,7 @@ export default function TeacherCourseDetailPage() {
     setCalcError(null)
     setCalcSummary(null)
     try {
-      const shouldBootstrapAllResults = pendingRecalcStudentIds.length === 0 && results.length === 0
-      if (pendingRecalcStudentIds.length === 0 && !shouldBootstrapAllResults) {
-        setCalcSummary({
-          calculated_count: 0,
-          skipped_students: [],
-          no_changes: true,
-        })
-        return
-      }
-
-      const studentIdsToRecalculate = [...pendingRecalcStudentIds]
-      const res = shouldBootstrapAllResults
-        ? await calculateCourseResults(courseId)
-        : await calculateSelectedCourseResults(courseId, studentIdsToRecalculate)
-      const calculatedStudentIds = new Set((res.results || []).map((result) => result.student_id))
-      if (!shouldBootstrapAllResults) {
-        setPendingRecalcStudentIds((current) =>
-          current.filter((studentId) => !calculatedStudentIds.has(studentId)),
-        )
-      }
-      setCalcSummary({
-        calculated_count: res.calculated_count,
-        skipped_students: res.skipped_students || [],
-        no_changes: false,
-      })
-      const refreshed = await listCourseResults(courseId)
-      setResults(refreshed)
+      await recalculateAllResults()
     } catch (err) {
       setCalcError(err.message)
     } finally {
@@ -350,13 +339,20 @@ export default function TeacherCourseDetailPage() {
 
       {!error && loaded && (
         <>
-          <h2 className="page-title">{course.name}</h2>
-          <p className="muted">
-            {course.code} · {course.class_name || '—'} · {course.term} {course.school_year}
-            {isBenineseMode && <> · <em>{t('courses.benineseMode')}</em></>}
-          </p>
+          <div className="detail-header">
+            <div>
+              <h2 className="page-title">{course.name}</h2>
+              <p className="muted">
+                {course.code} · {course.class_name || t('courses.withoutClass')} · {course.term} {course.school_year}
+                {isBenineseMode && <> · <em>{t('courses.benineseMode')}</em></>}
+              </p>
+            </div>
+          </div>
 
-          <h3 className="section-title">{t('courses.enrolledStudents')}</h3>
+          <div className="section-heading">
+            <h3>{t('courses.enrolledStudents')}</h3>
+            <span className="muted">{t('courses.studentCount', { count: students.length })}</span>
+          </div>
           {students.length === 0 ? (
             <Empty message={t('courses.noStudentsYet')} />
           ) : (
@@ -384,11 +380,11 @@ export default function TeacherCourseDetailPage() {
             </div>
           )}
 
-          <h3 className="section-title">{t('courses.gradeItems')}</h3>
+          <div className="section-heading">
+            <h3>{t('courses.gradeItems')}</h3>
 
-          {/* Grade item creation buttons */}
-          {!showGradeItemForm && (
-            <div className="grade-actions">
+            {!showGradeItemForm && (
+              <div className="grade-actions">
               {isBenineseMode ? (
                 <>
                   <button type="button" className="btn btn-primary" onClick={() => openBenineseForm('INTERRO')}>
@@ -416,8 +412,9 @@ export default function TeacherCourseDetailPage() {
                   {t('courses.addGradeItem')}
                 </button>
               )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
           {gradeItemMessage && <p className="grade-summary">{gradeItemMessage}</p>}
 
           {/* Weight summary / mode label */}
@@ -450,7 +447,9 @@ export default function TeacherCourseDetailPage() {
 
           {/* Add grade item form */}
           {showGradeItemForm && (
-            <form className="card admin-form" onSubmit={handleAddGradeItem}>
+            <div className="modal-backdrop" onClick={() => !addingGradeItem && cancelAddGradeItem()}>
+              <form className="card admin-form modal-card" onClick={(event) => event.stopPropagation()} onSubmit={handleAddGradeItem}>
+              <h3 className="section-title">{t('courses.addGradeItem')}</h3>
               <label className="field">
                 <span>{t('courses.title')}</span>
                 <input
@@ -538,7 +537,8 @@ export default function TeacherCourseDetailPage() {
                 </button>
               </div>
               {gradeItemError && <ErrorBanner message={gradeItemError} />}
-            </form>
+              </form>
+            </div>
           )}
 
           {/* Grade items list */}
@@ -698,7 +698,9 @@ export default function TeacherCourseDetailPage() {
             </div>
           )}
 
-          <h3 className="section-title">{t('courses.gradeEntry')}</h3>
+          <div className="section-heading">
+            <h3>{t('courses.gradeEntry')}</h3>
+          </div>
           <GradeEntryTable
             students={students}
             gradeItems={currentTermItems}
@@ -707,21 +709,26 @@ export default function TeacherCourseDetailPage() {
             gradingMode={isBenineseMode ? 'BENINESE' : 'WEIGHTED'}
           />
 
-          <h3 className="section-title">{t('courses.results')}</h3>
-          <div className="grade-actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleRecalculate}
-              disabled={calculating}
-            >
-              {calculating ? t('courses.recalculating') : t('courses.recalculate')}
-            </button>
-            {calcSummary && (
-              <span className="grade-summary">
-                {calcSummary.no_changes ? t('courses.noChanges') : t('courses.recalculated')}
-              </span>
-            )}
+          <div className="section-heading">
+            <div>
+              <h3>{t('courses.results')}</h3>
+              <p className="muted">{t('courses.autoRecalculateHint')}</p>
+            </div>
+            <div className="grade-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={handleRecalculate}
+                disabled={calculating}
+              >
+                {calculating ? t('courses.recalculating') : t('courses.recalculateManual')}
+              </button>
+              {calcSummary && (
+                <span className="grade-summary">
+                  {calcSummary.no_changes ? t('courses.noChanges') : t('courses.recalculated')}
+                </span>
+              )}
+            </div>
           </div>
 
           {calcError && <ErrorBanner message={calcError} />}

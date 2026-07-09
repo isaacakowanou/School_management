@@ -203,6 +203,58 @@ a.card:active {
   font-size: 1.05rem;
 }
 
+.teacher-course-grid {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-4) 0 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.teacher-course-card {
+  display: grid;
+  gap: var(--space-4);
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-5);
+  box-shadow: var(--shadow);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+}
+
+.teacher-course-card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.teacher-course-card:active {
+  transform: translateY(1px);
+}
+
+.teacher-course-card-main,
+.teacher-course-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.teacher-course-icon {
+  flex: 0 0 auto;
+}
+
+.teacher-course-stats {
+  flex-wrap: wrap;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.teacher-course-stats span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .report-row {
   display: flex;
   align-items: center;
@@ -1041,9 +1093,18 @@ a.card:active {
 }
 
 .grade-max {
-  margin-left: 4px;
+  display: block;
+  margin-top: 2px;
   font-weight: 400;
   color: var(--muted);
+  font-size: 0.74rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.grade-search-field {
+  max-width: 360px;
+  margin-bottom: var(--space-3);
 }
 
 .grade-cell {
@@ -1122,6 +1183,14 @@ a.card:active {
   align-items: center;
   gap: 12px;
   margin-top: 14px;
+}
+
+.section-heading > .grade-actions {
+  margin-top: 0;
+}
+
+.grade-save-bar {
+  margin-top: var(--space-3);
 }
 
 .grade-summary {

@@ -100,6 +100,26 @@ class StatusResponse(BaseModel):
     message: str
 
 
+class AdminStatsCurrentTerm(BaseModel):
+    name: str
+    trimester: int
+
+
+class AdminStatsBulletins(BaseModel):
+    generated: int
+    approved: int
+    sent: int
+
+
+class AdminStatsResponse(BaseModel):
+    students: int
+    teachers: int
+    parents: int
+    classes: int
+    current_term: AdminStatsCurrentTerm | None = None
+    bulletins: AdminStatsBulletins
+
+
 class DangerZonePreviewResponse(BaseModel):
     entity_type: str
     entity_id: UUID

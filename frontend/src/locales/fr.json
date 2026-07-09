@@ -87,9 +87,30 @@
   },
   "adminDashboard": {
     "title": "Tableau de bord administrateur",
-    "subtitle": "Gérez les bulletins et suivez l'activité de l'établissement. Utilisez les liens ci-dessous ou la barre latérale pour commencer.",
-    "reportsDescription": "Examiner, vérifier, résumer, approuver et envoyer les bulletins scolaires.",
-    "auditLogsDescription": "Retracer les modifications de notes, les approbations et les envois de bulletins."
+    "subtitle": "Vue rapide des effectifs, des bulletins et des actions fréquentes.",
+    "loading": "Chargement du tableau de bord…",
+    "retry": "Réessayer",
+    "stats": {
+      "students": "Élèves",
+      "teachers": "Enseignants",
+      "parents": "Parents",
+      "classes": "Classes"
+    },
+    "bulletins": {
+      "title": "Bulletins",
+      "currentTerm": "Trimestre actuel : {{term}}",
+      "noCurrentTerm": "Aucun trimestre actif",
+      "generated": "Générés",
+      "approved": "Approuvés",
+      "sent": "Envoyés"
+    },
+    "quickActions": {
+      "title": "Actions rapides",
+      "enterGrades": "Saisir des notes",
+      "generateReports": "Générer des bulletins",
+      "addStudent": "Ajouter un élève"
+    },
+    "auditLogsLink": "Voir les journaux d'audit"
   },
   "dashboard": {
     "title": "Mes élèves",

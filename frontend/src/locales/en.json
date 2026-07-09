@@ -87,9 +87,30 @@
   },
   "adminDashboard": {
     "title": "Admin dashboard",
-    "subtitle": "Manage report cards and review activity across the school. Use the links below or the sidebar to get started.",
-    "reportsDescription": "Review, check, summarize, approve, and send student report cards.",
-    "auditLogsDescription": "Trace grade changes, approvals, and report sending."
+    "subtitle": "A quick view of enrollment, report-card progress, and frequent actions.",
+    "loading": "Loading dashboard…",
+    "retry": "Retry",
+    "stats": {
+      "students": "Students",
+      "teachers": "Teachers",
+      "parents": "Parents",
+      "classes": "Classes"
+    },
+    "bulletins": {
+      "title": "Reports",
+      "currentTerm": "Current term: {{term}}",
+      "noCurrentTerm": "No active term",
+      "generated": "Generated",
+      "approved": "Approved",
+      "sent": "Sent"
+    },
+    "quickActions": {
+      "title": "Quick actions",
+      "enterGrades": "Enter grades",
+      "generateReports": "Generate reports",
+      "addStudent": "Add student"
+    },
+    "auditLogsLink": "View audit logs"
   },
   "dashboard": {
     "title": "My students",

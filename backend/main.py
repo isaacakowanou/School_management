@@ -5,6 +5,7 @@ from slowapi.errors import RateLimitExceeded
 
 from limiter import limiter
 from routes.audit_logs import router as audit_logs_router
+from routes.admin_stats import router as admin_stats_router
 from routes.ai import router as ai_router
 from routes.auth import router as auth_router
 from routes.classes import router as classes_router
@@ -31,6 +32,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(auth_router, prefix="/api/v1/auth")
 app.include_router(audit_logs_router, prefix="/api/v1")
+app.include_router(admin_stats_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1/ai")
 app.include_router(classes_router, prefix="/api/v1/classes")
 app.include_router(course_results_router, prefix="/api/v1")

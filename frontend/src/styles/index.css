@@ -990,6 +990,164 @@ a.card:active {
   padding: var(--space-8) var(--space-8) 64px;
 }
 
+/* ---- Admin dashboard ---- */
+.admin-dashboard {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.admin-stat-card,
+.dashboard-bulletins-card,
+.dashboard-actions-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-5);
+}
+
+.admin-stat-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.admin-stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-control);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.admin-stat-value {
+  color: var(--color-text);
+  font-size: 2rem;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.admin-stat-label {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+}
+
+.dashboard-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+.dashboard-bulletins-card {
+  display: grid;
+  gap: var(--space-4);
+  color: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dashboard-bulletins-card:hover {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.dashboard-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  color: var(--color-text);
+}
+
+.dashboard-card-header svg {
+  color: var(--color-accent);
+  flex: 0 0 auto;
+}
+
+.bulletin-summary {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.bulletin-count-row {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bulletin-count-text {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+}
+
+.bulletin-count-text strong {
+  color: var(--color-text);
+}
+
+.bulletin-count-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-surface-muted);
+}
+
+.bulletin-count-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+}
+
+.dashboard-actions-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+}
+
+.quick-actions-row {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.quick-actions-row .btn,
+.dashboard-secondary-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.quick-actions-row .btn {
+  justify-content: flex-start;
+}
+
+.dashboard-secondary-link {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.dashboard-secondary-link:hover {
+  color: var(--color-accent);
+}
+
+.dashboard-error {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+}
+
 @media (max-width: 720px) {
   .admin-shell {
     flex-direction: column;
@@ -1013,6 +1171,11 @@ a.card:active {
   .admin-main {
     width: 100%;
     padding: var(--space-6) var(--space-4) 48px;
+  }
+
+  .admin-stats-grid,
+  .dashboard-main-grid {
+    grid-template-columns: 1fr;
   }
 
   .reports-table {

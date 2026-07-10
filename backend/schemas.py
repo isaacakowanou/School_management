@@ -162,6 +162,31 @@ class DangerZoneBatchResponse(BaseModel):
     counts: dict[str, int]
 
 
+class TrashEntryResponse(BaseModel):
+    id: str
+    source: str
+    entity_type: str
+    entity_id: UUID
+    target_label: str
+    deleted_at: datetime
+    counts: dict[str, int]
+    metadata: dict[str, str | None] = {}
+    restored_at: datetime | None = None
+
+
+class TrashListResponse(BaseModel):
+    entries: list[TrashEntryResponse]
+    summary: dict[str, int]
+    retention_days: int
+
+
+class TrashActionResponse(BaseModel):
+    status: str
+    message: str
+    target_label: str | None = None
+    counts: dict[str, int] = {}
+
+
 class ClassCreate(BaseModel):
     name_fr: str
     name_en: str | None = None

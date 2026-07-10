@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { listDeletionBatches, restoreDeletionBatch } from '../api/dangerZone.js'
+import { emptyTrash, listTrash, purgeTrashEntry, restoreTrashEntry } from '../api/trash.js'
 import Empty from '../components/Empty.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Spinner from '../components/Spinner.jsx'
@@ -11,26 +11,40 @@ function CountsSummary({ counts }) {
     .join(', ')
 }
 
+function countTotal(summary) {
+  return Object.values(summary || {}).reduce((total, count) => total + count, 0)
+}
+
+function summaryLines(summary, t) {
+  return Object.entries(summary || {})
+    .map(([type, count]) => `${t(`trash.types.${type}`, { defaultValue: type })}: ${count}`)
+    .join('\n')
+}
+
 export default function AdminTrashPage() {
   const { t } = useTranslation()
-  const [batches, setBatches] = useState(null)
+  const [trash, setTrash] = useState(null)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
   const [restoringId, setRestoringId] = useState(null)
+  const [purgingId, setPurgingId] = useState(null)
+  const [emptying, setEmptying] = useState(false)
+  const [purgeConfirmEntry, setPurgeConfirmEntry] = useState(null)
+  const [showEmptyConfirm, setShowEmptyConfirm] = useState(false)
 
   async function refresh() {
-    const data = await listDeletionBatches()
-    setBatches(data)
+    const data = await listTrash()
+    setTrash(data)
     return data
   }
 
   useEffect(() => {
     let cancelled = false
     setError(null)
-    setBatches(null)
-    listDeletionBatches()
+    setTrash(null)
+    listTrash()
       .then((data) => {
-        if (!cancelled) setBatches(data)
+        if (!cancelled) setTrash(data)
       })
       .catch((err) => {
         if (!cancelled) setError(err.message)
@@ -40,15 +54,15 @@ export default function AdminTrashPage() {
     }
   }, [])
 
-  async function handleRestore(batch) {
-    if (!window.confirm(t('trash.confirmRestore', { label: batch.target_label }))) return
+  async function handleRestore(entry) {
+    if (!window.confirm(t('trash.confirmRestore', { label: entry.target_label }))) return
     setError(null)
     setNotice(null)
-    setRestoringId(batch.id)
+    setRestoringId(entry.id)
     try {
-      await restoreDeletionBatch(batch.id)
+      await restoreTrashEntry(entry.id)
       await refresh()
-      setNotice(t('trash.restored', { label: batch.target_label }))
+      setNotice(t('trash.restored', { label: entry.target_label }))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -56,20 +70,65 @@ export default function AdminTrashPage() {
     }
   }
 
+  async function handlePurge(entry) {
+    setError(null)
+    setNotice(null)
+    setPurgingId(entry.id)
+    try {
+      await purgeTrashEntry(entry.id)
+      await refresh()
+      setNotice(t('trash.purged', { label: entry.target_label }))
+      setPurgeConfirmEntry(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPurgingId(null)
+    }
+  }
+
+  async function handleEmpty() {
+    setError(null)
+    setNotice(null)
+    setEmptying(true)
+    try {
+      await emptyTrash()
+      await refresh()
+      setNotice(t('trash.emptied'))
+      setShowEmptyConfirm(false)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setEmptying(false)
+    }
+  }
+
+  const entries = trash?.entries || []
+  const summary = trash?.summary || {}
+  const total = countTotal(summary)
+  const students = summary.student || 0
+  const summaryText = summaryLines(summary, t)
+
   return (
     <section className="admin-page">
       <div className="report-header">
         <div>
           <h2 className="page-title">{t('nav.trash')}</h2>
-          <p className="muted">{t('trash.subtitle')}</p>
+          <p className="muted">
+            {t('trash.subtitle')} {trash?.retention_days ? t('trash.retention', { days: trash.retention_days }) : ''}
+          </p>
         </div>
+        {entries.length > 0 && (
+          <button type="button" className="btn btn-danger" disabled={emptying} onClick={() => setShowEmptyConfirm(true)}>
+            {emptying ? t('trash.emptying') : t('trash.emptyTrash')}
+          </button>
+        )}
       </div>
 
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
-      {!error && batches === null && <Spinner label={t('trash.loading')} />}
-      {!error && batches && batches.length === 0 && <Empty message={t('trash.empty')} />}
-      {!error && batches && batches.length > 0 && (
+      {!error && trash === null && <Spinner label={t('trash.loading')} />}
+      {!error && trash && entries.length === 0 && <Empty message={t('trash.empty')} />}
+      {!error && trash && entries.length > 0 && (
         <div className="table-scroll">
           <table className="table">
             <thead>
@@ -83,27 +142,69 @@ export default function AdminTrashPage() {
               </tr>
             </thead>
             <tbody>
-              {batches.map((batch) => (
-                <tr key={batch.id}>
-                  <td>{batch.target_label}</td>
-                  <td className="nowrap">{batch.entity_type}</td>
-                  <td className="nowrap">{new Date(batch.deleted_at).toLocaleString()}</td>
-                  <td>{CountsSummary({ counts: batch.counts })}</td>
-                  <td className="nowrap">{batch.restored_at ? t('trash.statusRestored') : t('trash.statusInTrash')}</td>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td>{entry.target_label}</td>
+                  <td className="nowrap">{t(`trash.types.${entry.entity_type}`, { defaultValue: entry.entity_type })}</td>
+                  <td className="nowrap">{new Date(entry.deleted_at).toLocaleString()}</td>
+                  <td>{CountsSummary({ counts: entry.counts })}</td>
+                  <td className="nowrap">{entry.restored_at ? t('trash.statusRestored') : t('trash.statusInTrash')}</td>
                   <td className="nowrap">
                     <button
                       type="button"
                       className="btn btn-primary btn-small"
-                      disabled={Boolean(batch.restored_at) || restoringId === batch.id}
-                      onClick={() => handleRestore(batch)}
+                      disabled={Boolean(entry.restored_at) || restoringId === entry.id || purgingId === entry.id}
+                      onClick={() => handleRestore(entry)}
                     >
-                      {restoringId === batch.id ? t('trash.restoring') : t('trash.restore')}
+                      {restoringId === entry.id ? t('trash.restoring') : t('trash.restore')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-small"
+                      disabled={Boolean(entry.restored_at) || restoringId === entry.id || purgingId === entry.id}
+                      onClick={() => setPurgeConfirmEntry(entry)}
+                    >
+                      {purgingId === entry.id ? t('trash.purging') : t('trash.purge')}
                     </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {purgeConfirmEntry && (
+        <div className="modal-backdrop" onClick={() => !purgingId && setPurgeConfirmEntry(null)}>
+          <div className="card modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>{t('trash.purge')}</h3>
+            <p>{t('trash.confirmPurgeEntry', { label: purgeConfirmEntry.target_label })}</p>
+            <div className="form-actions">
+              <button type="button" className="btn btn-ghost" disabled={Boolean(purgingId)} onClick={() => setPurgeConfirmEntry(null)}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="btn btn-danger" disabled={Boolean(purgingId)} onClick={() => handlePurge(purgeConfirmEntry)}>
+                {purgingId === purgeConfirmEntry.id ? t('trash.purging') : t('trash.purge')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEmptyConfirm && (
+        <div className="modal-backdrop" onClick={() => !emptying && setShowEmptyConfirm(false)}>
+          <div className="card modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>{t('trash.emptyTrash')}</h3>
+            <p style={{ whiteSpace: 'pre-line' }}>{t('trash.confirmEmpty', { total, students, summary: summaryText })}</p>
+            <div className="form-actions">
+              <button type="button" className="btn btn-ghost" disabled={emptying} onClick={() => setShowEmptyConfirm(false)}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="btn btn-danger" disabled={emptying} onClick={handleEmpty}>
+                {emptying ? t('trash.emptying') : t('trash.emptyTrash')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>

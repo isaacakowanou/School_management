@@ -22,7 +22,7 @@ def get_class_or_404(db: Session, class_id) -> Class:
 
 def get_subject_or_404(db: Session, subject_id) -> Subject:
     subject = db.get(Subject, subject_id)
-    if subject is None:
+    if subject is None or subject.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
     return subject
 

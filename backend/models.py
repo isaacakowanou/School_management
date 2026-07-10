@@ -175,6 +175,10 @@ class Subject(Base):
     # (Espagnol -> 4ème/3ème, Etudes sociales -> 6ème/5ème). none_as_null keeps
     # "no restriction" a real SQL NULL instead of JSON 'null' text.
     applicable_classes: Mapped[list | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()

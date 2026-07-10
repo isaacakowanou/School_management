@@ -52,7 +52,7 @@
     "classes": "Classes",
     "subjects": "Subjects",
     "trash": "Trash",
-    "dangerZone": "Danger Zone",
+    "dangerZone": "Cleanup",
     "auditLogs": "Audit logs"
   },
   "navSections": {
@@ -615,11 +615,20 @@
     "passwordError": "Could not change password."
   },
   "trash": {
-    "subtitle": "Recoverable deletion batches. Students moved from the list also remain available from Deleted students.",
+    "subtitle": "All recoverable deleted items are listed here.",
+    "retention": "Items are permanently deleted after {{days}} days.",
     "loading": "Loading Trash…",
     "empty": "Trash is empty.",
     "confirmRestore": "Restore {{label}} and all records in this batch?",
     "restored": "{{label}} restored.",
+    "confirmPurgeEntry": "Permanently delete {{label}}? This action cannot be undone.",
+    "purged": "{{label}} permanently deleted.",
+    "confirmEmpty": "Permanently delete {{total}} items, including {{students}} students?\n\n{{summary}}\n\nThis action cannot be undone.",
+    "emptied": "Trash emptied.",
+    "emptyTrash": "Empty Trash",
+    "emptying": "Emptying…",
+    "purge": "Permanently delete",
+    "purging": "Deleting…",
     "statusRestored": "Restored",
     "statusInTrash": "In Trash",
     "restoring": "Restoring…",
@@ -632,11 +641,25 @@
     "studentTrashSubtitle": "Students in Trash are hidden from normal workflows and can be restored.",
     "loadingStudents": "Loading deleted students…",
     "noStudents": "No deleted students.",
-    "studentRestored": "{{name}} restored."
+    "studentRestored": "{{name}} restored.",
+    "types": {
+      "student": "Student",
+      "parent": "Parent",
+      "teacher": "Teacher",
+      "class": "Class",
+      "course": "Course",
+      "subject": "Subject",
+      "grade_item": "Grade item",
+      "enrollment": "Enrollment",
+      "grade": "Grade",
+      "course_result": "Course result",
+      "report": "Report",
+      "student_parent_link": "Parent-student link"
+    }
   },
   "dangerZone": {
-    "title": "Owner Danger Zone",
-    "subtitle": "Recoverable cleanup only. Records are moved to Trash as one restoreable batch.",
+    "title": "Cleanup",
+    "subtitle": "Bulk deletion — recoverable through Trash.",
     "entityType": "Entity type",
     "searchRecords": "Search records",
     "searchPlaceholder": "Type stress, math, 6ème…",

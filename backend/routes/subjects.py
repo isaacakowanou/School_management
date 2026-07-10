@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -59,7 +60,7 @@ def _course_counts(db: Session, subject_ids: list[UUID]) -> dict:
         return {}
     rows = db.execute(
         select(Course.subject_id, func.count(Course.id))
-        .where(Course.subject_id.in_(subject_ids))
+        .where(Course.subject_id.in_(subject_ids), Course.deleted_at.is_(None))
         .group_by(Course.subject_id)
     ).all()
     return dict(rows)
@@ -89,7 +90,7 @@ def list_subjects(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[SubjectResponse]:
-    query = select(Subject)
+    query = select(Subject).where(Subject.deleted_at.is_(None))
     if section is not None:
         query = query.where(Subject.section == section.value)
     if level_group is not None:
@@ -225,7 +226,9 @@ def delete_subject(
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     subject = get_subject_or_404(db, subject_id)
-    course_count = db.scalar(select(func.count(Course.id)).where(Course.subject_id == subject_id))
+    course_count = db.scalar(
+        select(func.count(Course.id)).where(Course.subject_id == subject_id, Course.deleted_at.is_(None))
+    )
     if course_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -244,6 +247,6 @@ def delete_subject(
         old_value=_subject_snapshot(subject),
         new_value=None,
     )
-    db.delete(subject)
+    subject.deleted_at = datetime.now(timezone.utc)
     db.commit()
-    return StatusResponse(status="ok", message="Subject deleted")
+    return StatusResponse(status="ok", message="Subject moved to Trash")

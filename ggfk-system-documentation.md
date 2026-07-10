@@ -21,12 +21,22 @@
 
 ### A1.13c.1 — Recoverable Owner Cleanup
 
-- Added an admin-only Owner Danger Zone at `/admin/danger-zone`.
-- Danger Zone uses a searchable record picker for students, parents, teachers, classes, courses, grade items, and reports; owners do not need to paste raw UUIDs.
-- Danger Zone previews dependency counts before cleanup and requires typed confirmation.
+- Added an admin-only cleanup tool at `/admin/danger-zone` (UI label: Nettoyage).
+- Nettoyage uses a searchable record picker for students, parents, teachers, classes, courses, grade items, and reports; owners do not need to paste raw UUIDs.
+- Nettoyage previews dependency counts before cleanup and requires typed confirmation.
 - Confirmed cleanup creates a deletion batch, moves the target and dependencies to Trash, and stores `deleted_at` plus `deleted_batch_id`.
 - Added `/admin/trash` to list deletion batches and restore an entire batch.
 - No permanent delete is added for academic data; AuditLog rows remain permanent history.
-- In production, Danger Zone is blocked unless `ENABLE_DANGER_ZONE=true`.
+- In production, the cleanup tool is blocked unless `ENABLE_DANGER_ZONE=true`.
+
+### A1.13c.2 — Unified Corbeille + Purge Controls
+
+- Unified `/admin/trash` so Corbeille lists deletion batches plus unbatched soft-deleted records such as students.
+- Student deleted view is now a filtered Corbeille view, sharing the same restore path.
+- Added permanent purge controls for individual Corbeille rows and emptying the Corbeille, with audit logs and counts.
+- Added lazy 30-day auto-purge based on `deleted_at`; restore clears `deleted_at`, so re-deleted records receive a fresh retention window.
+- Added restore-order checks for unbatched child records: children cannot be restored while their parent entity remains deleted.
+- Converted subjects/matières from guarded hard delete to guarded soft delete so they can appear in Corbeille.
+- Added an Alembic migration for subject trash columns and missing `deleted_at` indexes; Isaac reviews and runs it locally/prod during deploy.
 
 These changes are local only and are not marked as shipped to production.

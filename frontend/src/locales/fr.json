@@ -52,7 +52,7 @@
     "classes": "Classes",
     "subjects": "Matières",
     "trash": "Corbeille",
-    "dangerZone": "Zone de danger",
+    "dangerZone": "Nettoyage",
     "auditLogs": "Journaux d'audit"
   },
   "navSections": {
@@ -615,11 +615,20 @@
     "passwordError": "Impossible de changer le mot de passe."
   },
   "trash": {
-    "subtitle": "Lots de suppression récupérables. Les élèves déplacés depuis la liste restent aussi accessibles depuis « Élèves supprimés ».",
+    "subtitle": "Tous les éléments supprimés récupérables sont listés ici.",
+    "retention": "Les éléments sont supprimés définitivement après {{days}} jours.",
     "loading": "Chargement de la corbeille…",
     "empty": "La corbeille est vide.",
     "confirmRestore": "Restaurer {{label}} et tous les enregistrements de ce lot ?",
     "restored": "{{label}} restauré(e).",
+    "confirmPurgeEntry": "Supprimer définitivement {{label}} ? Cette action est irréversible.",
+    "purged": "{{label}} supprimé(e) définitivement.",
+    "confirmEmpty": "Supprimer définitivement {{total}} éléments, dont {{students}} élèves ?\n\n{{summary}}\n\nCette action est irréversible.",
+    "emptied": "Corbeille vidée.",
+    "emptyTrash": "Vider la corbeille",
+    "emptying": "Vidage…",
+    "purge": "Supprimer définitivement",
+    "purging": "Suppression…",
     "statusRestored": "Restauré",
     "statusInTrash": "Dans la corbeille",
     "restoring": "Restauration…",
@@ -632,11 +641,25 @@
     "studentTrashSubtitle": "Les élèves dans la corbeille sont masqués des workflows normaux et peuvent être restaurés.",
     "loadingStudents": "Chargement des élèves supprimés…",
     "noStudents": "Aucun élève supprimé.",
-    "studentRestored": "{{name}} restauré(e)."
+    "studentRestored": "{{name}} restauré(e).",
+    "types": {
+      "student": "Élève",
+      "parent": "Parent",
+      "teacher": "Enseignant",
+      "class": "Classe",
+      "course": "Cours",
+      "subject": "Matière",
+      "grade_item": "Élément de note",
+      "enrollment": "Inscription",
+      "grade": "Note",
+      "course_result": "Résultat",
+      "report": "Bulletin",
+      "student_parent_link": "Lien parent-élève"
+    }
   },
   "dangerZone": {
-    "title": "Zone de danger du propriétaire",
-    "subtitle": "Nettoyage récupérable uniquement. Les enregistrements sont déplacés vers la corbeille en un lot restaurable.",
+    "title": "Nettoyage",
+    "subtitle": "Suppression en masse — récupérable via la corbeille.",
     "entityType": "Type d'entité",
     "searchRecords": "Rechercher des enregistrements",
     "searchPlaceholder": "Tapez stress, maths, 6ème…",

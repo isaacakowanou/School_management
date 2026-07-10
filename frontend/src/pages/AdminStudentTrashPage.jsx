@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { listDeletedStudents, restoreStudent } from '../api/students.js'
+import { listTrash, restoreTrashEntry } from '../api/trash.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -14,8 +14,8 @@ export default function AdminStudentTrashPage() {
   const [restoringId, setRestoringId] = useState(null)
 
   async function refresh() {
-    const data = await listDeletedStudents()
-    setStudents(data)
+    const data = await listTrash({ entityType: 'student' })
+    setStudents(data.entries)
     return data
   }
 
@@ -23,9 +23,9 @@ export default function AdminStudentTrashPage() {
     let cancelled = false
     setError(null)
     setStudents(null)
-    listDeletedStudents()
+    listTrash({ entityType: 'student' })
       .then((data) => {
-        if (!cancelled) setStudents(data)
+        if (!cancelled) setStudents(data.entries)
       })
       .catch((err) => {
         if (!cancelled) setError(err.message)
@@ -36,14 +36,13 @@ export default function AdminStudentTrashPage() {
   }, [])
 
   async function handleRestore(student) {
-    const name = `${student.first_name} ${student.last_name}`
     setError(null)
     setMessage(null)
     setRestoringId(student.id)
     try {
-      await restoreStudent(student.id)
+      await restoreTrashEntry(student.id)
       await refresh()
-      setMessage(t('trash.studentRestored', { name }))
+      setMessage(t('trash.studentRestored', { name: student.target_label }))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -83,11 +82,9 @@ export default function AdminStudentTrashPage() {
             <tbody>
               {students.map((student) => (
                 <tr key={student.id}>
-                  <td>
-                    {student.first_name} {student.last_name}
-                  </td>
-                  <td className="nowrap">{student.student_number}</td>
-                  <td className="nowrap">{student.class_name || '—'}</td>
+                  <td>{student.target_label}</td>
+                  <td className="nowrap">{student.metadata?.student_number || '—'}</td>
+                  <td className="nowrap">{student.metadata?.class_name || '—'}</td>
                   <td className="nowrap">{new Date(student.deleted_at).toLocaleString()}</td>
                   <td className="nowrap">
                     <button

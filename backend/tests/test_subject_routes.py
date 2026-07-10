@@ -154,7 +154,14 @@ class SubjectRouteTests(unittest.TestCase):
         created = self._create_subject()
         r = self.client.delete(f"/api/v1/subjects/{created['id']}", headers=self._admin())
         self.assertEqual(r.status_code, 200)
-        self.assertIsNone(self.db.scalar(select(Subject)))
+        self.db.expire_all()
+        subject = self.db.scalar(select(Subject))
+        self.assertIsNotNone(subject)
+        self.assertIsNotNone(subject.deleted_at)
+
+        listed = self.client.get("/api/v1/subjects", headers=self._admin())
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.json(), [])
 
     def test_delete_subject_with_courses_conflicts(self):
         created = self._create_subject()

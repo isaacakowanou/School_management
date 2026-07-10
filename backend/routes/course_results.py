@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from audit import create_audit_log
+from constants import normalize_term
 from database import get_db
 from models import Course, CourseResult, Enrollment, Grade, GradeItem, Student, User
 from schemas import (
@@ -117,6 +118,60 @@ def validate_course_grade_items(grade_items: list[GradeItem], beninese: bool, te
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+def terms_match(term: str | None, expected_term: str | None) -> bool:
+    return term == expected_term or (
+        normalize_term(term) is not None
+        and normalize_term(expected_term) is not None
+        and normalize_term(term) == normalize_term(expected_term)
+    )
+
+
+def get_term_equivalent_course_results(
+    db: Session,
+    *,
+    student_id: UUID,
+    course_id: UUID,
+    term: str,
+    active_only: bool = False,
+) -> list[CourseResult]:
+    query = select(CourseResult).where(
+        CourseResult.student_id == student_id,
+        CourseResult.course_id == course_id,
+    )
+    if active_only:
+        query = query.where(CourseResult.deleted_at.is_(None))
+
+    return [
+        result
+        for result in db.scalars(query).all()
+        if terms_match(result.term, term)
+    ]
+
+
+def get_course_result_for_recalculation(
+    db: Session,
+    *,
+    student_id: UUID,
+    course: Course,
+) -> CourseResult | None:
+    candidates = get_term_equivalent_course_results(
+        db,
+        student_id=student_id,
+        course_id=course.id,
+        term=course.term,
+    )
+    if not candidates:
+        return None
+
+    return sorted(
+        candidates,
+        key=lambda result: (
+            result.term != course.term,
+            result.deleted_at is not None,
+        ),
+    )[0]
+
+
 def get_course_grade_items(db: Session, course: Course) -> list[GradeItem]:
     # Term-scoped: results are stored under course.term, so only that term's
     # grade items may feed the average. Items tagged for another trimester
@@ -184,9 +239,10 @@ def calculate_results_for_students(
     grade_items: list[GradeItem],
     students: list[Student],
     beninese: bool = False,
-) -> tuple[list[CourseResult], list[SkippedCourseResultStudent]]:
+) -> tuple[list[CourseResult], list[SkippedCourseResultStudent], list[CourseResult]]:
     results: list[CourseResult] = []
     skipped_students: list[SkippedCourseResultStudent] = []
+    invalidated_results: list[CourseResult] = []
 
     if beninese:
         interro_items = [item for item in grade_items if item.item_type == "INTERRO"]
@@ -208,6 +264,16 @@ def calculate_results_for_students(
         missing_grade_items = [item for item in grade_items if item.id not in grades_by_item_id]
 
         if missing_grade_items:
+            existing_results = get_term_equivalent_course_results(
+                db,
+                student_id=student.id,
+                course_id=course.id,
+                term=course.term,
+                active_only=True,
+            )
+            for existing_result in existing_results:
+                existing_result.deleted_at = datetime.now(timezone.utc)
+                invalidated_results.append(existing_result)
             skipped_students.append(
                 SkippedCourseResultStudent(
                     student_id=student.id,
@@ -253,13 +319,10 @@ def calculate_results_for_students(
 
         letter_grade = get_letter_grade(average)
         calculated_at = datetime.now(timezone.utc)
-        course_result = db.scalar(
-            select(CourseResult).where(
-                CourseResult.student_id == student.id,
-                CourseResult.course_id == course.id,
-                CourseResult.term == course.term,
-                CourseResult.deleted_at.is_(None),
-            )
+        course_result = get_course_result_for_recalculation(
+            db,
+            student_id=student.id,
+            course=course,
         )
 
         if course_result is None:
@@ -278,12 +341,23 @@ def calculate_results_for_students(
             )
             db.add(course_result)
         else:
+            for duplicate_result in get_term_equivalent_course_results(
+                db,
+                student_id=student.id,
+                course_id=course.id,
+                term=course.term,
+                active_only=True,
+            ):
+                if duplicate_result.id != course_result.id:
+                    duplicate_result.deleted_at = calculated_at
+            course_result.term = course.term
             course_result.average = average
             course_result.letter_grade = letter_grade
             # Recalculated averages are always on the /20 scale, even if this
             # row was previously a historical /100 result.
             course_result.scale = "20"
             course_result.calculated_at = calculated_at
+            course_result.deleted_at = None
             course_result.moy_int = moy_int
             course_result.mcc = mcc
             course_result.devoir_score = devoir_score
@@ -291,7 +365,7 @@ def calculate_results_for_students(
 
         results.append(course_result)
 
-    return results, skipped_students
+    return results, skipped_students, invalidated_results
 
 
 @router.post("/course-results/calculate/{course_id}", response_model=CourseResultCalculationResponse)
@@ -307,7 +381,7 @@ def calculate_course_results(
     grade_items = get_course_grade_items(db, course)
     students = get_enrolled_students_for_course(db, course)
     beninese = is_beninese_mode(course)
-    results, skipped_students = calculate_results_for_students(
+    results, skipped_students, invalidated_results = calculate_results_for_students(
         db,
         course=course,
         grade_items=grade_items,
@@ -325,6 +399,7 @@ def calculate_course_results(
             "course_id": course.id,
             "calculated_count": len(results),
             "skipped_students_count": len(skipped_students),
+            "invalidated_count": len(invalidated_results),
         },
     )
     db.commit()
@@ -335,6 +410,7 @@ def calculate_course_results(
         course_id=course.id,
         term=course.term,
         calculated_count=len(results),
+        invalidated_count=len(invalidated_results),
         skipped_students=skipped_students,
         results=[to_course_result_response(result) for result in results],
     )
@@ -354,7 +430,7 @@ def calculate_selected_course_results(
     grade_items = get_course_grade_items(db, course)
     students = get_selected_enrolled_students(db, course, payload.student_ids)
     beninese = is_beninese_mode(course)
-    results, skipped_students = calculate_results_for_students(
+    results, skipped_students, invalidated_results = calculate_results_for_students(
         db,
         course=course,
         grade_items=grade_items,
@@ -372,6 +448,7 @@ def calculate_selected_course_results(
             "course_id": course.id,
             "calculated_count": len(results),
             "skipped_students_count": len(skipped_students),
+            "invalidated_count": len(invalidated_results),
             "requested_student_count": len(dict.fromkeys(payload.student_ids)),
         },
     )
@@ -383,6 +460,7 @@ def calculate_selected_course_results(
         course_id=course.id,
         term=course.term,
         calculated_count=len(results),
+        invalidated_count=len(invalidated_results),
         skipped_students=skipped_students,
         results=[to_course_result_response(result) for result in results],
     )

@@ -10,7 +10,15 @@ from auth import get_current_user, require_admin
 from audit import create_audit_log
 from database import get_db
 from models import Course, Enrollment, Grade, GradeItem, Student, Teacher, User
-from schemas import GradeCreate, GradeResponse, GradeUpdate, NotifyGradesPayload, StatusResponse
+from schemas import (
+    GradeBatchSaveRequest,
+    GradeBatchSaveResponse,
+    GradeCreate,
+    GradeResponse,
+    GradeUpdate,
+    NotifyGradesPayload,
+    StatusResponse,
+)
 from services.email_service import send_grades_notification
 from utils import get_current_teacher
 
@@ -80,6 +88,12 @@ def get_writable_teacher_for_course(db: Session, current_user: User, course: Cou
     return teacher
 
 
+def get_submitter_for_course(db: Session, current_user: User, course: Course) -> Teacher:
+    if current_user.role == "admin":
+        return course.teacher
+    return get_writable_teacher_for_course(db, current_user, course)
+
+
 def ensure_student_enrolled(db: Session, student_id: UUID, course_id: UUID) -> None:
     enrollment = db.scalar(
         select(Enrollment).where(
@@ -97,6 +111,23 @@ def validate_score(score: float, max_score: float) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="score must be greater than or equal to 0")
     if score > max_score:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="score cannot exceed max_score")
+
+
+def soft_delete_grade(db: Session, *, grade: Grade, current_user: User) -> None:
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="grade_deleted",
+        entity_type="grade",
+        entity_id=grade.id,
+        old_value={
+            "student_id": grade.student_id,
+            "grade_item_id": grade.grade_item_id,
+            "score": grade.score,
+            "submitted_by_teacher_id": grade.submitted_by_teacher_id,
+        },
+    )
+    grade.deleted_at = datetime.now(timezone.utc)
 
 
 @router.post("/courses/{course_id}/notify-grades")
@@ -133,6 +164,111 @@ def notify_grades(
             logger.warning("Grade notification failed for student %s: %s", student_id, exc)
 
     return {"notified": notified}
+
+
+@router.post("/courses/{course_id}/grades/batch", response_model=GradeBatchSaveResponse)
+def save_course_grades_batch(
+    course_id: UUID,
+    payload: GradeBatchSaveRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> GradeBatchSaveResponse:
+    course = get_course_or_404(db, course_id)
+    submitter = get_submitter_for_course(db, current_user, course)
+
+    saved_count = 0
+    deleted_count = 0
+    skipped_count = 0
+    saved_grades: list[Grade] = []
+
+    for entry in payload.entries:
+        student = get_student_or_404(db, entry.student_id)
+        grade_item = get_grade_item_or_404(db, entry.grade_item_id)
+        if grade_item.course_id != course.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Grade item does not belong to this course")
+        ensure_student_enrolled(db, student.id, course.id)
+
+        grade = db.scalar(
+            select(Grade).where(
+                Grade.student_id == student.id,
+                Grade.grade_item_id == grade_item.id,
+            )
+        )
+
+        if entry.score is None:
+            if grade is None or grade.deleted_at is not None:
+                skipped_count += 1
+                continue
+            soft_delete_grade(db, grade=grade, current_user=current_user)
+            deleted_count += 1
+            continue
+
+        validate_score(entry.score, grade_item.max_score)
+        if grade is None:
+            grade = Grade(
+                student=student,
+                grade_item=grade_item,
+                score=entry.score,
+                submitted_by_teacher=submitter,
+            )
+            db.add(grade)
+            db.flush()
+            create_audit_log(
+                db=db,
+                actor_user_id=current_user.id,
+                action="grade_submitted",
+                entity_type="grade",
+                entity_id=grade.id,
+                new_value={
+                    "student_id": grade.student_id,
+                    "grade_item_id": grade.grade_item_id,
+                    "score": grade.score,
+                    "submitted_by_teacher_id": grade.submitted_by_teacher_id,
+                },
+            )
+            saved_count += 1
+            saved_grades.append(grade)
+            continue
+
+        old_score = grade.score
+        old_deleted_at = grade.deleted_at
+        was_deleted = old_deleted_at is not None
+        if not was_deleted and float(old_score) == float(entry.score):
+            skipped_count += 1
+            saved_grades.append(grade)
+            continue
+
+        grade.score = entry.score
+        grade.submitted_by_teacher = submitter
+        grade.deleted_at = None
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="grade_submitted" if was_deleted else "grade_updated",
+            entity_type="grade",
+            entity_id=grade.id,
+            old_value={"score": old_score, "deleted_at": old_deleted_at.isoformat()} if was_deleted else {"score": old_score},
+            new_value={
+                "student_id": grade.student_id,
+                "grade_item_id": grade.grade_item_id,
+                "score": grade.score,
+                "submitted_by_teacher_id": grade.submitted_by_teacher_id,
+            },
+        )
+        saved_count += 1
+        saved_grades.append(grade)
+
+    db.commit()
+    for grade in saved_grades:
+        db.refresh(grade)
+
+    return GradeBatchSaveResponse(
+        status="ok",
+        saved_count=saved_count,
+        deleted_count=deleted_count,
+        skipped_count=skipped_count,
+        grades=[to_grade_response(grade) for grade in saved_grades if grade.deleted_at is None],
+    )
 
 
 @router.get("/courses/{course_id}/grades", response_model=list[GradeResponse])
@@ -250,19 +386,6 @@ def delete_grade(
     grade = get_grade_or_404(db, grade_id)
     if grade.student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade not found")
-    create_audit_log(
-        db=db,
-        actor_user_id=current_user.id,
-        action="grade_deleted",
-        entity_type="grade",
-        entity_id=grade.id,
-        old_value={
-            "student_id": grade.student_id,
-            "grade_item_id": grade.grade_item_id,
-            "score": grade.score,
-            "submitted_by_teacher_id": grade.submitted_by_teacher_id,
-        },
-    )
-    grade.deleted_at = datetime.now(timezone.utc)
+    soft_delete_grade(db, grade=grade, current_user=current_user)
     db.commit()
     return StatusResponse(status="ok", message="Grade moved to Trash")

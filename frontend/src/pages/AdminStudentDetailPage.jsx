@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import {
   getStudent,
   getStudentParents,
+  getStudentGrades,
   linkStudentParent,
   unlinkStudentParent,
   deleteStudent,
@@ -15,6 +16,7 @@ import { getCourse } from '../api/courses.js'
 import { listStudentCourseResults } from '../api/courseResults.js'
 import { generateReport, getStudentReports } from '../api/reports.js'
 import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
+import { TRIMESTER_TERMS } from '../constants/terms.js'
 import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -37,14 +39,47 @@ function reportPeriodKey(period) {
   return `${period.term}__${period.schoolYear}`
 }
 
+function formatDate(value, language) {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-FR' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value))
+}
+
+function itemTypeLabel(grade, t) {
+  if (grade.item_type) {
+    return t(`courses.${grade.item_type.toLowerCase()}Label`, { defaultValue: grade.item_type })
+  }
+  return grade.category || t('courses.gradeItem')
+}
+
+function groupGradesByCourse(grades) {
+  const groups = []
+  const byCourse = new Map()
+  for (const grade of grades) {
+    if (!byCourse.has(grade.course_id)) {
+      const group = { courseId: grade.course_id, courseName: grade.course_name, items: [] }
+      byCourse.set(grade.course_id, group)
+      groups.push(group)
+    }
+    byCourse.get(grade.course_id).items.push(grade)
+  }
+  return groups
+}
+
 export default function AdminStudentDetailPage() {
   const { studentId } = useParams()
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [student, setStudent] = useState(null)
   const [parents, setParents] = useState([])
   const [allParents, setAllParents] = useState([])
   const [reports, setReports] = useState([])
+  const [grades, setGrades] = useState(null)
+  const [gradeTerm, setGradeTerm] = useState('')
+  const [gradeError, setGradeError] = useState(null)
   const [reportPeriods, setReportPeriods] = useState([])
   const [selectedReportPeriod, setSelectedReportPeriod] = useState('')
   const [generatingReport, setGeneratingReport] = useState(false)
@@ -87,6 +122,9 @@ export default function AdminStudentDetailPage() {
     setParents([])
     setAllParents([])
     setReports([])
+    setGrades(null)
+    setGradeTerm('')
+    setGradeError(null)
     setReportPeriods([])
     setSelectedReportPeriod('')
     setGeneratingReport(false)
@@ -163,6 +201,22 @@ export default function AdminStudentDetailPage() {
     }
   }, [studentId])
 
+  useEffect(() => {
+    let cancelled = false
+    setGrades(null)
+    setGradeError(null)
+    getStudentGrades(studentId, { term: gradeTerm })
+      .then((data) => {
+        if (!cancelled) setGrades(data)
+      })
+      .catch((err) => {
+        if (!cancelled) setGradeError(err.message)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [studentId, gradeTerm])
+
   const linkedParentIds = useMemo(() => new Set(parents.map((parent) => parent.id)), [parents])
   const availableParents = useMemo(
     () => allParents.filter((parent) => !linkedParentIds.has(parent.id)),
@@ -183,6 +237,8 @@ export default function AdminStudentDetailPage() {
     () => reportPeriods.find((period) => reportPeriodKey(period) === selectedReportPeriod) || null,
     [reportPeriods, selectedReportPeriod],
   )
+  const recentGrades = useMemo(() => (grades || []).slice(0, 5), [grades])
+  const gradeCourseGroups = useMemo(() => groupGradesByCourse(grades || []), [grades])
 
   function updateEditField(field, value) {
     setEditForm((current) => ({ ...current, [field]: value }))
@@ -283,6 +339,27 @@ export default function AdminStudentDetailPage() {
       setReports(refreshed)
       setReportMessage(t('students.reportGenerated'))
     } catch (err) {
+      if (err.detail?.code === 'partial_results') {
+        const confirmed = window.confirm(
+          t('students.confirmGeneratePartial', {
+            results: err.detail.results_count,
+            expected: err.detail.expected_results_count,
+            courses: (err.detail.missing_course_names || []).join(', '),
+          }),
+        )
+        if (confirmed) {
+          try {
+            await generateReport(studentId, { ...selectedReportPeriodData, generatePartial: true })
+            const refreshed = await getStudentReports(studentId)
+            setReports(refreshed)
+            setReportMessage(t('students.reportGeneratedPartial'))
+            return
+          } catch (overrideErr) {
+            setReportError(overrideErr.message)
+            return
+          }
+        }
+      }
       setReportError(err.message)
     } finally {
       setGeneratingReport(false)
@@ -453,6 +530,75 @@ export default function AdminStudentDetailPage() {
           </div>
           {editError && <ErrorBanner message={editError} />}
         </form>
+      )}
+
+      <div className="section-heading">
+        <div>
+          <h3 className="section-title">{t('parentGrades.title')}</h3>
+          <p className="muted">{t('parentGrades.subtitle')}</p>
+        </div>
+        <label className="field compact-field">
+          <span>{t('common.term')}</span>
+          <select value={gradeTerm} onChange={(event) => setGradeTerm(event.target.value)}>
+            <option value="">{t('parentGrades.currentTerm')}</option>
+            {TRIMESTER_TERMS.map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+          <span className="muted">{t('parentGrades.averageAvailableWithReport')}</span>
+        </label>
+      </div>
+
+      {gradeError && <ErrorBanner message={gradeError} />}
+      {!gradeError && grades === null && <Spinner label={t('parentGrades.loading')} />}
+      {!gradeError && grades && grades.length === 0 && (
+        <Empty message={t('parentGrades.emptyTerm')} />
+      )}
+      {!gradeError && grades && grades.length > 0 && (
+        <>
+          <h3 className="section-title">{t('parentGrades.recent')}</h3>
+          <div className="recent-grade-strip">
+            {recentGrades.map((grade) => (
+              <div className="recent-grade-card" key={`${grade.grade_item_id}-${grade.updated_at}`}>
+                <div className="muted">{grade.course_name}</div>
+                <strong>{grade.item_title}</strong>
+                <div className="stat-value stat-value-compact">{grade.score} / {grade.max_score}</div>
+                <div className="muted">{formatDate(grade.updated_at || grade.created_at, i18n.language)}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3 className="section-title">{t('parentGrades.byCourse')}</h3>
+          <div className="grade-course-list">
+            {gradeCourseGroups.map((group) => (
+              <section className="card" key={group.courseId}>
+                <h4 className="card-title">{group.courseName}</h4>
+                <div className="table-scroll">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>{t('parentGrades.item')}</th>
+                        <th>{t('parentGrades.type')}</th>
+                        <th className="num">{t('parentGrades.score')}</th>
+                        <th>{t('parentGrades.date')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.items.map((grade) => (
+                        <tr key={grade.grade_item_id}>
+                          <td>{grade.item_title}</td>
+                          <td>{itemTypeLabel(grade, t)}</td>
+                          <td className="num">{grade.score} / {grade.max_score}</td>
+                          <td>{formatDate(grade.updated_at || grade.created_at, i18n.language)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
       )}
 
       <div className="section-heading">

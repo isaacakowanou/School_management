@@ -27,6 +27,14 @@ export function getStudent(studentId) {
   return apiGet(`/students/${studentId}`)
 }
 
+// GET /api/v1/students/{student_id}/grades?term=... (admin only)
+export function getStudentGrades(studentId, { term } = {}) {
+  const params = new URLSearchParams()
+  if (term) params.set('term', term)
+  const qs = params.toString()
+  return apiGet(`/students/${studentId}/grades${qs ? `?${qs}` : ''}`)
+}
+
 // DELETE /api/v1/students/{student_id} (admin) -> moves student to Trash
 export function deleteStudent(studentId) {
   return apiDelete(`/students/${studentId}`)

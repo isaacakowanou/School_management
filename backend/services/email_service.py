@@ -328,7 +328,7 @@ def _build_grades_email_body(
         [
             f"Cher(e) {parent_name},",
             "",
-            f"De nouvelles notes ont été enregistrées pour {student_name} dans le cours {course_name} ({term}).",
+            f"De nouvelles notes ont été enregistrées pour {student_name} en {course_name} ({term}).",
             "",
             "Connectez-vous à votre espace parent pour les consulter :",
             portal,
@@ -337,7 +337,7 @@ def _build_grades_email_body(
             "",
             f"Dear {parent_name},",
             "",
-            f"New grades have been recorded for {student_name} in the course {course_name} ({term}).",
+            f"New grades have been recorded for {student_name} in {course_name} ({term}).",
             "",
             "Log in to your parent portal to view them:",
             portal,

@@ -339,6 +339,21 @@ class ParentCreateResponse(ParentResponse):
     sms_sent: bool | None = None
 
 
+class ParentGradeResponse(BaseModel):
+    course_id: UUID
+    course_name: str
+    grade_item_id: UUID
+    item_title: str
+    item_type: str | None = None
+    category: str | None = None
+    score: float
+    max_score: float
+    term: str
+    school_year: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class TeacherCreate(BaseModel):
     name: str
     email: str | None = None
@@ -529,6 +544,17 @@ class GradeUpdate(BaseModel):
     score: float
 
 
+class GradeBatchEntry(BaseModel):
+    student_id: UUID
+    grade_item_id: UUID
+    # null means "clear this score" and soft-deletes the active Grade row.
+    score: float | None = None
+
+
+class GradeBatchSaveRequest(BaseModel):
+    entries: list[GradeBatchEntry]
+
+
 class GradeResponse(BaseModel):
     id: UUID
     student_id: UUID
@@ -536,6 +562,14 @@ class GradeResponse(BaseModel):
     course_id: UUID
     score: float
     submitted_by_teacher_id: UUID
+
+
+class GradeBatchSaveResponse(BaseModel):
+    status: str
+    saved_count: int
+    deleted_count: int
+    skipped_count: int
+    grades: list[GradeResponse]
 
 
 class NotifyGradesPayload(BaseModel):
@@ -573,6 +607,7 @@ class CourseResultCalculationResponse(BaseModel):
     course_id: UUID
     term: str
     calculated_count: int
+    invalidated_count: int = 0
     skipped_students: list[SkippedCourseResultStudent]
     results: list[CourseResultResponse]
 
@@ -593,6 +628,7 @@ class AuditLogResponse(BaseModel):
 class ReportGenerateRequest(BaseModel):
     term: TrimesterTerm
     school_year: str
+    generate_partial: bool = False
 
 
 class ReportReviewUpdate(BaseModel):
@@ -637,6 +673,7 @@ class ReportCardResponse(BaseModel):
     # Grade scale of overall_average and course averages: "20" or "100".
     scale: str = "20"
     status: str
+    created_at: datetime
     ai_summary: str | None = None
     teacher_comment_fr: str | None = None
     teacher_comment_en: str | None = None
@@ -688,6 +725,14 @@ class ReportCardStalenessResponse(BaseModel):
     current_gpa: float | None = None
 
 
+class ReportApproveRequest(BaseModel):
+    approve_stale: bool = False
+
+
+class ReportSendRequest(BaseModel):
+    send_stale: bool = False
+
+
 class ReportSendResponse(BaseModel):
     report_card_id: UUID
     status: str
@@ -700,6 +745,27 @@ class ClassReportBatchRequest(BaseModel):
     class_id: UUID
     school_year: str
     term: TrimesterTerm
+    generate_partial: bool = False
+    approve_stale: bool = False
+    send_stale: bool = False
+
+
+class PartialReportStudent(BaseModel):
+    student_id: UUID
+    student_name: str
+    student_number: str
+    expected_results_count: int
+    results_count: int
+    missing_course_names: list[str]
+
+
+class StaleReportStudent(BaseModel):
+    student_id: UUID
+    student_name: str
+    student_number: str
+    report_id: UUID
+    code: str
+    reason: str
 
 
 class ClassReportStatusRow(BaseModel):
@@ -709,6 +775,11 @@ class ClassReportStatusRow(BaseModel):
     # CourseResults calculated for this student in (term, school_year) —
     # 0 means batch-generate would skip them with no_results.
     results_count: int
+    # Active enrolled courses with at least one active grade item for this
+    # term/year. Courses with no grade items are setup-only and do not block.
+    expected_results_count: int = 0
+    missing_results_count: int = 0
+    missing_course_names: list[str] = []
     # Null report_id means no report card exists yet for this term+year.
     report_id: UUID | None = None
     report_status: str | None = None
@@ -738,6 +809,8 @@ class ClassReportBatchGenerateResponse(BaseModel):
     generated_count: int
     skipped_existing_count: int
     skipped_no_results_count: int
+    skipped_partial_count: int = 0
+    partial_students: list[PartialReportStudent] = []
     report_ids: list[UUID]
 
 
@@ -745,6 +818,8 @@ class ClassReportBatchApproveResponse(BaseModel):
     status: str
     approved_count: int
     skipped_count: int
+    skipped_stale_count: int = 0
+    stale_reports: list[StaleReportStudent] = []
 
 
 class ClassReportBatchSendResponse(BaseModel):
@@ -752,6 +827,8 @@ class ClassReportBatchSendResponse(BaseModel):
     sent_count: int
     failed_count: int
     no_recipient_count: int
+    skipped_stale_count: int = 0
+    stale_reports: list[StaleReportStudent] = []
 
 
 class ClassPdfJobResponse(BaseModel):

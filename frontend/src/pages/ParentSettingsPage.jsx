@@ -73,14 +73,14 @@ export default function ParentSettingsPage() {
 
   if (profileLoading) {
     return (
-      <section className="admin-page">
+      <section className="parent-page">
         <p className="muted">{t('common.loading')}</p>
       </section>
     )
   }
 
   return (
-    <section className="admin-page">
+    <section className="parent-page parent-settings-page">
       <Link to="/" className="back-link">← {t('common.back')}</Link>
       <div className="report-header">
         <div>
@@ -89,8 +89,8 @@ export default function ParentSettingsPage() {
         </div>
       </div>
 
-      <div className="card admin-form" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>{t('settings.profileTitle')}</h3>
+      <div className="card admin-form parent-settings-card">
+        <h3 className="card-title">{t('settings.profileTitle')}</h3>
 
         {profileError && <ErrorBanner message={profileError} />}
         {profileSuccess && (
@@ -128,8 +128,8 @@ export default function ParentSettingsPage() {
         </form>
       </div>
 
-      <div className="card admin-form">
-        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>{t('settings.changePasswordTitle')}</h3>
+      <div className="card admin-form parent-settings-card">
+        <h3 className="card-title">{t('settings.changePasswordTitle')}</h3>
 
         {pwError && <ErrorBanner message={pwError} />}
         {pwSuccess && (

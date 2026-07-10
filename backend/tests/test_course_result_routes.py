@@ -11,6 +11,7 @@ from auth import hash_password
 from database import get_db
 from main import app
 from models import (
+    AuditLog,
     Base,
     Course,
     CourseResult,
@@ -299,6 +300,124 @@ class CourseResultRouteTests(unittest.TestCase):
         # Snapshot is a historical /100 fixture value; current is recomputed on /20.
         self.assertEqual(staleness["snapshot_overall_average"], 85.0)
         self.assertEqual(staleness["current_overall_average"], 19.0)
+
+    def test_teacher_batch_clear_score_then_recalc_invalidates_stale_result_and_can_readd(self):
+        grade = self.db.scalar(
+            select(Grade).where(
+                Grade.student_id == self.student_one.id,
+                Grade.grade_item_id == self.homework.id,
+                Grade.deleted_at.is_(None),
+            )
+        )
+        self.assertIsNotNone(grade)
+
+        clear_response = self.client.post(
+            f"/api/v1/courses/{self.course.id}/grades/batch",
+            headers=self._headers(self.teacher_user.email),
+            json={
+                "entries": [
+                    {
+                        "student_id": str(self.student_one.id),
+                        "grade_item_id": str(self.homework.id),
+                        "score": None,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(clear_response.status_code, 200, clear_response.text)
+        self.assertEqual(clear_response.json()["deleted_count"], 1)
+
+        self.db.expire_all()
+        cleared_grade = self.db.get(Grade, grade.id)
+        self.assertIsNotNone(cleared_grade.deleted_at)
+        delete_log = self.db.scalar(select(AuditLog).where(AuditLog.action == "grade_deleted"))
+        self.assertIsNotNone(delete_log)
+
+        recalc_response = self.client.post(
+            f"/api/v1/course-results/calculate/{self.course.id}",
+            headers=self._headers(self.teacher_user.email),
+        )
+        self.assertEqual(recalc_response.status_code, 200, recalc_response.text)
+        body = recalc_response.json()
+        self.assertEqual(body["invalidated_count"], 1)
+        skipped = {item["student_id"]: item for item in body["skipped_students"]}
+        self.assertIn(str(self.student_one.id), skipped)
+        self.assertEqual(skipped[str(self.student_one.id)]["missing_grade_items"], ["Homework"])
+
+        self.db.expire_all()
+        invalidated_result = self.db.get(CourseResult, self.student_one_result.id)
+        self.assertIsNotNone(invalidated_result.deleted_at)
+
+        admin_results_response = self.client.get(
+            f"/api/v1/course-results/{self.course.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(admin_results_response.status_code, 200)
+        visible_student_ids = {result["student_id"] for result in admin_results_response.json()}
+        self.assertNotIn(str(self.student_one.id), visible_student_ids)
+        self.assertIn(str(self.student_two.id), visible_student_ids)
+
+        readd_response = self.client.post(
+            f"/api/v1/courses/{self.course.id}/grades/batch",
+            headers=self._headers(self.teacher_user.email),
+            json={
+                "entries": [
+                    {
+                        "student_id": str(self.student_one.id),
+                        "grade_item_id": str(self.homework.id),
+                        "score": 88,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(readd_response.status_code, 200, readd_response.text)
+        self.assertEqual(readd_response.json()["saved_count"], 1)
+
+        recalc_again = self.client.post(
+            f"/api/v1/course-results/calculate/{self.course.id}",
+            headers=self._headers(self.teacher_user.email),
+        )
+        self.assertEqual(recalc_again.status_code, 200)
+        results = {result["student_id"]: result for result in recalc_again.json()["results"]}
+        self.assertIn(str(self.student_one.id), results)
+        self.assertEqual(results[str(self.student_one.id)]["average"], 17.8)
+
+    def test_recalculation_invalidates_legacy_term_course_result_when_grade_missing(self):
+        self.student_one_result.term = "Trimester 1"
+        grade = self.db.scalar(
+            select(Grade).where(
+                Grade.student_id == self.student_one.id,
+                Grade.grade_item_id == self.homework.id,
+                Grade.deleted_at.is_(None),
+            )
+        )
+        grade.deleted_at = datetime.now()
+        self.db.commit()
+
+        response = self.client.post(
+            f"/api/v1/course-results/calculate/{self.course.id}",
+            headers=self._headers(self.teacher_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["invalidated_count"], 1)
+        skipped = {item["student_id"]: item for item in body["skipped_students"]}
+        self.assertIn(str(self.student_one.id), skipped)
+
+        self.db.expire_all()
+        invalidated_result = self.db.get(CourseResult, self.student_one_result.id)
+        self.assertEqual(invalidated_result.term, "Trimester 1")
+        self.assertIsNotNone(invalidated_result.deleted_at)
+
+        admin_results_response = self.client.get(
+            f"/api/v1/course-results/{self.course.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(admin_results_response.status_code, 200)
+        visible_student_ids = {result["student_id"] for result in admin_results_response.json()}
+        self.assertNotIn(str(self.student_one.id), visible_student_ids)
+        self.assertIn(str(self.student_two.id), visible_student_ids)
 
     def test_whole_course_recalculation_still_updates_all_enrolled_students(self):
         original_one_calculated_at = self.student_one_result.calculated_at

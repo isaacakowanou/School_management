@@ -166,7 +166,6 @@ export default function TeacherCourseDetailPage() {
     if (changedStudentIds.length > 0) {
       setCalcSummary(null)
       setCalcError(null)
-      notifyGradesChanged(courseId, changedStudentIds)
     }
 
     try {
@@ -179,6 +178,7 @@ export default function TeacherCourseDetailPage() {
     if (changedStudentIds.length > 0) {
       try {
         await recalculateAllResults()
+        notifyGradesChanged(courseId, changedStudentIds)
       } catch (err) {
         setCalcError(err.message)
         throw err
@@ -702,6 +702,7 @@ export default function TeacherCourseDetailPage() {
             <h3>{t('courses.gradeEntry')}</h3>
           </div>
           <GradeEntryTable
+            courseId={courseId}
             students={students}
             gradeItems={currentTermItems}
             grades={grades}

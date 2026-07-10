@@ -34,10 +34,11 @@ export function listReports() {
 }
 
 // POST /api/v1/reports/generate/{student_id} -> creates an admin draft report
-export function generateReport(studentId, { term, schoolYear }) {
+export function generateReport(studentId, { term, schoolYear, generatePartial = false }) {
   return apiPost(`/reports/generate/${studentId}`, {
     term,
     school_year: schoolYear,
+    generate_partial: generatePartial,
   })
 }
 
@@ -47,13 +48,13 @@ export function updateReportSummary(reportId, aiSummary) {
 }
 
 // POST /api/v1/reports/{report_id}/approve -> move draft to approved
-export function approveReport(reportId) {
-  return apiPost(`/reports/${reportId}/approve`)
+export function approveReport(reportId, { approveStale = false } = {}) {
+  return apiPost(`/reports/${reportId}/approve`, { approve_stale: approveStale })
 }
 
 // POST /api/v1/reports/{report_id}/send -> email approved report to parents
-export function sendReport(reportId) {
-  return apiPost(`/reports/${reportId}/send`)
+export function sendReport(reportId, { sendStale = false } = {}) {
+  return apiPost(`/reports/${reportId}/send`, { send_stale: sendStale })
 }
 
 // POST /api/v1/reports/{report_id}/regenerate -> rebuild snapshot as draft (admin only)
@@ -74,8 +75,22 @@ export function getClassReportStatus({ classId, schoolYear, term }) {
   return apiGet(`/reports/class-status?${params}`)
 }
 
-function classBatchBody({ classId, schoolYear, term }) {
-  return { class_id: classId, school_year: schoolYear, term }
+function classBatchBody({
+  classId,
+  schoolYear,
+  term,
+  generatePartial = false,
+  approveStale = false,
+  sendStale = false,
+}) {
+  return {
+    class_id: classId,
+    school_year: schoolYear,
+    term,
+    generate_partial: generatePartial,
+    approve_stale: approveStale,
+    send_stale: sendStale,
+  }
 }
 
 // POST /api/v1/reports/batch-generate -> drafts for every student with results and no report

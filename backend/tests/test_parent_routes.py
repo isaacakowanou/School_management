@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -9,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Parent, Student, StudentParent, User
+from models import AuditLog, Base, Class, Course, Grade, GradeItem, Parent, Student, StudentParent, Teacher, User
 
 
 class CurrentParentRouteTests(unittest.TestCase):
@@ -74,10 +75,17 @@ class CurrentParentRouteTests(unittest.TestCase):
             email="teacher-current-parent.test@example.test",
             role="teacher",
         )
+        self.other_parent_user = self._create_user(
+            name="Other Parent",
+            email="other-parent-current.test@example.test",
+            role="parent",
+        )
         self.db.flush()
 
         self.parent = Parent(user=self.parent_user, phone="555-0100")
-        self.db.add(self.parent)
+        self.other_parent = Parent(user=self.other_parent_user, phone="555-0101")
+        self.teacher = Teacher(user=self.teacher_user, employee_number="T-PARENT-GRADES")
+        self.db.add_all([self.parent, self.other_parent, self.teacher])
         self.db.commit()
 
     def _login(self, email: str) -> str:
@@ -97,6 +105,88 @@ class CurrentParentRouteTests(unittest.TestCase):
             "name": "New Parent",
             "email": email,
             "phone": "555-0199",
+        }
+
+    def _seed_parent_grade_data(self):
+        school_class = Class(
+            name_fr="6ème",
+            school_level="college",
+            sort_order=1,
+            school_year="2026-2027",
+        )
+        student = Student(first_name="Ada", last_name="Lovelace", student_number="PG001", school_class=school_class)
+        unlinked_student = Student(first_name="Grace", last_name="Hopper", student_number="PG002", school_class=school_class)
+        self.db.add_all([school_class, student, unlinked_student])
+        self.db.flush()
+        link = StudentParent(student=student, parent=self.parent, relationship="Guardian")
+        self.db.add(link)
+        course = Course(
+            name="Mathématique",
+            code="PARENT-GRADE-MATH",
+            teacher=self.teacher,
+            term="2ème Trimestre",
+            school_year="2026-2027",
+            school_class=school_class,
+        )
+        self.db.add(course)
+        self.db.flush()
+        first_item = GradeItem(
+            course=course,
+            title="Interro 1",
+            category=None,
+            item_type="INTERRO",
+            max_score=20,
+            term="1er Trimestre",
+        )
+        second_item = GradeItem(
+            course=course,
+            title="Devoir 1",
+            category=None,
+            item_type="DEVOIR",
+            max_score=20,
+            term="2ème Trimestre",
+        )
+        empty_item = GradeItem(
+            course=course,
+            title="Composition",
+            category=None,
+            item_type="COMPOSITION",
+            max_score=20,
+            term="2ème Trimestre",
+        )
+        self.db.add_all([first_item, second_item, empty_item])
+        self.db.flush()
+        now = datetime.now(timezone.utc)
+        first_grade = Grade(
+            student=student,
+            grade_item=first_item,
+            score=15,
+            submitted_by_teacher=self.teacher,
+            created_at=now - timedelta(days=10),
+            updated_at=now - timedelta(days=9),
+        )
+        second_grade = Grade(
+            student=student,
+            grade_item=second_item,
+            score=17,
+            submitted_by_teacher=self.teacher,
+            created_at=now - timedelta(days=1),
+            updated_at=now,
+        )
+        unlinked_grade = Grade(
+            student=unlinked_student,
+            grade_item=second_item,
+            score=18,
+            submitted_by_teacher=self.teacher,
+        )
+        self.db.add_all([first_grade, second_grade, unlinked_grade])
+        self.db.commit()
+        return {
+            "student": student,
+            "unlinked_student": unlinked_student,
+            "link": link,
+            "first_item": first_item,
+            "second_item": second_item,
         }
 
     def test_parent_token_can_get_current_parent_profile(self):
@@ -418,6 +508,97 @@ class CurrentParentRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.db.expire_all()
         self.assertEqual(self.db.get(User, self.parent.user_id).email, original_email)
+
+    # --- Parent grade view ---
+
+    def test_parent_can_list_own_student_grades_for_current_term(self):
+        seeded = self._seed_parent_grade_data()
+
+        response = self.client.get(
+            f"/api/v1/parents/me/students/{seeded['student'].id}/grades",
+            headers=self._auth_headers(self.parent_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["course_name"], "Mathématique")
+        self.assertEqual(data[0]["item_title"], "Devoir 1")
+        self.assertEqual(data[0]["item_type"], "DEVOIR")
+        self.assertEqual(data[0]["score"], 17)
+        self.assertEqual(data[0]["max_score"], 20)
+        self.assertEqual(data[0]["term"], "2ème Trimestre")
+        self.assertEqual(data[0]["school_year"], "2026-2027")
+        self.assertNotIn("average", data[0])
+        self.assertNotIn("moy", data[0])
+        self.assertNotIn("course_result", data[0])
+
+    def test_parent_can_request_past_term_after_school_advances(self):
+        seeded = self._seed_parent_grade_data()
+
+        response = self.client.get(
+            f"/api/v1/parents/me/students/{seeded['student'].id}/grades?term=1er Trimestre",
+            headers=self._auth_headers(self.parent_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["item_title"], "Interro 1")
+        self.assertEqual(data[0]["term"], "1er Trimestre")
+
+    def test_parent_student_grades_reject_unlinked_student(self):
+        seeded = self._seed_parent_grade_data()
+
+        response = self.client.get(
+            f"/api/v1/parents/me/students/{seeded['unlinked_student'].id}/grades",
+            headers=self._auth_headers(self.parent_user.email),
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_parent_student_grades_reject_inactive_link(self):
+        seeded = self._seed_parent_grade_data()
+        seeded["link"].deleted_at = datetime.now(timezone.utc)
+        self.db.commit()
+
+        response = self.client.get(
+            f"/api/v1/parents/me/students/{seeded['student'].id}/grades",
+            headers=self._auth_headers(self.parent_user.email),
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_parent_student_grades_empty_when_no_scores_for_term(self):
+        seeded = self._seed_parent_grade_data()
+
+        response = self.client.get(
+            f"/api/v1/parents/me/students/{seeded['student'].id}/grades?term=3ème Trimestre",
+            headers=self._auth_headers(self.parent_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+
+    def test_parent_student_grades_reject_non_canonical_term(self):
+        seeded = self._seed_parent_grade_data()
+
+        response = self.client.get(
+            f"/api/v1/parents/me/students/{seeded['student'].id}/grades?term=Midterm",
+            headers=self._auth_headers(self.parent_user.email),
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_non_parent_cannot_list_parent_student_grades(self):
+        seeded = self._seed_parent_grade_data()
+
+        response = self.client.get(
+            f"/api/v1/parents/me/students/{seeded['student'].id}/grades",
+            headers=self._auth_headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 403)
 
 
 if __name__ == "__main__":

@@ -191,8 +191,8 @@ def send_grades_available_sms(
 
     app_url = cfg["app_base_url"].rstrip("/")
     body = (
-        f"De nouvelles notes ont été enregistrées pour {student_name} — {course_name} ({term}).\n"
-        f"/ New grades recorded for {student_name} — {course_name} ({term}).\n"
+        f"De nouvelles notes ont été enregistrées pour {student_name} en {course_name} ({term}).\n"
+        f"/ New grades recorded for {student_name} in {course_name} ({term}).\n"
         f"Connectez-vous / Log in: {app_url}"
     )
 

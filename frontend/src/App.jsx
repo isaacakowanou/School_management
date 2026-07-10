@@ -5,6 +5,7 @@ import AdminLayout from './components/AdminLayout.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
+import ParentStudentPage from './pages/ParentStudentPage.jsx'
 import StudentReportsPage from './pages/StudentReportsPage.jsx'
 import ReportDetailPage from './pages/ReportDetailPage.jsx'
 import AuditLogsPage from './pages/AuditLogsPage.jsx'
@@ -60,6 +61,7 @@ export default function App() {
       >
         <Route path="/" element={<DashboardPage />} />
         <Route path="/settings" element={<ParentSettingsPage />} />
+        <Route path="/students/:studentId" element={<ParentStudentPage />} />
         <Route path="/students/:studentId/reports" element={<StudentReportsPage />} />
         <Route path="/reports/:reportId" element={<ReportDetailPage />} />
       </Route>

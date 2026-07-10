@@ -13,6 +13,7 @@ import { listStudents } from '../api/students.js'
 import { getTeacher, listTeachers } from '../api/teachers.js'
 import { createGradeItem, deleteGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
 import { listCourseResults } from '../api/courseResults.js'
+import { listCourseGrades } from '../api/grades.js'
 import { listClasses } from '../api/classes.js'
 import { listSubjects } from '../api/subjects.js'
 import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
@@ -100,6 +101,7 @@ export default function AdminCourseDetailPage() {
   const [students, setStudents] = useState([])
   const [allStudents, setAllStudents] = useState([])
   const [gradeItems, setGradeItems] = useState([])
+  const [grades, setGrades] = useState([])
   const [results, setResults] = useState([])
   const [error, setError] = useState(null)
   const [enrollStudentId, setEnrollStudentId] = useState('')
@@ -183,6 +185,7 @@ export default function AdminCourseDetailPage() {
     setStudents([])
     setAllStudents([])
     setGradeItems([])
+    setGrades([])
     setResults([])
     setEnrollStudentId('')
     setEnrollError(null)
@@ -222,11 +225,12 @@ export default function AdminCourseDetailPage() {
         return
       }
       // Related data is best-effort; each section degrades independently.
-      const [teacherRes, studentsRes, gradeItemsRes, resultsRes, allStudentsRes, allTeachersRes] = await Promise.allSettled([
+      const [teacherRes, studentsRes, gradeItemsRes, resultsRes, gradesRes, allStudentsRes, allTeachersRes] = await Promise.allSettled([
         getTeacher(courseData.teacher_id),
         listCourseStudents(courseId),
         listGradeItems(courseId),
         listCourseResults(courseId),
+        listCourseGrades(courseId),
         listStudents(),
         listTeachers(),
       ])
@@ -235,6 +239,7 @@ export default function AdminCourseDetailPage() {
       if (studentsRes.status === 'fulfilled') setStudents(studentsRes.value)
       if (gradeItemsRes.status === 'fulfilled') setGradeItems(gradeItemsRes.value)
       if (resultsRes.status === 'fulfilled') setResults(resultsRes.value)
+      if (gradesRes.status === 'fulfilled') setGrades(gradesRes.value)
       if (allStudentsRes.status === 'fulfilled') setAllStudents(allStudentsRes.value)
       if (allTeachersRes.status === 'fulfilled') setAllTeachers(allTeachersRes.value)
     }
@@ -570,6 +575,11 @@ export default function AdminCourseDetailPage() {
     course.language_group === 'FRENCH' && course.class_school_level === 'college'
   )
   const currentTermItems = gradeItems.filter((item) => item.term === course.term)
+  const currentTermItemIds = new Set(currentTermItems.map((item) => item.id))
+  const enteredGradeCount = grades.filter(
+    (grade) => currentTermItemIds.has(grade.grade_item_id) && enrolledStudentIds.has(grade.student_id),
+  ).length
+  const expectedGradeCount = students.length * currentTermItems.length
   const hasDevoir = currentTermItems.some((item) => item.item_type === 'DEVOIR')
   const hasComposition = currentTermItems.some((item) => item.item_type === 'COMPOSITION')
 
@@ -1227,7 +1237,9 @@ export default function AdminCourseDetailPage() {
 
       <h3 className="section-title">{t('courses.results')}</h3>
       {results.length === 0 ? (
-        <Empty message={t('courses.noResults')} />
+        <div className="state state-empty">
+          {t('courses.quietIncompleteResults', { entered: enteredGradeCount, total: expectedGradeCount })}
+        </div>
       ) : (
         <div className="table-scroll">
           <table className="table">

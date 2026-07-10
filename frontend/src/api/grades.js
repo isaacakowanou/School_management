@@ -19,6 +19,12 @@ export function updateGrade(gradeId, score) {
   return apiPut(`/grades/${gradeId}`, { score })
 }
 
+// POST /api/v1/courses/{courseId}/grades/batch -> create/update/delete grade cells.
+// An entry with score: null clears the existing score.
+export function saveCourseGradesBatch(courseId, entries) {
+  return apiPost(`/courses/${courseId}/grades/batch`, { entries })
+}
+
 // POST /api/v1/courses/{courseId}/notify-grades -> fire grade notifications for changed students
 export async function notifyGradesChanged(courseId, studentIds) {
   try {

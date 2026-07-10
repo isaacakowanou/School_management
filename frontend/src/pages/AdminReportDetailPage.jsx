@@ -34,8 +34,14 @@ const EMPTY_COMMENTS = {
   principal_comment_en: '',
 }
 
+const ACTION_CANCELLED = Symbol('action-cancelled')
+
 function hasValue(value) {
   return value !== null && value !== undefined
+}
+
+function isStaleGuardError(err) {
+  return ['stale_report_snapshot', 'incomplete_report_results'].includes(err?.detail?.code)
 }
 
 function itemGrades(items, grades) {
@@ -203,11 +209,12 @@ export default function AdminReportDetailPage() {
     setActionMessage(null)
     try {
       const result = await fn()
+      if (result === ACTION_CANCELLED) return null
       if (refresh) await refreshReportView()
       if (successMessage) setActionMessage(successMessage)
       return result
     } catch (err) {
-      setActionError(err.message || t('common.actionFailed'))
+      setActionError(isStaleGuardError(err) ? t(`reports.guardErrors.${err.detail.code}`) : err.message || t('common.actionFailed'))
       return null
     } finally {
       setPending(null)
@@ -261,7 +268,19 @@ export default function AdminReportDetailPage() {
   }
 
   async function handleApprove() {
-    await runAction('approve', () => approveReport(reportId), {
+    await runAction('approve', async () => {
+      try {
+        return await approveReport(reportId)
+      } catch (err) {
+        if (!isStaleGuardError(err)) throw err
+        const date = report?.created_at ? new Date(report.created_at).toLocaleDateString() : report?.term
+        const currentState = err.detail.code === 'incomplete_report_results'
+          ? t('reports.currentUnavailable')
+          : t('reports.currentDifferent')
+        if (!window.confirm(t('reports.confirmApproveStale', { date, currentState }))) return ACTION_CANCELLED
+        return approveReport(reportId, { approveStale: true })
+      }
+    }, {
       successMessage: t('reports.reportApproved'),
     })
   }
@@ -272,7 +291,19 @@ export default function AdminReportDetailPage() {
       return
     }
 
-    const result = await runAction('send', () => sendReport(reportId), {
+    const result = await runAction('send', async () => {
+      try {
+        return await sendReport(reportId)
+      } catch (err) {
+        if (!isStaleGuardError(err)) throw err
+        const date = report?.created_at ? new Date(report.created_at).toLocaleDateString() : report?.term
+        const currentState = err.detail.code === 'incomplete_report_results'
+          ? t('reports.currentUnavailable')
+          : t('reports.currentDifferent')
+        if (!window.confirm(t('reports.confirmSendStale', { date, currentState }))) return ACTION_CANCELLED
+        return sendReport(reportId, { sendStale: true })
+      }
+    }, {
       successMessage: isResend ? t('reports.reportResent') : t('reports.reportSent'),
     })
     if (result) {

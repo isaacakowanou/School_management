@@ -146,6 +146,10 @@ a {
   max-width: 1200px;
 }
 
+.content:has(.parent-page) {
+  max-width: 920px;
+}
+
 /* ---- Headings ---- */
 .page-title {
   margin: 0 0 var(--space-1);
@@ -264,6 +268,92 @@ a.card:active {
 
 .report-term {
   font-weight: 600;
+}
+
+.parent-student-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.parent-student-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.parent-student-card-actions span,
+.parent-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.parent-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.parent-tab {
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  border-bottom: 3px solid transparent;
+  font-weight: var(--font-weight-semibold);
+}
+
+.parent-tab:hover {
+  color: var(--color-accent);
+}
+
+.parent-tab-active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.compact-field {
+  min-width: 220px;
+  margin: 0;
+}
+
+.recent-grade-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--space-3);
+}
+
+.recent-grade-card {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+.grade-course-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.card-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-section-title);
+}
+
+.parent-settings-page {
+  max-width: 720px;
+}
+
+.parent-settings-card + .parent-settings-card {
+  margin-top: var(--space-5);
 }
 
 /* ---- Stats ---- */

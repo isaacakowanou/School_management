@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { FileText, GraduationCap } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { getParentStudents } from '../api/parents.js'
 import Spinner from '../components/Spinner.jsx'
@@ -31,9 +32,13 @@ export default function DashboardPage() {
   }, [parentId])
 
   return (
-    <section>
-      <h2 className="page-title">{t('dashboard.title')}</h2>
-      {parent && <p className="muted">{t('dashboard.signedInAs', { name: parent.name })}</p>}
+    <section className="parent-page">
+      <div className="report-header">
+        <div>
+          <h2 className="page-title">{t('dashboard.title')}</h2>
+          {parent && <p className="muted">{t('dashboard.signedInAs', { name: parent.name })}</p>}
+        </div>
+      </div>
 
       {error && <ErrorBanner message={error} />}
       {!error && students === null && <Spinner label={t('dashboard.loading')} />}
@@ -44,12 +49,18 @@ export default function DashboardPage() {
         <ul className="card-list">
           {students.map((student) => (
             <li key={student.id}>
-              <Link className="card student-card" to={`/students/${student.id}/reports`}>
-                <div className="student-name">
-                  {student.first_name} {student.last_name}
+              <Link className="card student-card parent-student-card" to={`/students/${student.id}`}>
+                <div>
+                  <div className="student-name">
+                    {student.first_name} {student.last_name}
+                  </div>
+                  <div className="muted">
+                    {student.class_name || '—'} · #{student.student_number}
+                  </div>
                 </div>
-                <div className="muted">
-                  {student.class_name || '—'} · #{student.student_number}
+                <div className="parent-student-card-actions" aria-hidden="true">
+                  <span><GraduationCap size={16} /> {t('parentGrades.notes')}</span>
+                  <span><FileText size={16} /> {t('nav.reports')}</span>
                 </div>
               </Link>
             </li>

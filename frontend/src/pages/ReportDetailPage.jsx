@@ -73,7 +73,7 @@ export default function ReportDetailPage() {
 
   if (error) {
     return (
-      <section>
+      <section className="parent-page">
         <Link to="/" className="back-link">
           {t('reports.myStudentsBack')}
         </Link>
@@ -84,7 +84,7 @@ export default function ReportDetailPage() {
 
   if (!report) {
     return (
-      <section>
+      <section className="parent-page">
         <Spinner label={t('reports.loadingOne')} />
       </section>
     )
@@ -93,7 +93,7 @@ export default function ReportDetailPage() {
   const studentName = student ? `${student.first_name} ${student.last_name}` : t('reports.reportCard')
 
   return (
-    <section>
+    <section className="parent-page">
       <Link to={`/students/${report.student_id}/reports`} className="back-link">
         ← {t('nav.reports')}
       </Link>

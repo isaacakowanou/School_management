@@ -17,6 +17,7 @@ from models import (
     Course,
     CourseResult,
     Enrollment,
+    GradeItem,
     ReportCard,
     Student,
     Teacher,
@@ -125,6 +126,63 @@ class ReportBatchTests(unittest.TestCase):
     def _payload(self) -> dict:
         return {"class_id": str(self.terminale.id), "school_year": YEAR, "term": TERM}
 
+    def _add_gradeable_course_for_student(self, student: Student, *, name: str = "Physique") -> Course:
+        course = Course(
+            name=name,
+            code=f"BATCH-{name.upper()}",
+            teacher_id=self.teacher.id,
+            term=TERM,
+            school_year=YEAR,
+            language_group="FRENCH",
+            class_id=self.terminale.id,
+        )
+        self.db.add(course)
+        self.db.flush()
+        self.db.add_all(
+            [
+                Enrollment(student_id=student.id, course_id=course.id),
+                GradeItem(
+                    course_id=course.id,
+                    title="Interro 1",
+                    category="Interro",
+                    max_score=20,
+                    weight=1,
+                    term=TERM,
+                ),
+            ]
+        )
+        self.db.commit()
+        return course
+
+    def _mark_main_course_gradeable(self) -> None:
+        self.db.add(
+            GradeItem(
+                course_id=self.course.id,
+                title="Interro 1",
+                category="Interro",
+                max_score=20,
+                weight=1,
+                term=TERM,
+            )
+        )
+        self.db.commit()
+
+    def _add_setup_course_without_grade_items(self, student: Student) -> Course:
+        course = Course(
+            name="Arts plastiques",
+            code="BATCH-ARTS",
+            teacher_id=self.teacher.id,
+            term=TERM,
+            school_year=YEAR,
+            language_group="FRENCH",
+            class_id=self.terminale.id,
+        )
+        self.db.add(course)
+        self.db.flush()
+        self.db.add(Enrollment(student_id=student.id, course_id=course.id))
+        self.db.commit()
+        return course
+
     def _generate(self, headers=None) -> dict:
         response = self.client.post("/api/v1/reports/batch-generate", json=self._payload(), headers=headers or self._admin())
         assert response.status_code == 200, response.text
@@ -180,6 +238,70 @@ class ReportBatchTests(unittest.TestCase):
         payload["class_id"] = "00000000-0000-0000-0000-000000000000"
         response = self.client.post("/api/v1/reports/batch-generate", json=payload, headers=self._admin())
         self.assertEqual(response.status_code, 404)
+
+    def test_single_generate_blocks_partial_results_and_override_allows(self):
+        self._mark_main_course_gradeable()
+        self._add_gradeable_course_for_student(self.student_a, name="Physique")
+
+        blocked = self.client.post(
+            f"/api/v1/reports/generate/{self.student_a.id}",
+            json={"term": TERM, "school_year": YEAR},
+            headers=self._admin(),
+        )
+        self.assertEqual(blocked.status_code, 400)
+        detail = blocked.json()["detail"]
+        self.assertEqual(detail["code"], "partial_results")
+        self.assertEqual(detail["expected_results_count"], 2)
+        self.assertEqual(detail["results_count"], 1)
+        self.assertEqual(detail["missing_course_names"], ["Physique"])
+
+        override = self.client.post(
+            f"/api/v1/reports/generate/{self.student_a.id}",
+            json={"term": TERM, "school_year": YEAR, "generate_partial": True},
+            headers=self._admin(),
+        )
+        self.assertEqual(override.status_code, 201, override.text)
+        self.assertEqual(len(override.json()["courses"]), 1)
+
+    def test_batch_generate_reports_partial_students_distinctly_and_override_allows(self):
+        self._mark_main_course_gradeable()
+        self._add_gradeable_course_for_student(self.student_a, name="Physique")
+
+        response = self.client.post("/api/v1/reports/batch-generate", json=self._payload(), headers=self._admin())
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["generated_count"], 1)
+        self.assertEqual(body["skipped_partial_count"], 1)
+        self.assertEqual(body["partial_students"][0]["student_number"], "B-001")
+        self.assertEqual(body["partial_students"][0]["missing_course_names"], ["Physique"])
+
+        override_payload = self._payload()
+        override_payload["generate_partial"] = True
+        override_response = self.client.post("/api/v1/reports/batch-generate", json=override_payload, headers=self._admin())
+        self.assertEqual(override_response.status_code, 200, override_response.text)
+        override_body = override_response.json()
+        self.assertEqual(override_body["generated_count"], 1)
+        self.assertEqual(override_body["skipped_partial_count"], 0)
+        self.assertEqual(override_body["skipped_existing_count"], 1)
+
+    def test_course_without_grade_items_does_not_count_against_completeness(self):
+        self._add_setup_course_without_grade_items(self.student_a)
+
+        status_response = self.client.get(
+            "/api/v1/reports/class-status",
+            params={"class_id": str(self.terminale.id), "school_year": YEAR, "term": TERM},
+            headers=self._admin(),
+        )
+        self.assertEqual(status_response.status_code, 200)
+        by_number = {row["student_number"]: row for row in status_response.json()["students"]}
+        self.assertEqual(by_number["B-001"]["results_count"], 1)
+        self.assertEqual(by_number["B-001"]["expected_results_count"], 0)
+        self.assertEqual(by_number["B-001"]["missing_results_count"], 0)
+
+        generate_response = self.client.post("/api/v1/reports/batch-generate", json=self._payload(), headers=self._admin())
+        self.assertEqual(generate_response.status_code, 200, generate_response.text)
+        self.assertEqual(generate_response.json()["generated_count"], 2)
+        self.assertEqual(generate_response.json()["skipped_partial_count"], 0)
 
     # --- batch-approve ---
 
@@ -285,6 +407,34 @@ class ReportBatchTests(unittest.TestCase):
             response = self.client.post("/api/v1/reports/batch-send", json=self._payload(), headers=self._admin())
         self.assertEqual(response.json()["sent_count"], 0)
         send_mock.assert_not_called()
+
+    def test_batch_send_reports_stale_distinctly_and_override_sends(self):
+        self._generate()
+        self._approve_all()
+        result_a = self.db.scalar(select(CourseResult).where(CourseResult.student_id == self.student_a.id))
+        result_a.average = 10.0
+        result_a.letter_grade = "C"
+        self.db.commit()
+
+        send_results = [{"email": "p@example.test", "sent": True, "success": True, "provider": "resend", "provider_message_id": "m1", "error": None}]
+        with patch("routes.reports.send_report_notification_to_parents", return_value=send_results):
+            response = self.client.post("/api/v1/reports/batch-send", json=self._payload(), headers=self._admin())
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["sent_count"], 1)
+        self.assertEqual(body["skipped_stale_count"], 1)
+        self.assertEqual(body["stale_reports"][0]["student_number"], "B-001")
+        self.assertEqual(body["stale_reports"][0]["code"], "stale_report_snapshot")
+
+        with patch("routes.reports.send_report_notification_to_parents", return_value=send_results):
+            override_payload = self._payload()
+            override_payload["send_stale"] = True
+            override = self.client.post("/api/v1/reports/batch-send", json=override_payload, headers=self._admin())
+
+        self.assertEqual(override.status_code, 200, override.text)
+        self.assertEqual(override.json()["skipped_stale_count"], 0)
+        self.assertEqual(override.json()["sent_count"], 2)
 
     def test_batch_send_audit_entry(self):
         self._generate()

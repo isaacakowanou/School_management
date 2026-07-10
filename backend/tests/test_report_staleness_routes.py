@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -364,6 +365,79 @@ class ReportStalenessRouteTests(unittest.TestCase):
             headers=self._headers(self.parent_user.email),
         )
         self.assertEqual(parent_response.status_code, 403)
+
+    def test_stale_approve_blocked_by_default_and_override_works(self):
+        self.report_card.status = "draft"
+        self.report_card.approved_by_admin_id = None
+        self.report_card.approved_at = None
+        self.report_card.sent_at = None
+        self._make_report_stale()
+
+        response = self.client.post(
+            f"/api/v1/reports/{self.report_card.id}/approve",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["code"], "stale_report_snapshot")
+        self.db.expire_all()
+        self.assertEqual(self.db.get(ReportCard, self.report_card.id).status, "draft")
+
+        override = self.client.post(
+            f"/api/v1/reports/{self.report_card.id}/approve",
+            json={"approve_stale": True},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(override.status_code, 200, override.text)
+        self.assertEqual(override.json()["status"], "approved")
+
+    def test_fresh_approve_unaffected(self):
+        self.report_card.status = "draft"
+        self.report_card.approved_by_admin_id = None
+        self.report_card.approved_at = None
+        self.report_card.sent_at = None
+        self.db.commit()
+
+        response = self.client.post(
+            f"/api/v1/reports/{self.report_card.id}/approve",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "approved")
+
+    def test_stale_send_blocked_by_default_and_override_works(self):
+        self.report_card.status = "approved"
+        self.report_card.sent_at = None
+        self._make_report_stale()
+        send_results = [
+            {
+                "email": "parent@example.test",
+                "sent": True,
+                "success": True,
+                "provider": "resend",
+                "provider_message_id": "msg-1",
+                "error": None,
+            }
+        ]
+
+        with patch("routes.reports.send_report_notification_to_parents", return_value=send_results) as send_mock:
+            response = self.client.post(
+                f"/api/v1/reports/{self.report_card.id}/send",
+                headers=self._headers(self.admin_user.email),
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["code"], "stale_report_snapshot")
+        send_mock.assert_not_called()
+
+        with patch("routes.reports.send_report_notification_to_parents", return_value=send_results):
+            override = self.client.post(
+                f"/api/v1/reports/{self.report_card.id}/send",
+                json={"send_stale": True},
+                headers=self._headers(self.admin_user.email),
+            )
+        self.assertEqual(override.status_code, 200, override.text)
+        self.assertEqual(override.json()["status"], "sent")
 
 
 if __name__ == "__main__":

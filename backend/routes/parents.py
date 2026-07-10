@@ -4,14 +4,24 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, union_all
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from audit import create_audit_log
 from auth import get_current_user, hash_password, require_admin, require_parent
+from constants import TRIMESTER_TERMS
 from database import get_db
-from models import Parent, Student, StudentParent, User
-from schemas import ParentCreate, ParentCreateResponse, ParentResponse, ParentSelfUpdate, ParentUpdate, StatusResponse, StudentResponse
+from models import Class, Course, CourseResult, Grade, GradeItem, Parent, ReportCard, Student, StudentParent, User
+from schemas import (
+    ParentCreate,
+    ParentCreateResponse,
+    ParentGradeResponse,
+    ParentResponse,
+    ParentSelfUpdate,
+    ParentUpdate,
+    StatusResponse,
+    StudentResponse,
+)
 from services.email_service import send_account_created_email
 from services.sms_service import send_account_created_sms
 from utils import to_student_response
@@ -54,6 +64,79 @@ def clean_required_text(value: str, field_name: str) -> str:
             detail=f"{field_name} cannot be empty",
         )
     return cleaned
+
+
+def get_current_parent_or_404(db: Session, current_user: User) -> Parent:
+    parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id, Parent.deleted_at.is_(None)))
+    if parent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
+    return parent
+
+
+def ensure_parent_linked_to_active_student(db: Session, parent: Parent, student_id: UUID) -> Student:
+    link = db.scalar(
+        select(StudentParent)
+        .join(StudentParent.student)
+        .options(joinedload(StudentParent.student))
+        .where(
+            StudentParent.parent_id == parent.id,
+            StudentParent.student_id == student_id,
+            StudentParent.deleted_at.is_(None),
+            Student.deleted_at.is_(None),
+        )
+    )
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    return link.student
+
+
+def latest_active_school_year(db: Session) -> str | None:
+    year_rows = union_all(
+        select(Class.school_year.label("school_year")).where(Class.deleted_at.is_(None)),
+        select(Course.school_year.label("school_year")).where(Course.deleted_at.is_(None)),
+        select(Course.school_year.label("school_year"))
+        .join(CourseResult, CourseResult.course_id == Course.id)
+        .join(Student, CourseResult.student_id == Student.id)
+        .where(CourseResult.deleted_at.is_(None), Course.deleted_at.is_(None), Student.deleted_at.is_(None)),
+        select(ReportCard.school_year.label("school_year"))
+        .join(Student, ReportCard.student_id == Student.id)
+        .where(ReportCard.deleted_at.is_(None), Student.deleted_at.is_(None)),
+    ).subquery()
+    return db.scalar(select(func.max(year_rows.c.school_year)).select_from(year_rows))
+
+
+def current_term_for_year(db: Session, school_year: str) -> str:
+    activity_terms = union_all(
+        select(GradeItem.term.label("term"))
+        .join(Course, GradeItem.course_id == Course.id)
+        .join(Grade, Grade.grade_item_id == GradeItem.id)
+        .join(Student, Grade.student_id == Student.id)
+        .where(
+            Course.school_year == school_year,
+            GradeItem.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+            Grade.deleted_at.is_(None),
+            Student.deleted_at.is_(None),
+        ),
+        select(ReportCard.term.label("term"))
+        .join(Student, ReportCard.student_id == Student.id)
+        .where(
+            ReportCard.school_year == school_year,
+            ReportCard.deleted_at.is_(None),
+            Student.deleted_at.is_(None),
+        ),
+        select(CourseResult.term.label("term"))
+        .join(Course, CourseResult.course_id == Course.id)
+        .join(Student, CourseResult.student_id == Student.id)
+        .where(
+            Course.school_year == school_year,
+            CourseResult.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+            Student.deleted_at.is_(None),
+        ),
+    ).subquery()
+    terms = set(db.scalars(select(activity_terms.c.term).distinct()).all())
+    return next((term for term in reversed(TRIMESTER_TERMS) if term in terms), TRIMESTER_TERMS[0])
 
 
 @router.get("", response_model=list[ParentResponse])
@@ -178,6 +261,58 @@ def update_current_parent_profile(
     db.commit()
     db.refresh(parent)
     return to_parent_response(parent)
+
+
+@router.get("/me/students/{student_id}/grades", response_model=list[ParentGradeResponse])
+def list_current_parent_student_grades(
+    student_id: UUID,
+    term: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_parent),
+) -> list[ParentGradeResponse]:
+    parent = get_current_parent_or_404(db, current_user)
+    ensure_parent_linked_to_active_student(db, parent, student_id)
+
+    school_year = latest_active_school_year(db)
+    if school_year is None:
+        return []
+
+    selected_term = term or current_term_for_year(db, school_year)
+    if selected_term not in TRIMESTER_TERMS:
+        raise HTTPException(status_code=422, detail="term must be a canonical trimester")
+
+    grades = db.scalars(
+        select(Grade)
+        .join(Grade.grade_item)
+        .join(GradeItem.course)
+        .where(
+            Grade.student_id == student_id,
+            Grade.deleted_at.is_(None),
+            GradeItem.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+            Course.school_year == school_year,
+            GradeItem.term == selected_term,
+        )
+        .order_by(Grade.updated_at.desc(), Grade.created_at.desc(), Course.name, GradeItem.created_at)
+    ).all()
+
+    return [
+        ParentGradeResponse(
+            course_id=grade.grade_item.course_id,
+            course_name=grade.grade_item.course.name,
+            grade_item_id=grade.grade_item_id,
+            item_title=grade.grade_item.title,
+            item_type=grade.grade_item.item_type,
+            category=grade.grade_item.category,
+            score=grade.score,
+            max_score=grade.grade_item.max_score,
+            term=grade.grade_item.term,
+            school_year=grade.grade_item.course.school_year,
+            created_at=grade.created_at,
+            updated_at=grade.updated_at,
+        )
+        for grade in grades
+    ]
 
 
 @router.get("/{parent_id}", response_model=ParentResponse)

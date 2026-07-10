@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createGrade, updateGrade } from '../api/grades.js'
+import { saveCourseGradesBatch } from '../api/grades.js'
 import Empty from './Empty.jsx'
 
 function cellKey(studentId, gradeItemId) {
@@ -8,10 +8,10 @@ function cellKey(studentId, gradeItemId) {
 }
 
 // Validate a single draft value against the grade item's max score.
-// A blank value means "no change / do not submit".
+// A blank value means "clear existing score" when a grade exists.
 function validateCell(value, maxScore) {
   const trimmed = value.trim()
-  if (trimmed === '') return { skip: true }
+  if (trimmed === '') return { ok: true, value: null }
   const num = Number(trimmed)
   if (!Number.isFinite(num)) return { ok: false, messageKey: 'gradeEntry.errorNotNumber' }
   if (num < 0) return { ok: false, messageKey: 'gradeEntry.errorMin' }
@@ -19,18 +19,17 @@ function validateCell(value, maxScore) {
   return { ok: true, value: num }
 }
 
-// A cell is unchanged when blank-with-no-grade, blank-with-existing-grade
-// (blank = no change), or numerically equal to the stored score.
+// A cell is unchanged when blank-with-no-grade or numerically equal to the stored score.
 function isUnchanged(draftValue, existing) {
   const trimmed = draftValue.trim()
   if (!existing) return trimmed === ''
-  if (trimmed === '') return true
+  if (trimmed === '') return false
   return Number(trimmed) === Number(existing.score)
 }
 
 const TYPE_ORDER = { INTERRO: 0, DEVOIR: 1, COMPOSITION: 2 }
 
-export default function GradeEntryTable({ students, gradeItems, grades, onSaved, gradingMode = 'WEIGHTED' }) {
+export default function GradeEntryTable({ courseId, students, gradeItems, grades, onSaved, gradingMode = 'WEIGHTED' }) {
   const { t } = useTranslation()
   const isBeninese = gradingMode === 'BENINESE'
   const inputRefs = useRef(new Map())
@@ -192,6 +191,7 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
     setSummary(null)
     const nextErrors = {}
     const changedStudentIds = new Set()
+    const entries = []
     let saved = 0
     let failed = 0
 
@@ -203,25 +203,31 @@ export default function GradeEntryTable({ students, gradeItems, grades, onSaved,
         if (isUnchanged(draftValue, existing)) continue
 
         const result = validateCell(draftValue, item.max_score)
-        if (result.skip) continue
         if (!result.ok) {
           nextErrors[key] = t(result.messageKey, result.messageOptions)
           failed += 1
           continue
         }
 
-        try {
-          if (existing) {
-            await updateGrade(existing.id, result.value)
-          } else {
-            await createGrade({ studentId: student.id, gradeItemId: item.id, score: result.value })
-          }
-          saved += 1
-          changedStudentIds.add(student.id)
-        } catch (err) {
-          nextErrors[key] = err.message
-          failed += 1
-        }
+        entries.push({
+          student_id: student.id,
+          grade_item_id: item.id,
+          score: result.value,
+        })
+        changedStudentIds.add(student.id)
+      }
+    }
+
+    if (failed === 0 && entries.length > 0) {
+      try {
+        const result = await saveCourseGradesBatch(courseId, entries)
+        saved = result.saved_count + result.deleted_count
+      } catch (err) {
+        failed += 1
+        setCellErrors(nextErrors)
+        setSummary({ saved, failed })
+        setSaving(false)
+        return
       }
     }
 

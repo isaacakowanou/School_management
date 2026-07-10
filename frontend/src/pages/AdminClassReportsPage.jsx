@@ -84,8 +84,18 @@ export default function AdminClassReportsPage() {
   // Students batch-generate would actually create reports for.
   const generatableCount = useMemo(
     () =>
-      (status?.students || []).filter((row) => !row.report_id && row.results_count > 0).length,
+      (status?.students || []).filter((row) => !row.report_id && row.results_count > 0 && row.missing_results_count === 0).length,
     [status],
+  )
+  const partialRows = useMemo(
+    () => (status?.students || []).filter((row) => !row.report_id && row.missing_results_count > 0),
+    [status],
+  )
+  const midTrimesterNoCompleteResults = !!(
+    status
+    && status.total_students > 0
+    && status.students.some((row) => row.expected_results_count > 0)
+    && status.students.every((row) => row.results_count === 0)
   )
 
   async function runBatch(kind) {
@@ -100,29 +110,65 @@ export default function AdminClassReportsPage() {
           : t('classReports.confirmSend', { count: status.approved_count })
     if (!window.confirm(confirmText)) return
 
+    let generatePartial = false
+    if (kind === 'generate' && partialRows.length > 0) {
+      generatePartial = window.confirm(
+        t('classReports.confirmGeneratePartial', { count: partialRows.length }),
+      )
+    }
+
     setRunningAction(kind)
     try {
       if (kind === 'generate') {
-        const result = await batchGenerateReports(batchArgs)
+        const result = await batchGenerateReports({ ...batchArgs, generatePartial })
         setActionMessage(
           t('classReports.generated', {
             count: result.generated_count,
             existing: result.skipped_existing_count,
             noResults: result.skipped_no_results_count,
+            partial: result.skipped_partial_count,
           }),
         )
       } else if (kind === 'approve') {
         const result = await batchApproveReports(batchArgs)
-        setActionMessage(t('classReports.approved', { count: result.approved_count }))
+        if (result.skipped_stale_count > 0 && window.confirm(t('classReports.confirmApproveStale', { count: result.skipped_stale_count }))) {
+          const overrideResult = await batchApproveReports({ ...batchArgs, approveStale: true })
+          setActionMessage(
+            t('classReports.approvedWithStale', {
+              count: overrideResult.approved_count,
+              stale: result.skipped_stale_count,
+            }),
+          )
+        } else {
+          setActionMessage(
+            t('classReports.approved', {
+              count: result.approved_count,
+              stale: result.skipped_stale_count,
+            }),
+          )
+        }
       } else {
         const result = await batchSendReports(batchArgs)
-        setActionMessage(
-          t('classReports.sent', {
-            count: result.sent_count,
-            failed: result.failed_count,
-            noRecipient: result.no_recipient_count,
-          }),
-        )
+        if (result.skipped_stale_count > 0 && window.confirm(t('classReports.confirmSendStale', { count: result.skipped_stale_count }))) {
+          const overrideResult = await batchSendReports({ ...batchArgs, sendStale: true })
+          setActionMessage(
+            t('classReports.sent', {
+              count: overrideResult.sent_count,
+              failed: overrideResult.failed_count,
+              noRecipient: overrideResult.no_recipient_count,
+              stale: result.skipped_stale_count,
+            }),
+          )
+        } else {
+          setActionMessage(
+            t('classReports.sent', {
+              count: result.sent_count,
+              failed: result.failed_count,
+              noRecipient: result.no_recipient_count,
+              stale: result.skipped_stale_count,
+            }),
+          )
+        }
       }
       await loadStatus()
     } catch (err) {
@@ -239,14 +285,14 @@ export default function AdminClassReportsPage() {
           <div className="grade-actions batch-actions">
             <button
               type="button"
-              className="btn btn-primary"
-              onClick={() => runBatch('generate')}
-              disabled={busy || generatableCount === 0}
-            >
-              {runningAction === 'generate'
-                ? t('classReports.generating')
-                : t('classReports.generateAll', { count: generatableCount })}
-            </button>
+                className="btn btn-primary"
+                onClick={() => runBatch('generate')}
+                disabled={busy || midTrimesterNoCompleteResults || (generatableCount === 0 && partialRows.length === 0)}
+              >
+                {runningAction === 'generate'
+                  ? t('classReports.generating')
+                  : t('classReports.generateAll', { count: generatableCount + partialRows.length })}
+              </button>
             <button
               type="button"
               className="btn btn-primary"
@@ -281,6 +327,11 @@ export default function AdminClassReportsPage() {
 
           {actionMessage && <p className="grade-summary">{actionMessage}</p>}
           {actionError && <ErrorBanner message={actionError} />}
+          {midTrimesterNoCompleteResults && (
+            <div className="state state-empty">
+              {t('classReports.midTrimesterInProgress')}
+            </div>
+          )}
 
           {status.students.length === 0 ? (
             <Empty message={t('classReports.noStudents')} />
@@ -310,7 +361,14 @@ export default function AdminClassReportsPage() {
                         )}
                       </td>
                       <td className="mono nowrap">{row.student_number}</td>
-                      <td className="num">{row.results_count}</td>
+                      <td className="num">
+                        {row.expected_results_count > 0
+                          ? t('classReports.resultProgress', {
+                            results: row.expected_results_count - row.missing_results_count,
+                            expected: row.expected_results_count,
+                          })
+                          : row.results_count}
+                      </td>
                       <td className="nowrap">
                         {row.report_status ? (
                           <StatusBadge status={row.report_status} />
@@ -324,9 +382,19 @@ export default function AdminClassReportsPage() {
                             {t('classReports.needsReview')}
                           </span>
                         )}
+                        {!midTrimesterNoCompleteResults && row.missing_results_count > 0 && (
+                          <span className="needs-review-text">
+                            {t('classReports.partialResults', {
+                              results: row.expected_results_count - row.missing_results_count,
+                              expected: row.expected_results_count,
+                            })}
+                          </span>
+                        )}
                       </td>
                       <td className="num">
-                        {row.bilingual_average != null
+                        {midTrimesterNoCompleteResults
+                          ? <span className="muted">{t('classReports.averageLater')}</span>
+                          : row.bilingual_average != null
                           ? formatReportAverage(row.bilingual_average, '20')
                           : '—'}
                       </td>

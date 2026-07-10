@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -12,6 +13,7 @@ from main import app
 from models import (
     AuditLog,
     Base,
+    Class,
     Course,
     CourseResult,
     Enrollment,
@@ -497,6 +499,99 @@ class StudentRouteTests(unittest.TestCase):
             "report_card": report_card,
             "link": link,
         }
+
+    def test_admin_can_list_student_grades_without_aggregates(self):
+        school_class = Class(
+            name_fr="Terminale C",
+            school_level="college",
+            sort_order=1,
+            school_year="2026-2027",
+        )
+        teacher = Teacher(user=self.teacher_user, employee_number="T-STUDENT-GRADES")
+        student = Student(
+            first_name="Grade",
+            last_name="Visible",
+            student_number="ADMIN-GRADES-001",
+            school_class=school_class,
+        )
+        self.db.add_all([school_class, teacher, student])
+        self.db.flush()
+        course = Course(
+            name="Mathematics",
+            code="ADMIN-GRADES-MATH",
+            teacher=teacher,
+            term="1er Trimestre",
+            school_year="2026-2027",
+        )
+        other_course = Course(
+            name="Science",
+            code="ADMIN-GRADES-SCI",
+            teacher=teacher,
+            term="2ème Trimestre",
+            school_year="2026-2027",
+        )
+        self.db.add_all([course, other_course])
+        self.db.flush()
+        grade_item = GradeItem(course=course, title="Interro 1", item_type="INTERRO", max_score=20, term="1er Trimestre")
+        deleted_item = GradeItem(
+            course=course,
+            title="Deleted Quiz",
+            category="Quiz",
+            max_score=20,
+            weight=1,
+            term="1er Trimestre",
+        )
+        other_term_item = GradeItem(course=other_course, title="Science 1", category="Exam", max_score=20, weight=1, term="2ème Trimestre")
+        self.db.add_all([grade_item, deleted_item, other_term_item])
+        self.db.flush()
+        deleted_item.deleted_at = datetime.now(timezone.utc)
+        self.db.add_all([
+            Grade(student=student, grade_item=grade_item, score=17, submitted_by_teacher=teacher),
+            Grade(student=student, grade_item=deleted_item, score=4, submitted_by_teacher=teacher),
+            Grade(student=student, grade_item=other_term_item, score=19, submitted_by_teacher=teacher),
+        ])
+        self.db.commit()
+
+        response = self.client.get(
+            f"/api/v1/students/{student.id}/grades",
+            params={"term": "1er Trimestre"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["course_name"], "Mathematics")
+        self.assertEqual(data[0]["item_title"], "Interro 1")
+        self.assertEqual(data[0]["score"], 17)
+        self.assertNotIn("average", data[0])
+        self.assertNotIn("gpa", data[0])
+        self.assertNotIn("course_result", data[0])
+
+        term_response = self.client.get(
+            f"/api/v1/students/{student.id}/grades",
+            params={"term": "2ème Trimestre"},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(term_response.status_code, 200, term_response.text)
+        self.assertEqual(term_response.json()[0]["course_name"], "Science")
+
+    def test_student_grades_admin_only_and_active_student_only(self):
+        student = self._create_student("ADMIN-GRADES-AUTH")
+
+        teacher_response = self.client.get(
+            f"/api/v1/students/{student.id}/grades",
+            headers=self._headers(self.teacher_user.email),
+        )
+        self.assertEqual(teacher_response.status_code, 403)
+
+        student.deleted_at = datetime.now(timezone.utc)
+        self.db.commit()
+        admin_response = self.client.get(
+            f"/api/v1/students/{student.id}/grades",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(admin_response.status_code, 404)
 
     def test_admin_soft_deletes_student_and_preserves_academic_history(self):
         records = self._create_student_academic_history()

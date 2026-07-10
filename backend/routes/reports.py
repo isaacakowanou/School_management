@@ -14,6 +14,8 @@ from models import (
     Class,
     Course,
     CourseResult,
+    Enrollment,
+    GradeItem,
     Parent,
     PdfJob,
     ReportCard,
@@ -34,6 +36,8 @@ from schemas import (
     ClassReportBatchSendResponse,
     ClassReportStatusResponse,
     ClassReportStatusRow,
+    PartialReportStudent,
+    ReportApproveRequest,
     ReportCardCourseResponse,
     ReportCardResponse,
     ReportCardStalenessResponse,
@@ -41,7 +45,9 @@ from schemas import (
     ReportGenerateRequest,
     ReportItemResponse,
     ReportReviewUpdate,
+    ReportSendRequest,
     ReportSendResponse,
+    StaleReportStudent,
 )
 from services.email_service import send_report_notification_to_parents
 from services.pdf_renderer import (
@@ -123,6 +129,7 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
         gpa=report_card.gpa,
         scale=report_card.scale,
         status=report_card.status,
+        created_at=report_card.created_at,
         ai_summary=report_card.ai_summary,
         teacher_comment_fr=report_card.teacher_comment_fr,
         teacher_comment_en=report_card.teacher_comment_en,
@@ -372,6 +379,116 @@ def _create_report_card(db: Session, student_id: UUID, term: str, school_year: s
     return report_card
 
 
+def _expected_result_courses(db: Session, student_id: UUID, term: str, school_year: str) -> list[Course]:
+    """Active enrolled courses that are actually gradeable for this term.
+
+    A course with zero active grade items is setup-only and does not block
+    bulletin generation.
+    """
+    return list(
+        db.scalars(
+            select(Course)
+            .join(Enrollment, Enrollment.course_id == Course.id)
+            .join(Course.grade_items)
+            .where(
+                Enrollment.student_id == student_id,
+                Enrollment.deleted_at.is_(None),
+                Course.term == term,
+                Course.school_year == school_year,
+                Course.deleted_at.is_(None),
+                GradeItem.term == term,
+                GradeItem.deleted_at.is_(None),
+            )
+            .distinct()
+            .order_by(Course.name, Course.code)
+        ).all()
+    )
+
+
+def _result_course_ids(db: Session, student_id: UUID, term: str, school_year: str) -> set[UUID]:
+    return set(
+        db.scalars(
+            select(CourseResult.course_id)
+            .join(Course, CourseResult.course_id == Course.id)
+            .where(
+                CourseResult.student_id == student_id,
+                CourseResult.term == term,
+                Course.school_year == school_year,
+                CourseResult.deleted_at.is_(None),
+                Course.deleted_at.is_(None),
+            )
+        ).all()
+    )
+
+
+def _partial_report_student(db: Session, student: Student, term: str, school_year: str) -> PartialReportStudent:
+    expected_courses = _expected_result_courses(db, student.id, term, school_year)
+    result_course_ids = _result_course_ids(db, student.id, term, school_year)
+    missing_courses = [course for course in expected_courses if course.id not in result_course_ids]
+    return PartialReportStudent(
+        student_id=student.id,
+        student_name=f"{student.last_name}, {student.first_name}",
+        student_number=student.student_number,
+        expected_results_count=len(expected_courses),
+        results_count=len([course for course in expected_courses if course.id in result_course_ids]),
+        missing_course_names=[course.name for course in missing_courses],
+    )
+
+
+def _ensure_complete_or_allowed(db: Session, student: Student, term: str, school_year: str, generate_partial: bool) -> None:
+    partial = _partial_report_student(db, student, term, school_year)
+    if partial.missing_course_names and not generate_partial:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "Report results are incomplete",
+                "code": "partial_results",
+                "student_id": str(partial.student_id),
+                "student_name": partial.student_name,
+                "expected_results_count": partial.expected_results_count,
+                "results_count": partial.results_count,
+                "missing_course_names": partial.missing_course_names,
+            },
+        )
+
+
+def _staleness_guard_code(staleness) -> str:
+    if staleness.current_overall_average is None:
+        return "incomplete_report_results"
+    return "stale_report_snapshot"
+
+
+def _stale_report_student(report_card: ReportCard, staleness) -> StaleReportStudent:
+    student = report_card.student
+    return StaleReportStudent(
+        student_id=student.id,
+        student_name=f"{student.last_name}, {student.first_name}",
+        student_number=student.student_number,
+        report_id=report_card.id,
+        code=_staleness_guard_code(staleness),
+        reason=staleness.reason,
+    )
+
+
+def _ensure_report_snapshot_fresh_or_allowed(db: Session, report_card: ReportCard, allow_stale: bool) -> None:
+    staleness = get_report_card_staleness(db, report_card)
+    if not staleness.is_stale or allow_stale:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "message": "Report snapshot is stale",
+            "code": _staleness_guard_code(staleness),
+            "report_id": str(report_card.id),
+            "reason": staleness.reason,
+            "snapshot_overall_average": staleness.snapshot_overall_average,
+            "current_overall_average": staleness.current_overall_average,
+            "snapshot_gpa": staleness.snapshot_gpa,
+            "current_gpa": staleness.current_gpa,
+        },
+    )
+
+
 @router.post("/generate/{student_id}", response_model=ReportCardResponse, status_code=status.HTTP_201_CREATED)
 def generate_report_card(
     student_id: UUID,
@@ -379,6 +496,10 @@ def generate_report_card(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> ReportCardResponse:
+    student = db.get(Student, student_id)
+    if student is None or student.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+    _ensure_complete_or_allowed(db, student, payload.term.value, payload.school_year, payload.generate_partial)
     try:
         report_card = _create_report_card(db, student_id, payload.term.value, payload.school_year)
     except ValueError as exc:
@@ -467,6 +588,7 @@ def class_report_status(
     needs_review_count = 0
     for student in students:
         report_card = reports_by_student.get(student.id)
+        partial = _partial_report_student(db, student, term, school_year)
         needs_review = False
         if report_card is None:
             without_report += 1
@@ -484,6 +606,9 @@ def class_report_status(
                 student_name=f"{student.last_name}, {student.first_name}",
                 student_number=student.student_number,
                 results_count=results_by_student.get(student.id, 0),
+                expected_results_count=partial.expected_results_count,
+                missing_results_count=len(partial.missing_course_names),
+                missing_course_names=partial.missing_course_names,
                 report_id=report_card.id if report_card else None,
                 report_status=report_card.status if report_card else None,
                 overall_average=report_card.overall_average if report_card else None,
@@ -521,14 +646,39 @@ def batch_generate_reports(
     get_class_or_404(db, payload.class_id)
     term = payload.term.value
     students = _class_students(db, payload.class_id)
+    student_ids = [student.id for student in students]
     existing = _reports_by_student(db, [s.id for s in students], term, payload.school_year)
+    results_by_student: dict[UUID, int] = {}
+    if student_ids:
+        results_by_student = dict(
+            db.execute(
+                select(CourseResult.student_id, func.count(CourseResult.id))
+                .join(Course, CourseResult.course_id == Course.id)
+                .where(
+                    CourseResult.student_id.in_(student_ids),
+                    CourseResult.term == term,
+                    Course.school_year == payload.school_year,
+                    CourseResult.deleted_at.is_(None),
+                    Course.deleted_at.is_(None),
+                )
+                .group_by(CourseResult.student_id)
+            ).all()
+        )
 
     generated_ids = []
     skipped_existing = 0
     skipped_no_results = 0
+    partial_students: list[PartialReportStudent] = []
     for student in students:
         if student.id in existing:
             skipped_existing += 1
+            continue
+        partial = _partial_report_student(db, student, term, payload.school_year)
+        if partial.missing_course_names and not payload.generate_partial:
+            partial_students.append(partial)
+            continue
+        if results_by_student.get(student.id, 0) == 0:
+            skipped_no_results += 1
             continue
         try:
             report_card = _create_report_card(db, student.id, term, payload.school_year)
@@ -554,6 +704,7 @@ def batch_generate_reports(
                 "generated_count": len(generated_ids),
                 "skipped_existing_count": skipped_existing,
                 "skipped_no_results_count": skipped_no_results,
+                "skipped_partial_count": len(partial_students),
             },
         )
     db.commit()
@@ -563,6 +714,8 @@ def batch_generate_reports(
         generated_count=len(generated_ids),
         skipped_existing_count=skipped_existing,
         skipped_no_results_count=skipped_no_results,
+        skipped_partial_count=len(partial_students),
+        partial_students=partial_students,
         report_ids=generated_ids,
     )
 
@@ -585,8 +738,13 @@ def batch_approve_reports(
 
     approved_at = datetime.now(timezone.utc)
     approved_ids = []
+    stale_reports: list[StaleReportStudent] = []
     for report_card in reports.values():
         if report_card.status != "draft":
+            continue
+        staleness = get_report_card_staleness(db, report_card)
+        if staleness.is_stale and not payload.approve_stale:
+            stale_reports.append(_stale_report_student(report_card, staleness))
             continue
         report_card.status = "approved"
         report_card.approved_by_admin_id = current_user.id
@@ -606,6 +764,7 @@ def batch_approve_reports(
                 "school_year": payload.school_year,
                 "term": term,
                 "approved_count": len(approved_ids),
+                "skipped_stale_count": len(stale_reports),
                 "approved_at": approved_at,
             },
         )
@@ -615,6 +774,8 @@ def batch_approve_reports(
         status="ok",
         approved_count=len(approved_ids),
         skipped_count=len(reports) - len(approved_ids),
+        skipped_stale_count=len(stale_reports),
+        stale_reports=stale_reports,
     )
 
 
@@ -637,10 +798,16 @@ def batch_send_reports(
     sent_count = 0
     failed_count = 0
     no_recipient_count = 0
+    stale_reports: list[StaleReportStudent] = []
     outcomes = {}
     sent_at = datetime.now(timezone.utc)
     for report_card in reports.values():
         if report_card.status not in {"approved", "sent"}:
+            continue
+        staleness = get_report_card_staleness(db, report_card)
+        if staleness.is_stale and not payload.send_stale:
+            stale_reports.append(_stale_report_student(report_card, staleness))
+            outcomes[str(report_card.id)] = "stale"
             continue
         try:
             send_results = send_report_notification_to_parents(db, report_card.id)
@@ -677,6 +844,7 @@ def batch_send_reports(
                 "sent_count": sent_count,
                 "failed_count": failed_count,
                 "no_recipient_count": no_recipient_count,
+                "skipped_stale_count": len(stale_reports),
                 "outcomes": outcomes,
             },
         )
@@ -687,6 +855,8 @@ def batch_send_reports(
         sent_count=sent_count,
         failed_count=failed_count,
         no_recipient_count=no_recipient_count,
+        skipped_stale_count=len(stale_reports),
+        stale_reports=stale_reports,
     )
 
 
@@ -927,12 +1097,14 @@ def update_report_summary_route(
 @router.post("/{report_id}/approve", response_model=ReportCardResponse)
 def approve_report_card(
     report_id: UUID,
+    payload: ReportApproveRequest | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
     ensure_report_is_draft(report_card)
+    _ensure_report_snapshot_fresh_or_allowed(db, report_card, payload.approve_stale if payload else False)
 
     approved_at = datetime.now(timezone.utc)
     report_card.status = "approved"
@@ -960,12 +1132,14 @@ def approve_report_card(
 @router.post("/{report_id}/send", response_model=ReportSendResponse)
 def send_report_card(
     report_id: UUID,
+    payload: ReportSendRequest | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ReportSendResponse:
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
     ensure_report_can_be_sent(report_card)
+    _ensure_report_snapshot_fresh_or_allowed(db, report_card, payload.send_stale if payload else False)
     was_already_sent = report_card.status == "sent"
     old_status = report_card.status
     old_sent_at = report_card.sent_at

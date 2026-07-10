@@ -18,6 +18,14 @@ export function getParentStudents(parentId) {
   return apiGet(`/parents/${parentId}/students`)
 }
 
+// GET /api/v1/parents/me/students/{student_id}/grades?term=...
+export function getParentStudentGrades(studentId, { term } = {}) {
+  const params = new URLSearchParams()
+  if (term) params.set('term', term)
+  const qs = params.toString()
+  return apiGet(`/parents/me/students/${studentId}/grades${qs ? `?${qs}` : ''}`)
+}
+
 // GET /api/v1/parents (admin) -> [{ id, user_id, name, email, phone }]
 export function listParents() {
   return apiGet('/parents')

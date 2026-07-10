@@ -50,18 +50,29 @@ export default function StudentReportsPage() {
   }, [studentId, parentId])
 
   return (
-    <section>
+    <section className="parent-page">
       <Link to="/" className="back-link">
         {t('reports.myStudentsBack')}
       </Link>
-      <h2 className="page-title">
-        {student ? `${student.first_name} ${student.last_name}` : t('nav.reports')}
-      </h2>
-      {student && (
-        <p className="muted">
-          {student.class_name || '—'} · #{student.student_number}
-        </p>
-      )}
+      <div className="report-header">
+        <div>
+          <h2 className="page-title">
+            {student ? `${student.first_name} ${student.last_name}` : t('nav.reports')}
+          </h2>
+          {student && (
+            <p className="muted">
+              {student.class_name || '—'} · #{student.student_number}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <nav className="parent-tabs" aria-label={t('parentGrades.studentSections')}>
+        <Link className="parent-tab" to={`/students/${studentId}`}>
+          {t('parentGrades.notes')}
+        </Link>
+        <span className="parent-tab parent-tab-active">{t('nav.reports')}</span>
+      </nav>
 
       {error && <ErrorBanner message={error} />}
       {!error && reports === null && <Spinner label={t('reports.loading')} />}

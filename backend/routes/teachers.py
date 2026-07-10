@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from audit import create_audit_log
-from auth import get_current_user, hash_password, require_admin
+from auth import get_current_user, hash_password, invalidate_user_sessions, require_admin
 from database import get_db
 from models import Course, Grade, Teacher, User
 from schemas import CourseResponse, StatusResponse, TeacherCreate, TeacherCreateResponse, TeacherResponse, TeacherUpdate
@@ -291,6 +291,7 @@ def delete_teacher(
         new_value=None,
     )
     teacher.deleted_at = datetime.now(timezone.utc)
+    invalidate_user_sessions(user)
     db.commit()
     return StatusResponse(status="ok", message="Teacher moved to Trash")
 

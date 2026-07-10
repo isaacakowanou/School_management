@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from auth import hash_password, require_admin
+from auth import hash_password, invalidate_user_sessions, require_admin
 from database import get_db
 from models import User
 from schemas import StatusResponse, UserCreate, UserResponse, UserUpdate
@@ -104,6 +104,7 @@ def update_user(
         user.email = payload.email
     if payload.password is not None:
         user.password_hash = hash_password(payload.password)
+        invalidate_user_sessions(user)
 
     db.commit()
     db.refresh(user)

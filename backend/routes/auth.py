@@ -7,11 +7,17 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from auth import create_access_token, get_current_user, hash_password, verify_password
+from auth import (
+    create_user_access_token,
+    get_current_user,
+    hash_password,
+    invalidate_user_sessions,
+    verify_password,
+)
 from database import get_db
 from limiter import limiter
 from models import Parent, Teacher, User
-from schemas import ChangePasswordRequest, UserResponse
+from schemas import ChangePasswordRequest, UserResponse, validate_password_strength
 from services.sms_service import check_otp, send_otp
 
 logger = logging.getLogger(__name__)
@@ -26,6 +32,13 @@ class LoginResponse(BaseModel):
     role: str
     user_id: UUID
     must_change_password: bool
+
+
+class ChangePasswordResponse(BaseModel):
+    status: str
+    message: str
+    access_token: str
+    token_type: str
 
 
 async def read_login_credentials(request: Request) -> tuple[str, str]:
@@ -97,14 +110,24 @@ async def login(request: Request, db: Session = Depends(get_db)) -> LoginRespons
         if parent is not None:
             user = parent.user
 
-    if user is None or not verify_password(password, user.password_hash):
+    profile = None
+    if user is not None and user.role == "teacher":
+        profile = db.scalar(select(Teacher).where(Teacher.user_id == user.id))
+    elif user is not None and user.role == "parent":
+        profile = db.scalar(select(Parent).where(Parent.user_id == user.id))
+
+    if (
+        user is None
+        or (profile is not None and profile.deleted_at is not None)
+        or not verify_password(password, user.password_hash)
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(subject=str(user.id), extra_claims={"role": user.role})
+    access_token = create_user_access_token(user)
     return LoginResponse(
         access_token=access_token,
         token_type="bearer",
@@ -125,16 +148,33 @@ def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     )
 
 
-@router.post("/change-password")
+@router.post("/change-password", response_model=ChangePasswordResponse)
 def change_password(
     payload: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
+) -> ChangePasswordResponse:
+    if not current_user.must_change_password:
+        if not payload.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "current_password_required", "message": "Current password is required"},
+            )
+        if not verify_password(payload.current_password, current_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "current_password_incorrect", "message": "Current password is incorrect"},
+            )
     current_user.password_hash = hash_password(payload.new_password)
     current_user.must_change_password = False
+    invalidate_user_sessions(current_user)
     db.commit()
-    return {"status": "ok", "message": "Password changed successfully"}
+    return ChangePasswordResponse(
+        status="ok",
+        message="Password changed successfully",
+        access_token=create_user_access_token(current_user),
+        token_type="bearer",
+    )
 
 
 @router.post("/logout")
@@ -154,9 +194,7 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        return v
+        return validate_password_strength(v)
 
 
 def _resolve_phone_for_identifier(identifier: str, db: Session) -> str | None:
@@ -256,6 +294,7 @@ async def reset_password(
 
     user.password_hash = hash_password(payload.new_password)
     user.must_change_password = False
+    invalidate_user_sessions(user)
     db.commit()
 
     return {"status": "ok", "message": "Password reset successfully"}

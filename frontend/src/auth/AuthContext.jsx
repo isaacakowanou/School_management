@@ -73,6 +73,14 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('auth:unauthorized', logout)
   }, [logout])
 
+  useEffect(() => {
+    const requirePasswordChange = () => {
+      setUser((current) => (current ? { ...current, must_change_password: true } : current))
+    }
+    window.addEventListener('auth:password-change-required', requirePasswordChange)
+    return () => window.removeEventListener('auth:password-change-required', requirePasswordChange)
+  }, [])
+
   const login = useCallback(
     async (identifier, password) => {
       const result = await authApi.login(identifier, password)

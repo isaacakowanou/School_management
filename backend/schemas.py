@@ -6,9 +6,11 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 
-def _validate_password_strength(value: str) -> str:
+def validate_password_strength(value: str) -> str:
     if len(value) < 8:
         raise ValueError("Password must be at least 8 characters")
+    if not value.strip():
+        raise ValueError("Password must contain non-whitespace characters")
     return value
 
 
@@ -68,7 +70,7 @@ class UserCreate(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        return _validate_password_strength(v)
+        return validate_password_strength(v)
 
 
 class UserUpdate(BaseModel):
@@ -77,14 +79,20 @@ class UserUpdate(BaseModel):
     password: str | None = None
     role: str | None = None
 
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str | None) -> str | None:
+        return validate_password_strength(v) if v is not None else None
+
 
 class ChangePasswordRequest(BaseModel):
     new_password: str
+    current_password: str | None = None
 
     @field_validator("new_password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        return _validate_password_strength(v)
+        return validate_password_strength(v)
 
 
 class UserResponse(BaseModel):

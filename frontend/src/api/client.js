@@ -58,6 +58,14 @@ async function parseError(response) {
   return new ApiError(response.status, errorMessage(detail, response.status), detail)
 }
 
+async function parseAndHandleError(response) {
+  const error = await parseError(response)
+  if (response.status === 403 && error.detail?.code === 'password_change_required') {
+    window.dispatchEvent(new CustomEvent('auth:password-change-required'))
+  }
+  return error
+}
+
 async function rawFetch(path, options) {
   try {
     return await fetch(`${API_BASE}${path}`, options)
@@ -80,7 +88,7 @@ export async function apiGet(path) {
     headers: authHeaders({ Accept: 'application/json' }),
   })
   if (response.status === 401) throw handleUnauthorized()
-  if (!response.ok) throw await parseError(response)
+  if (!response.ok) throw await parseAndHandleError(response)
   return response.json()
 }
 
@@ -92,7 +100,7 @@ export async function apiPost(path, body) {
     headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
     body: body != null ? JSON.stringify(body) : undefined,
   })
-  if (!response.ok) throw await parseError(response)
+  if (!response.ok) throw await parseAndHandleError(response)
   return response.json()
 }
 
@@ -105,7 +113,7 @@ export async function apiPut(path, body) {
     body: body != null ? JSON.stringify(body) : undefined,
   })
   if (response.status === 401) throw handleUnauthorized()
-  if (!response.ok) throw await parseError(response)
+  if (!response.ok) throw await parseAndHandleError(response)
   return response.json()
 }
 
@@ -118,7 +126,7 @@ export async function apiPatch(path, body) {
     body: body != null ? JSON.stringify(body) : undefined,
   })
   if (response.status === 401) throw handleUnauthorized()
-  if (!response.ok) throw await parseError(response)
+  if (!response.ok) throw await parseAndHandleError(response)
   return response.json()
 }
 
@@ -128,7 +136,7 @@ export async function apiDelete(path) {
     headers: authHeaders({ Accept: 'application/json' }),
   })
   if (response.status === 401) throw handleUnauthorized()
-  if (!response.ok) throw await parseError(response)
+  if (!response.ok) throw await parseAndHandleError(response)
   return response.json()
 }
 
@@ -138,6 +146,6 @@ export async function apiGetBlob(path) {
     headers: authHeaders(),
   })
   if (response.status === 401) throw handleUnauthorized()
-  if (!response.ok) throw await parseError(response)
+  if (!response.ok) throw await parseAndHandleError(response)
   return response.blob()
 }

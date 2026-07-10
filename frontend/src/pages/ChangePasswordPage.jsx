@@ -6,10 +6,11 @@ import { useAuth } from '../auth/AuthContext.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 
 export default function ChangePasswordPage() {
-  const { logout, refreshUser, homePath } = useAuth()
+  const { logout, refreshUser, homePath, user } = useAuth()
   const navigate = useNavigate()
   const { t } = useTranslation()
   const [newPassword, setNewPassword] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState(null)
@@ -26,12 +27,18 @@ export default function ChangePasswordPage() {
 
     setSubmitting(true)
     try {
-      await changePassword(newPassword)
+      await changePassword(newPassword, user?.must_change_password ? null : currentPassword)
       const me = await refreshUser()
       navigate(homePath ?? '/', { replace: true })
       void me
     } catch (err) {
-      setError(err.message)
+      if (err.detail?.code === 'current_password_required') {
+        setError(t('changePassword.currentPasswordRequired'))
+      } else if (err.detail?.code === 'current_password_incorrect') {
+        setError(t('changePassword.currentPasswordIncorrect'))
+      } else {
+        setError(err.message)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -44,6 +51,20 @@ export default function ChangePasswordPage() {
         <p className="login-sub">{t('changePassword.subtitle')}</p>
 
         {error && <ErrorBanner message={error} />}
+
+        {!user?.must_change_password && (
+          <label className="field">
+            <span>{t('changePassword.currentPassword')}</span>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+              disabled={submitting}
+            />
+          </label>
+        )}
 
         <label className="field">
           <span>{t('changePassword.newPassword')}</span>
@@ -79,6 +100,10 @@ export default function ChangePasswordPage() {
             </button>
           </div>
         </label>
+
+        <p className="muted" style={{ fontSize: '0.875rem' }}>
+          {t('changePassword.otherSessionsNotice')}
+        </p>
 
         <label className="field">
           <span>{t('changePassword.confirmPassword')}</span>

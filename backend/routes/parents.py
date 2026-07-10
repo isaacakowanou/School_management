@@ -8,7 +8,7 @@ from sqlalchemy import func, select, union_all
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from audit import create_audit_log
-from auth import get_current_user, hash_password, require_admin, require_parent
+from auth import get_current_user, hash_password, invalidate_user_sessions, require_admin, require_parent
 from constants import TRIMESTER_TERMS
 from database import get_db
 from models import Class, Course, CourseResult, Grade, GradeItem, Parent, ReportCard, Student, StudentParent, User
@@ -429,6 +429,7 @@ def delete_parent(
     for link in stale_links:
         link.deleted_at = deleted_at
     parent.deleted_at = deleted_at
+    invalidate_user_sessions(user)
     db.commit()
     return StatusResponse(status="ok", message="Parent moved to Trash")
 

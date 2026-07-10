@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from audit import create_audit_log
-from auth import require_admin
+from auth import invalidate_user_sessions, require_admin
 from database import get_db
 from models import (
     AIWarning,
@@ -498,6 +498,8 @@ def _mark_plan(db: Session, plan: dict[str, set[UUID]], *, batch_id: UUID, delet
         for row in rows:
             row.deleted_at = deleted_at
             row.deleted_batch_id = batch_id
+            if isinstance(row, (Teacher, Parent)):
+                invalidate_user_sessions(row.user)
         counts[table] = len(rows)
     return counts
 

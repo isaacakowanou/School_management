@@ -16,7 +16,7 @@ export default function ParentSettingsPage() {
   const [profileError, setProfileError] = useState(null)
   const [profileSuccess, setProfileSuccess] = useState(false)
 
-  const [pwForm, setPwForm] = useState({ newPassword: '', confirm: '' })
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirm: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [pwSaving, setPwSaving] = useState(false)
   const [pwError, setPwError] = useState(null)
@@ -61,11 +61,17 @@ export default function ParentSettingsPage() {
 
     setPwSaving(true)
     try {
-      await changePassword(pwForm.newPassword)
-      setPwForm({ newPassword: '', confirm: '' })
+      await changePassword(pwForm.newPassword, pwForm.currentPassword)
+      setPwForm({ currentPassword: '', newPassword: '', confirm: '' })
       setPwSuccess(true)
     } catch (err) {
-      setPwError(err.message || t('settings.passwordError'))
+      if (err.detail?.code === 'current_password_required') {
+        setPwError(t('changePassword.currentPasswordRequired'))
+      } else if (err.detail?.code === 'current_password_incorrect') {
+        setPwError(t('changePassword.currentPasswordIncorrect'))
+      } else {
+        setPwError(err.message || t('settings.passwordError'))
+      }
     } finally {
       setPwSaving(false)
     }
@@ -140,6 +146,18 @@ export default function ParentSettingsPage() {
 
         <form onSubmit={handlePasswordSubmit}>
           <label className="field">
+            <span>{t('changePassword.currentPassword')}</span>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={pwForm.currentPassword}
+              onChange={(e) => setPwForm((f) => ({ ...f, currentPassword: e.target.value }))}
+              autoComplete="current-password"
+              required
+              disabled={pwSaving}
+            />
+          </label>
+
+          <label className="field">
             <span>{t('changePassword.newPassword')}</span>
             <div className="password-input-wrap">
               <input
@@ -173,6 +191,10 @@ export default function ParentSettingsPage() {
               </button>
             </div>
           </label>
+
+          <p className="muted" style={{ fontSize: '0.875rem' }}>
+            {t('changePassword.otherSessionsNotice')}
+          </p>
 
           <label className="field">
             <span>{t('changePassword.confirmPassword')}</span>

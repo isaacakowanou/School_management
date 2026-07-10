@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './client.js'
+import { apiGet, apiPost, setToken } from './client.js'
 
 // POST /api/v1/auth/login -> { access_token, token_type, role, user_id, must_change_password }
 // identifier: email, employee number (teachers), or phone (parents)
@@ -12,8 +12,13 @@ export function getMe() {
 }
 
 // POST /api/v1/auth/change-password
-export function changePassword(newPassword) {
-  return apiPost('/auth/change-password', { new_password: newPassword })
+export async function changePassword(newPassword, currentPassword = null) {
+  const result = await apiPost('/auth/change-password', {
+    new_password: newPassword,
+    current_password: currentPassword,
+  })
+  setToken(result.access_token)
+  return result
 }
 
 // POST /api/v1/auth/forgot-password

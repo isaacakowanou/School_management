@@ -3,14 +3,15 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User
+from models import Parent, Teacher, User
 
 
 DEFAULT_JWT_SECRET_KEY = "change-me-before-production"
@@ -54,6 +55,17 @@ def create_access_token(
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
+def create_user_access_token(user: User) -> str:
+    return create_access_token(
+        subject=str(user.id),
+        extra_claims={"role": user.role, "ver": user.token_version},
+    )
+
+
+def invalidate_user_sessions(user: User) -> None:
+    user.token_version += 1
+
+
 def decode_access_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
@@ -66,6 +78,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
 
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -93,6 +106,39 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if payload.get("ver") != user.token_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    profile = None
+    if user.role == "teacher":
+        profile = db.scalar(select(Teacher).where(Teacher.user_id == user.id))
+    elif user.role == "parent":
+        profile = db.scalar(select(Parent).where(Parent.user_id == user.id))
+    if profile is not None and profile.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    forced_change_exemptions = {
+        ("GET", "/api/v1/auth/me"),
+        ("POST", "/api/v1/auth/change-password"),
+        ("POST", "/api/v1/auth/logout"),
+    }
+    if user.must_change_password and (request.method, request.url.path) not in forced_change_exemptions:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "password_change_required",
+                "message": "Password change required",
+            },
         )
 
     return user

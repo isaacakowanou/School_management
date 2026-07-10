@@ -282,6 +282,7 @@ class DangerZoneRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_move_teacher_bundle_to_trash_and_restore(self):
+        teacher_token = self._headers(self.teacher_user.email)["Authorization"].removeprefix("Bearer ")
         move_response = self.client.post(
             "/api/v1/admin/danger-zone/delete",
             json={"entity_type": "teacher", "entity_id": str(self.teacher.id), "confirmation": "MOVE TO TRASH"},
@@ -289,6 +290,13 @@ class DangerZoneRouteTests(unittest.TestCase):
         )
         self.assertEqual(move_response.status_code, 200)
         batch_id = UUID(move_response.json()["batch_id"])
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {teacher_token}"},
+            ).status_code,
+            401,
+        )
 
         self.db.expire_all()
         batch = self.db.get(DeletionBatch, batch_id)
@@ -325,6 +333,15 @@ class DangerZoneRouteTests(unittest.TestCase):
             headers=self._headers(self.admin_user.email),
         )
         self.assertEqual(restore_response.status_code, 200)
+
+        # Restoring the profile does not revive sessions issued before deletion.
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {teacher_token}"},
+            ).status_code,
+            401,
+        )
 
         self.db.expire_all()
         self.assertIsNone(self.db.get(Teacher, self.teacher.id).deleted_at)

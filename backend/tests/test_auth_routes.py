@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -43,6 +44,7 @@ class AuthRouteTests(unittest.TestCase):
         )
         db.add(self.user)
         db.commit()
+        self.user_id = self.user.id
         db.close()
 
     def tearDown(self):
@@ -99,6 +101,14 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(data["email"], "auth-test@example.test")
         self.assertEqual(data["role"], "admin")
         self.assertNotIn("password_hash", data)
+
+    def test_admin_without_role_profile_remains_authenticated(self):
+        token = self._login()
+        response = self.client.get(
+            "/api/v1/users",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(response.status_code, 200)
 
     def test_me_without_token_returns_401(self):
         response = self.client.get("/api/v1/auth/me")
@@ -187,7 +197,6 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_deleted_teacher_cannot_login_with_employee_number(self):
-        from datetime import datetime, timezone
         db = self.SessionLocal()
         user = User(
             name="Deleted Teacher",
@@ -209,6 +218,105 @@ class AuthRouteTests(unittest.TestCase):
             json={"identifier": "TCH-DELETED", "password": self.password},
         )
         self.assertEqual(response.status_code, 401)
+
+    def test_trashed_teacher_email_and_employee_login_and_existing_token_are_blocked_until_restore(self):
+        db = self.SessionLocal()
+        user = User(
+            name="ZZ-TEST-Trashed Teacher",
+            email="zz-trashed-teacher@example.test",
+            password_hash=hash_password(self.password),
+            role="teacher",
+        )
+        teacher = Teacher(user=user, employee_number="ZZ-TEST-TRASH-TCH")
+        db.add_all([user, teacher])
+        db.commit()
+        teacher_id = teacher.id
+        db.close()
+
+        active_login = self.client.post(
+            "/api/v1/auth/login",
+            json={"identifier": "ZZ-TEST-TRASH-TCH", "password": self.password},
+        )
+        old_token = active_login.json()["access_token"]
+        db = self.SessionLocal()
+        db.get(Teacher, teacher_id).deleted_at = datetime.now(timezone.utc)
+        db.commit()
+        db.close()
+
+        for identifier in ("zz-trashed-teacher@example.test", "ZZ-TEST-TRASH-TCH"):
+            response = self.client.post(
+                "/api/v1/auth/login",
+                json={"identifier": identifier, "password": self.password},
+            )
+            self.assertEqual(response.status_code, 401)
+            self.assertEqual(response.json()["detail"], "Invalid credentials")
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/auth/me", headers={"Authorization": f"Bearer {old_token}"}
+            ).status_code,
+            401,
+        )
+
+        db = self.SessionLocal()
+        db.get(Teacher, teacher_id).deleted_at = None
+        db.commit()
+        db.close()
+        self.assertEqual(
+            self.client.post(
+                "/api/v1/auth/login",
+                json={"identifier": "ZZ-TEST-TRASH-TCH", "password": self.password},
+            ).status_code,
+            200,
+        )
+
+    def test_trashed_parent_email_and_phone_login_and_existing_token_are_blocked_until_restore(self):
+        db = self.SessionLocal()
+        user = User(
+            name="ZZ-TEST-Trashed Parent",
+            email="zz-trashed-parent@example.test",
+            password_hash=hash_password(self.password),
+            role="parent",
+        )
+        parent = Parent(user=user, phone="ZZ-TEST-PHONE")
+        db.add_all([user, parent])
+        db.commit()
+        parent_id = parent.id
+        db.close()
+
+        active_login = self.client.post(
+            "/api/v1/auth/login",
+            json={"identifier": "ZZ-TEST-PHONE", "password": self.password},
+        )
+        old_token = active_login.json()["access_token"]
+        db = self.SessionLocal()
+        db.get(Parent, parent_id).deleted_at = datetime.now(timezone.utc)
+        db.commit()
+        db.close()
+
+        for identifier in ("zz-trashed-parent@example.test", "ZZ-TEST-PHONE"):
+            response = self.client.post(
+                "/api/v1/auth/login",
+                json={"identifier": identifier, "password": self.password},
+            )
+            self.assertEqual(response.status_code, 401)
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/auth/me", headers={"Authorization": f"Bearer {old_token}"}
+            ).status_code,
+            401,
+        )
+
+        db = self.SessionLocal()
+        db.get(Parent, parent_id).deleted_at = None
+        db.commit()
+        db.close()
+        self.assertEqual(
+            self.client.post(
+                "/api/v1/auth/login",
+                json={"identifier": "ZZ-TEST-PHONE", "password": self.password},
+            ).status_code,
+            200,
+        )
 
     # --- Forgot password ---
 
@@ -283,6 +391,11 @@ class AuthRouteTests(unittest.TestCase):
 
     def test_reset_password_with_valid_otp_succeeds_for_parent(self):
         self._make_parent_with_phone("+22961000004")
+        old_login = self.client.post(
+            "/api/v1/auth/login",
+            json={"identifier": "+22961000004", "password": self.password},
+        )
+        old_token = old_login.json()["access_token"]
         with patch("routes.auth.send_otp"):
             self.client.post("/api/v1/auth/forgot-password", json={"identifier": "+22961000004"})
 
@@ -301,6 +414,12 @@ class AuthRouteTests(unittest.TestCase):
         )
         self.assertEqual(login.status_code, 200)
         self.assertFalse(login.json()["must_change_password"])
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/auth/me", headers={"Authorization": f"Bearer {old_token}"}
+            ).status_code,
+            401,
+        )
 
     def test_reset_password_with_valid_otp_succeeds_for_teacher(self):
         self._make_teacher_with_phone("TCH-OTP-002", "+22961000005")
@@ -336,3 +455,31 @@ class AuthRouteTests(unittest.TestCase):
                 json={"identifier": "+22961000007", "otp": "123456", "new_password": "short"},
             )
         self.assertEqual(response.status_code, 422)
+
+    def test_admin_password_update_invalidates_old_token_and_rejects_short_password(self):
+        old_token = self._login()
+        headers = {"Authorization": f"Bearer {old_token}"}
+        short = self.client.put(
+            f"/api/v1/users/{self.user_id}",
+            json={"password": "short"},
+            headers=headers,
+        )
+        self.assertEqual(short.status_code, 422)
+
+        changed = self.client.put(
+            f"/api/v1/users/{self.user_id}",
+            json={"password": "admin-new-password-99"},
+            headers=headers,
+        )
+        self.assertEqual(changed.status_code, 200)
+        self.assertEqual(
+            self.client.get("/api/v1/auth/me", headers=headers).status_code,
+            401,
+        )
+        self.assertEqual(
+            self.client.post(
+                "/api/v1/auth/login",
+                json={"email": "auth-test@example.test", "password": "admin-new-password-99"},
+            ).status_code,
+            200,
+        )

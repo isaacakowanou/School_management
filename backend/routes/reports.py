@@ -66,6 +66,7 @@ from utils import get_class_or_404, get_report_card_or_404
 
 router = APIRouter(tags=["reports"])
 PARENT_VISIBLE_STATUSES = {"approved", "sent"}
+REVIEW_REQUIRED_STATUS = "needs_review"
 
 _REPORT_COMMENT_FIELDS = (
     "teacher_comment_fr",
@@ -97,6 +98,17 @@ def _report_details_snapshot(report_card: ReportCard) -> dict:
     snapshot["conduct_items"] = {item.item_key: item.letter_grade for item in report_card.conduct_items}
     snapshot["work_habit_items"] = {item.item_key: item.letter_grade for item in report_card.work_habit_items}
     return snapshot
+
+
+def _changed_report_detail_categories(old_value: dict, new_value: dict) -> list[str]:
+    categories = []
+    if old_value.get("conduct_items") != new_value.get("conduct_items"):
+        categories.append("conduct")
+    if old_value.get("work_habit_items") != new_value.get("work_habit_items"):
+        categories.append("work_habits")
+    if any(old_value.get(field) != new_value.get(field) for field in _REPORT_COMMENT_FIELDS):
+        categories.append("comments")
+    return categories
 
 
 def _validated_report_item_rows(items, allowed_keys, model_cls):
@@ -178,6 +190,8 @@ def _course_result_key(student_id: UUID, term: str, school_year: str) -> tuple[U
 
 
 def _report_needs_review(report_card: ReportCard, latest_calculated_at: datetime | None) -> bool:
+    if report_card.status == REVIEW_REQUIRED_STATUS:
+        return True
     if report_card.status not in PARENT_VISIBLE_STATUSES:
         return False
     if report_card.approved_at is None or latest_calculated_at is None:
@@ -1349,11 +1363,12 @@ def update_report_details(
 ) -> ReportCardResponse:
     """Admin-only edit of A1.7a conduct / work-habit items and comments.
 
-    Does not touch grades, averages, status, or the course snapshot. Editable
-    on any status (draft/approved/sent).
+    Does not touch grades, averages, or the course snapshot. Editable on any
+    status; approved/sent reports move to needs_review when content changes.
     """
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
+    old_status = report_card.status
     old_value = _report_details_snapshot(report_card)
 
     # Comments: nullable Text. An explicit value (including null) sets or clears;
@@ -1375,14 +1390,22 @@ def update_report_details(
 
     new_value = _report_details_snapshot(report_card)
     if new_value != old_value:
+        changed_categories = _changed_report_detail_categories(old_value, new_value)
+        if old_status in PARENT_VISIBLE_STATUSES:
+            report_card.status = REVIEW_REQUIRED_STATUS
         create_audit_log(
             db=db,
             actor_user_id=current_user.id,
             action="report_details_edited",
             entity_type="report_card",
             entity_id=report_card.id,
-            old_value=old_value,
-            new_value=new_value,
+            old_value={**old_value, "status": old_status},
+            new_value={
+                **new_value,
+                "status": report_card.status,
+                "prior_status": old_status,
+                "changed_categories": changed_categories,
+            },
         )
 
     db.commit()

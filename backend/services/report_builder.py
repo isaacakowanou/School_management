@@ -27,6 +27,7 @@ from services.grade_calculator import (
 
 
 STALE_FLOAT_TOLERANCE = 0.005
+REVIEW_REQUIRED_STATUS = "needs_review"
 
 
 @dataclass(frozen=True)
@@ -139,6 +140,16 @@ def _current_courses_by_id(report_data: dict) -> dict[UUID, dict]:
 
 
 def get_report_card_staleness(db: Session, report_card: ReportCard) -> ReportCardStaleness:
+    if report_card.status == REVIEW_REQUIRED_STATUS:
+        return ReportCardStaleness(
+            is_stale=True,
+            reason="Report content changed after approval or sending.",
+            snapshot_overall_average=report_card.overall_average,
+            current_overall_average=None,
+            snapshot_gpa=report_card.gpa,
+            current_gpa=None,
+        )
+
     try:
         current_data = build_report_card_data(
             db,

@@ -1,4 +1,6 @@
 import unittest
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -11,6 +13,7 @@ from main import app
 from models import (
     AuditLog,
     Base,
+    Class,
     Course,
     CourseResult,
     Parent,
@@ -67,10 +70,16 @@ class ReportDetailsRouteTests(unittest.TestCase):
         self.db.flush()
         self.parent = Parent(user=self.parent_user, phone="555-0100")
         self.teacher = Teacher(user=self.teacher_user, employee_number="T-DET-1")
-        self.student = Student(
-            first_name="Ada", last_name="Lovelace", student_number="DET001"
+        self.school_class = Class(
+            name_fr="ZZ-TEST-Details",
+            school_level="college",
+            sort_order=1,
+            school_year="2026-2027",
         )
-        self.db.add_all([self.parent, self.teacher, self.student])
+        self.student = Student(
+            first_name="Ada", last_name="Lovelace", student_number="DET001", school_class=self.school_class
+        )
+        self.db.add_all([self.parent, self.teacher, self.school_class, self.student])
         self.db.flush()
         self.db.add(StudentParent(student=self.student, parent=self.parent, relationship="Guardian"))
 
@@ -95,6 +104,34 @@ class ReportDetailsRouteTests(unittest.TestCase):
         self.db.add(self.report_card)
         self.db.commit()
         self.db.refresh(self.report_card)
+
+    def _mark_report_status(self, status: str) -> None:
+        self.report_card.status = status
+        self.report_card.approved_by_admin_id = self.admin_user.id if status in {"approved", "sent", "needs_review"} else None
+        self.report_card.approved_at = datetime.now(timezone.utc) - timedelta(hours=1) if status in {"approved", "sent", "needs_review"} else None
+        self.report_card.sent_at = datetime.now(timezone.utc) - timedelta(minutes=30) if status == "sent" else None
+        self.db.commit()
+        self.db.refresh(self.report_card)
+
+    def _latest_details_audit(self) -> AuditLog:
+        return (
+            self.db.query(AuditLog)
+            .filter(AuditLog.action == "report_details_edited", AuditLog.entity_id == self.report_card.id)
+            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+            .first()
+        )
+
+    def _details_audit_for(self, *, category: str, prior_status: str) -> AuditLog | None:
+        for audit in self.db.query(AuditLog).filter(
+            AuditLog.action == "report_details_edited",
+            AuditLog.entity_id == self.report_card.id,
+        ).all():
+            if (
+                audit.old_value.get("status") == prior_status
+                and category in audit.new_value.get("changed_categories", [])
+            ):
+                return audit
+        return None
 
     def _headers(self, email: str) -> dict[str, str]:
         response = self.client.post(
@@ -243,6 +280,159 @@ class ReportDetailsRouteTests(unittest.TestCase):
     def test_patch_rejects_invalid_letter_grade(self):
         response = self._patch({"conduct_items": [{"item_key": "controls_talking", "letter_grade": "Z"}]})
         self.assertEqual(response.status_code, 422)
+
+    def test_approved_report_detail_edits_move_to_needs_review_and_audit_categories(self):
+        cases = [
+            ("conduct", {"conduct_items": [{"item_key": "controls_talking", "letter_grade": "A"}]}),
+            ("work_habits", {"work_habit_items": [{"item_key": "good_listening", "letter_grade": "B"}]}),
+            ("comments", {"teacher_comment_fr": "Commentaire changé."}),
+        ]
+        for category, payload in cases:
+            with self.subTest(category=category):
+                self._mark_report_status("approved")
+                response = self._patch(payload)
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json()["status"], "needs_review")
+
+                self.db.expire_all()
+                saved = self.db.get(ReportCard, self.report_card.id)
+                self.assertEqual(saved.status, "needs_review")
+                audit = self._details_audit_for(category=category, prior_status="approved")
+                self.assertIsNotNone(audit)
+                self.assertEqual(audit.actor_user_id, self.admin_user.id)
+                self.assertEqual(audit.old_value["status"], "approved")
+                self.assertEqual(audit.new_value["status"], "needs_review")
+                self.assertEqual(audit.new_value["prior_status"], "approved")
+                self.assertIn(category, audit.new_value["changed_categories"])
+
+    def test_sent_report_detail_edit_moves_to_needs_review(self):
+        self._mark_report_status("sent")
+
+        response = self._patch({"principal_comment_en": "Updated after send."})
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "needs_review")
+        self.db.expire_all()
+        saved = self.db.get(ReportCard, self.report_card.id)
+        self.assertEqual(saved.status, "needs_review")
+        self.assertIsNotNone(saved.sent_at)
+        audit = self._details_audit_for(category="comments", prior_status="sent")
+        self.assertIsNotNone(audit)
+        self.assertEqual(audit.old_value["status"], "sent")
+        self.assertEqual(audit.new_value["status"], "needs_review")
+        self.assertIn("comments", audit.new_value["changed_categories"])
+
+    def test_draft_report_detail_edit_keeps_draft_status(self):
+        response = self._patch({"teacher_comment_fr": "Draft comment."})
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "draft")
+        audit = self._latest_details_audit()
+        self.assertEqual(audit.old_value["status"], "draft")
+        self.assertEqual(audit.new_value["status"], "draft")
+
+    def test_sent_report_hidden_from_parent_after_detail_edit_then_visible_after_resend(self):
+        self._mark_report_status("sent")
+        visible_before = self.client.get(
+            f"/api/v1/reports/student/{self.student.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(visible_before.status_code, 200)
+        self.assertEqual([row["id"] for row in visible_before.json()], [str(self.report_card.id)])
+
+        edit_response = self._patch(
+            {
+                "conduct_items": [{"item_key": "controls_talking", "letter_grade": "A"}],
+                "principal_comment_fr": "Modification après envoi.",
+            }
+        )
+        self.assertEqual(edit_response.status_code, 200, edit_response.text)
+        self.assertEqual(edit_response.json()["status"], "needs_review")
+
+        hidden_list = self.client.get(
+            f"/api/v1/reports/student/{self.student.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(hidden_list.status_code, 200)
+        self.assertEqual(hidden_list.json(), [])
+        hidden_detail = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(hidden_detail.status_code, 403)
+
+        blocked_approve = self.client.post(
+            f"/api/v1/reports/{self.report_card.id}/approve",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(blocked_approve.status_code, 400)
+        self.assertEqual(blocked_approve.json()["detail"], "Only draft reports can be reviewed")
+
+        regenerate = self.client.post(
+            f"/api/v1/reports/{self.report_card.id}/regenerate",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(regenerate.status_code, 200, regenerate.text)
+        self.assertEqual(regenerate.json()["status"], "draft")
+        conduct = {item["item_key"]: item["letter_grade"] for item in regenerate.json()["conduct_items"]}
+        self.assertEqual(conduct["controls_talking"], "A")
+        self.assertEqual(regenerate.json()["principal_comment_fr"], "Modification après envoi.")
+        approve = self.client.post(
+            f"/api/v1/reports/{self.report_card.id}/approve",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(approve.status_code, 200, approve.text)
+        self.assertEqual(approve.json()["status"], "approved")
+        with patch(
+            "routes.reports.send_report_notification_to_parents",
+            return_value=[{"sent": True, "provider": "test", "provider_message_id": "msg-1"}],
+        ):
+            send = self.client.post(
+                f"/api/v1/reports/{self.report_card.id}/send",
+                headers=self._headers(self.admin_user.email),
+            )
+        self.assertEqual(send.status_code, 200, send.text)
+        self.assertEqual(send.json()["status"], "sent")
+
+        visible_again = self.client.get(
+            f"/api/v1/reports/student/{self.student.id}",
+            headers=self._headers(self.parent_user.email),
+        )
+        self.assertEqual(visible_again.status_code, 200)
+        self.assertEqual([row["id"] for row in visible_again.json()], [str(self.report_card.id)])
+
+    def test_persisted_needs_review_unifies_admin_list_and_class_status_behavior(self):
+        self._mark_report_status("needs_review")
+
+        list_response = self.client.get("/api/v1/reports", headers=self._headers(self.admin_user.email))
+        self.assertEqual(list_response.status_code, 200, list_response.text)
+        listed = next(row for row in list_response.json() if row["id"] == str(self.report_card.id))
+        self.assertEqual(listed["status"], "needs_review")
+        self.assertTrue(listed["needs_review"])
+
+        class_response = self.client.get(
+            "/api/v1/reports/class-status",
+            params={
+                "class_id": str(self.school_class.id),
+                "school_year": "2026-2027",
+                "term": "1er Trimestre",
+            },
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(class_response.status_code, 200, class_response.text)
+        body = class_response.json()
+        self.assertEqual(body["needs_review_count"], 1)
+        row = body["students"][0]
+        self.assertEqual(row["report_status"], "needs_review")
+        self.assertTrue(row["needs_review"])
+
+        staleness_response = self.client.get(
+            f"/api/v1/reports/{self.report_card.id}/staleness",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(staleness_response.status_code, 200, staleness_response.text)
+        self.assertTrue(staleness_response.json()["is_stale"])
+        self.assertIn("content changed", staleness_response.json()["reason"])
 
     def test_regenerate_preserves_conduct_work_habits_and_comments(self):
         self._patch(

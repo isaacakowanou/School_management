@@ -5,10 +5,12 @@ const LABEL_KEYS = {
   draft: 'reports.statusDraft',
   approved: 'reports.statusApproved',
   sent: 'reports.statusSent',
+  needs_review: 'reports.needsReview',
 }
 
 export default function StatusBadge({ status }) {
   const { t } = useTranslation()
   const key = LABEL_KEYS[status]
-  return <span className={`badge badge-${status}`}>{key ? t(key) : status}</span>
+  const className = status === 'needs_review' ? 'badge badge-review' : `badge badge-${status}`
+  return <span className={className}>{key ? t(key) : status}</span>
 }

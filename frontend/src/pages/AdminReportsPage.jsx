@@ -10,20 +10,22 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 
-const STATUS_KEYS = ['all', 'draft', 'approved', 'sent']
+const STATUS_KEYS = ['all', 'draft', 'approved', 'sent', 'needs_review']
 
 const STATUS_HELP_KEYS = ['draft', 'approved', 'sent']
 
 function ReportStatus({ report, t }) {
   if (report.needs_review) {
     const previousStatus =
-      report.status === 'sent' ? t('reports.previouslySent') : t('reports.previouslyApproved')
+      report.status === 'sent'
+        ? t('reports.previouslySent')
+        : report.status === 'approved'
+          ? t('reports.previouslyApproved')
+          : null
     return (
       <div className="report-status-cell">
-        <span className="badge badge-review" title={t('reports.needsReviewCopy')}>
-          {t('reports.needsReview')}
-        </span>
-        {(report.status === 'approved' || report.status === 'sent') && (
+        <StatusBadge status="needs_review" />
+        {previousStatus && (
           <span className="status-secondary">{previousStatus}</span>
         )}
       </div>
@@ -101,7 +103,8 @@ export default function AdminReportsPage() {
       const query = search.trim().toLowerCase()
       const haystack = `${report.student_name || ''} ${report.student_number || ''}`.toLowerCase()
       if (query && !haystack.includes(query)) return false
-      if (statusFilter !== 'all' && report.status !== statusFilter) return false
+      if (statusFilter === 'needs_review' && !report.needs_review) return false
+      if (statusFilter !== 'all' && statusFilter !== 'needs_review' && report.status !== statusFilter) return false
       if (needsReviewOnly && !report.needs_review) return false
       if (classFilter && studentClassById.get(report.student_id) !== classFilter) return false
       return true
@@ -116,6 +119,7 @@ export default function AdminReportsPage() {
       draft: t('reports.statusDraft'),
       approved: t('reports.statusApproved'),
       sent: t('reports.statusSent'),
+      needs_review: t('reports.needsReview'),
     }
     return map[key] ?? key
   }

@@ -262,9 +262,12 @@ export default function AdminReportDetailPage() {
       principal_comment_fr: comments.principal_comment_fr.trim() || null,
       principal_comment_en: comments.principal_comment_en.trim() || null,
     }
-    await runAction('details', () => updateReportDetails(reportId, payload), {
-      successMessage: t('reports.detailsSaved'),
+    const result = await runAction('details', () => updateReportDetails(reportId, payload), {
+      successMessage: null,
     })
+    if (result) {
+      setActionMessage(result.status === 'needs_review' ? t('reports.detailsSavedNeedsReview') : t('reports.detailsSaved'))
+    }
   }
 
   async function handleApprove() {
@@ -362,6 +365,7 @@ export default function AdminReportDetailPage() {
   const isDraft = report.status === 'draft'
   const isApproved = report.status === 'approved'
   const isSent = report.status === 'sent'
+  const isNeedsReview = report.status === 'needs_review'
   const busy = pending !== null
   const summaryDirty = summaryDraft !== (report.ai_summary ?? '')
   const detailsDirty = (() => {
@@ -388,8 +392,11 @@ export default function AdminReportDetailPage() {
       ? t('reports.staleReasonIncomplete')
       : staleness.reason.includes('course set changed')
         ? t('reports.staleReasonCourseSet')
-        : t('reports.staleReasonGeneric')
+        : staleness.reason.includes('content changed')
+          ? t('reports.staleReasonContentChanged')
+          : t('reports.staleReasonGeneric')
     : null
+  const contentChangedStaleness = isNeedsReview || staleness?.reason?.includes('content changed')
   const studentName = report.student_name || t('reports.unknownStudent')
   const studentNumber = report.student_number || report.student_id
 
@@ -427,6 +434,11 @@ export default function AdminReportDetailPage() {
       {(isApproved || isSent) && (
         <div className="state state-warning" role="status">
           {t('reports.approvedSentEditWarning')}
+        </div>
+      )}
+      {isNeedsReview && (
+        <div className="state state-empty" role="status">
+          {t('reports.contentChangedNeedsReview')}
         </div>
       )}
 
@@ -481,25 +493,27 @@ export default function AdminReportDetailPage() {
       {staleness?.is_stale && (
         <section className="stale-report-warning" aria-live="polite">
           <div>
-            <h3>{t('reports.gradesChanged')}</h3>
-            <p>{t('reports.gradesChangedDesc')}</p>
+            <h3>{contentChangedStaleness ? t('reports.contentChangedTitle') : t('reports.gradesChanged')}</h3>
+            <p>{contentChangedStaleness ? t('reports.contentChangedNeedsReview') : t('reports.gradesChangedDesc')}</p>
             {staleReason && <p className="muted">{staleReason}</p>}
           </div>
 
-          <div className="stale-report-values" aria-label="Snapshot and current values">
-            <div>
-              <span>{t('reports.snapshotAvg')}</span>
-              <strong>{formatReportAverage(staleness.snapshot_overall_average, report.scale)}</strong>
+          {!contentChangedStaleness && (
+            <div className="stale-report-values" aria-label="Snapshot and current values">
+              <div>
+                <span>{t('reports.snapshotAvg')}</span>
+                <strong>{formatReportAverage(staleness.snapshot_overall_average, report.scale)}</strong>
+              </div>
+              <div>
+                <span>{t('reports.currentAvg')}</span>
+                <strong>
+                  {hasValue(staleness.current_overall_average)
+                    ? formatScore20(staleness.current_overall_average)
+                    : t('reports.unavailable')}
+                </strong>
+              </div>
             </div>
-            <div>
-              <span>{t('reports.currentAvg')}</span>
-              <strong>
-                {hasValue(staleness.current_overall_average)
-                  ? formatScore20(staleness.current_overall_average)
-                  : t('reports.unavailable')}
-              </strong>
-            </div>
-          </div>
+          )}
 
           <button
             type="button"

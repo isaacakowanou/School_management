@@ -65,7 +65,7 @@ export default function ReportDetailPage() {
       link.remove()
       URL.revokeObjectURL(url)
     } catch (err) {
-      setDownloadError(err.message || 'Could not download the PDF.')
+      setDownloadError(err.message || t('reports.downloadFailed'))
     } finally {
       setDownloading(false)
     }

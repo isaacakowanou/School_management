@@ -80,6 +80,7 @@ class AuthRouteTests(unittest.TestCase):
             json={"email": "auth-test@example.test", "password": "wrong-password"},
         )
         self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.headers["x-error-code"], "invalid_credentials")
 
     def test_unknown_email_returns_401(self):
         response = self.client.post(

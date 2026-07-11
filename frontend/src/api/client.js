@@ -1,6 +1,8 @@
 // Tiny fetch wrapper: prefixes /api/v1, attaches the JWT, normalizes errors,
 // and signals global 401s so the app can log out.
 
+import i18n from '../i18n.js'
+
 const API_BASE = '/api/v1'
 const TOKEN_KEY = 'parent_portal_token'
 
@@ -33,18 +35,15 @@ function authHeaders(extra = {}) {
   return headers
 }
 
-// FastAPI error details come in three shapes: a plain string (HTTPException),
-// a list of {loc, msg, ...} objects (Pydantic validation), or an object with
-// a message field (structured 409s). Surface a readable message for each so
-// users never see a bare "Request failed (422)".
-function errorMessage(detail, status) {
-  if (typeof detail === 'string') return detail
+// Resolve backend error codes through i18n. Raw server text remains available
+// in `detail` for diagnostics but is never rendered as user-facing copy.
+function errorMessage(detail, status, code) {
+  if (code) return i18n.t(`apiErrors.${code}`, { defaultValue: i18n.t('apiErrors.request_failed') })
+  if (typeof detail === 'string') return i18n.t('apiErrors.request_failed')
   if (Array.isArray(detail) && detail.length > 0) {
-    const msg = detail[0]?.msg
-    if (typeof msg === 'string') return msg.replace(/^Value error, /, '')
+    return i18n.t('apiErrors.validation_error')
   }
-  if (detail && typeof detail.message === 'string') return detail.message
-  return `Request failed (${status})`
+  return i18n.t('apiErrors.request_failed', { status })
 }
 
 async function parseError(response) {
@@ -55,7 +54,13 @@ async function parseError(response) {
   } catch {
     detail = null
   }
-  return new ApiError(response.status, errorMessage(detail, response.status), detail)
+  const headerCode = response.headers.get('X-Error-Code')
+  const detailCode = detail && !Array.isArray(detail) && typeof detail === 'object' ? detail.code : null
+  const code = detailCode || headerCode || (Array.isArray(detail) ? 'validation_error' : 'request_failed')
+  const normalizedDetail = detailCode || !headerCode ? detail : { code: headerCode, message: detail }
+  const error = new ApiError(response.status, errorMessage(detail, response.status, code), normalizedDetail)
+  error.code = code
+  return error
 }
 
 async function parseAndHandleError(response) {
@@ -70,7 +75,7 @@ async function rawFetch(path, options) {
   try {
     return await fetch(`${API_BASE}${path}`, options)
   } catch {
-    throw new ApiError(0, 'Could not reach the server. Is the backend running?')
+    throw new ApiError(0, i18n.t('apiErrors.network_error'))
   }
 }
 
@@ -79,7 +84,7 @@ async function rawFetch(path, options) {
 function handleUnauthorized() {
   clearToken()
   window.dispatchEvent(new CustomEvent('auth:unauthorized'))
-  return new ApiError(401, 'Your session has expired. Please sign in again.')
+  return new ApiError(401, i18n.t('apiErrors.session_expired'))
 }
 
 export async function apiGet(path) {

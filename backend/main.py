@@ -2,8 +2,12 @@ import config  # noqa: F401
 from fastapi import FastAPI
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from fastapi import Request
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.exceptions import HTTPException
 
 from limiter import limiter
+from error_codes import error_code_for_exception
 from routes.audit_logs import router as audit_logs_router
 from routes.admin_stats import router as admin_stats_router
 from routes.ai import router as ai_router
@@ -30,6 +34,13 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(HTTPException)
+async def localized_http_exception_handler(request: Request, exc: HTTPException):
+    response = await http_exception_handler(request, exc)
+    response.headers["X-Error-Code"] = error_code_for_exception(exc)
+    return response
 
 app.include_router(auth_router, prefix="/api/v1/auth")
 app.include_router(audit_logs_router, prefix="/api/v1")

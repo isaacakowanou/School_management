@@ -13,3 +13,4 @@ backend/storage/pdfs/
 backend.log
 frontend.log
 .DS_Store
+school_ai.db

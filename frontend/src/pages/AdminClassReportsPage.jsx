@@ -202,7 +202,7 @@ export default function AdminClassReportsPage() {
           return
         }
         if (result.status === 'failed') {
-          setActionError(result.error || t('classReports.pdfFailed'))
+          setActionError(t('classReports.pdfFailed'))
           return
         }
       }

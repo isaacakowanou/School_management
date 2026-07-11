@@ -42,7 +42,14 @@ export default function LoginPage() {
       const dest = from && isPathForRole(from, me.role) ? from : homePathForRole(me.role)
       navigate(dest, { replace: true })
     } catch (err) {
-      setError(isBackendWakeupError(err) ? t('login.backendWakeup') : err.message || t('login.submit'))
+      const key = err.status === 401
+        ? 'login.invalidCredentials'
+        : err.code === 'role_not_allowed'
+          ? 'login.roleNotAllowed'
+          : err.code === 'parent_profile_missing'
+            ? 'login.parentProfileMissing'
+            : 'login.signInFailed'
+      setError(isBackendWakeupError(err) ? t('login.backendWakeup') : t(key))
     } finally {
       setSubmitting(false)
     }

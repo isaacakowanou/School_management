@@ -29,7 +29,7 @@ export function AuthProvider({ children }) {
   const loadSession = useCallback(async () => {
     const me = await authApi.getMe()
     if (!ALLOWED_ROLES.includes(me.role)) {
-      const err = new Error('Your account does not have access to this portal.')
+      const err = new Error('role_not_allowed')
       err.code = 'role_not_allowed'
       throw err
     }
@@ -98,15 +98,21 @@ export function AuthProvider({ children }) {
         clearToken()
         setIsAuthenticated(false)
         if (err?.code === 'role_not_allowed') {
-          throw new Error('Your account does not have access to this portal.')
+          const accessError = new Error('role_not_allowed')
+          accessError.code = 'role_not_allowed'
+          throw accessError
         }
         if (err?.status === 404) {
-          throw new Error('No parent profile is linked to this account. Please contact the school.')
+          const profileError = new Error('parent_profile_missing')
+          profileError.code = 'parent_profile_missing'
+          throw profileError
         }
         if (err?.status === 0 || err?.status === 504) {
           throw err
         }
-        throw new Error('Could not sign you in. Please try again.')
+        const signInError = new Error('sign_in_failed')
+        signInError.code = 'sign_in_failed'
+        throw signInError
       }
     },
     [loadSession],

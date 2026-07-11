@@ -1,4 +1,6 @@
 import logging
+import uuid
+from datetime import datetime, timezone
 from urllib.parse import parse_qs
 from uuid import UUID
 
@@ -7,6 +9,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from audit import create_audit_log
 from auth import (
     create_user_access_token,
     get_current_user,
@@ -17,7 +20,9 @@ from auth import (
 from database import get_db
 from limiter import limiter
 from models import Parent, Teacher, User
-from schemas import ChangePasswordRequest, UserResponse, validate_password_strength
+from schemas import AccountProfileResponse, AccountProfileUpdate, ChangePasswordRequest, UserResponse, validate_password_strength
+from services.email_service import send_password_reset_email
+from services.password_reset_tokens import cleanup_reset_tokens, get_valid_reset_token, has_active_reset_token, issue_reset_token
 from services.sms_service import check_otp, send_otp
 
 logger = logging.getLogger(__name__)
@@ -39,6 +44,25 @@ class ChangePasswordResponse(BaseModel):
     message: str
     access_token: str
     token_type: str
+
+
+def _identifier_type(identifier: str) -> str:
+    clean = identifier.strip()
+    if "@" in clean:
+        return "email"
+    if clean.startswith("+") or clean.replace("-", "").replace(" ", "").isdigit():
+        return "phone"
+    return "employee_number"
+
+
+def _profile_is_active(user: User, db: Session) -> bool:
+    if user.role == "teacher":
+        profile = db.scalar(select(Teacher).where(Teacher.user_id == user.id))
+        return profile is None or profile.deleted_at is None
+    if user.role == "parent":
+        profile = db.scalar(select(Parent).where(Parent.user_id == user.id))
+        return profile is None or profile.deleted_at is None
+    return True
 
 
 async def read_login_credentials(request: Request) -> tuple[str, str]:
@@ -121,12 +145,30 @@ async def login(request: Request, db: Session = Depends(get_db)) -> LoginRespons
         or (profile is not None and profile.deleted_at is not None)
         or not verify_password(password, user.password_hash)
     ):
+        create_audit_log(
+            db=db,
+            actor_user_id=None,
+            action="auth_login_failed",
+            entity_type="auth",
+            entity_id=uuid.uuid4(),
+            new_value={"identifier_type": _identifier_type(identifier)},
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    create_audit_log(
+        db=db,
+        actor_user_id=user.id,
+        action="auth_login_succeeded",
+        entity_type="auth",
+        entity_id=user.id,
+        new_value={"role": user.role},
+    )
+    db.commit()
     access_token = create_user_access_token(user)
     return LoginResponse(
         access_token=access_token,
@@ -148,6 +190,46 @@ def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     )
 
 
+@router.get("/profile", response_model=AccountProfileResponse)
+def get_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AccountProfileResponse:
+    phone = None
+    if current_user.role == "teacher":
+        profile = db.scalar(select(Teacher).where(Teacher.user_id == current_user.id))
+        phone = profile.phone if profile else None
+    elif current_user.role == "parent":
+        profile = db.scalar(select(Parent).where(Parent.user_id == current_user.id))
+        phone = profile.phone if profile else None
+    return AccountProfileResponse(name=current_user.name, email=current_user.email, phone=phone, role=current_user.role)
+
+
+@router.put("/profile", response_model=AccountProfileResponse)
+def update_profile(
+    payload: AccountProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AccountProfileResponse:
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name cannot be empty")
+    current_user.name = name
+    phone = None
+    if current_user.role == "teacher":
+        profile = db.scalar(select(Teacher).where(Teacher.user_id == current_user.id))
+        if profile:
+            profile.phone = (payload.phone or "").strip() or None
+            phone = profile.phone
+    elif current_user.role == "parent":
+        profile = db.scalar(select(Parent).where(Parent.user_id == current_user.id))
+        if profile:
+            profile.phone = (payload.phone or "").strip() or None
+            phone = profile.phone
+    db.commit()
+    return AccountProfileResponse(name=current_user.name, email=current_user.email, phone=phone, role=current_user.role)
+
+
 @router.post("/change-password", response_model=ChangePasswordResponse)
 def change_password(
     payload: ChangePasswordRequest,
@@ -165,9 +247,18 @@ def change_password(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={"code": "current_password_incorrect", "message": "Current password is incorrect"},
             )
+    was_forced = current_user.must_change_password
     current_user.password_hash = hash_password(payload.new_password)
     current_user.must_change_password = False
     invalidate_user_sessions(current_user)
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="forced_password_change_completed" if was_forced else "password_changed",
+        entity_type="auth",
+        entity_id=current_user.id,
+        new_value={"role": current_user.role},
+    )
     db.commit()
     return ChangePasswordResponse(
         status="ok",
@@ -235,18 +326,79 @@ async def forgot_password(
     payload: ForgotPasswordRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    # No user-enumeration: always return 200 regardless of whether we found a match.
-    # Email-based reset is deferred — users with email contact admin to reset.
-    phone = _resolve_phone_for_identifier(payload.identifier, db)
-    if phone:
-        try:
-            send_otp(phone)
-        except Exception:
-            logger.exception("OTP send failed for identifier %r", payload.identifier)
+    cleanup_reset_tokens(db)
+    clean = payload.identifier.strip()
+    identifier_type = _identifier_type(clean)
+    if identifier_type == "email":
+        user = db.scalar(select(User).where(User.email == clean))
+        active_user = user if user is not None and _profile_is_active(user, db) else None
+        create_audit_log(
+            db=db,
+            actor_user_id=active_user.id if active_user else None,
+            action="email_password_reset_requested",
+            entity_type="auth",
+            entity_id=active_user.id if active_user else uuid.uuid4(),
+            new_value={"identifier_type": "email"},
+        )
+        if active_user is not None and not has_active_reset_token(db, active_user):
+            raw_token = issue_reset_token(db, active_user)
+            try:
+                send_password_reset_email(active_user.name, clean, raw_token)
+            except Exception:
+                logger.exception("Password-reset email send failed")
+        db.commit()
+    else:
+        phone = _resolve_phone_for_identifier(clean, db)
+        if phone:
+            try:
+                send_otp(phone)
+            except Exception:
+                logger.exception("OTP send failed for identifier type %s", identifier_type)
 
     return {
-        "message": "If an account with that identifier exists, you will receive a code."
+        "message": "If an account with that identifier exists, you will receive a code or link."
     }
+
+
+class EmailResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, value: str) -> str:
+        return validate_password_strength(value)
+
+
+@router.post("/reset-password/email")
+@limiter.limit("5/minute")
+async def reset_password_by_email(
+    request: Request,
+    payload: EmailResetPasswordRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    token = get_valid_reset_token(db, payload.token)
+    if token is None or not _profile_is_active(token.user, db):
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "invalid_reset_link", "message": "Invalid or expired reset link"},
+        )
+    user = token.user
+    token.used_at = datetime.now(timezone.utc)
+    user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
+    invalidate_user_sessions(user)
+    create_audit_log(
+        db=db,
+        actor_user_id=user.id,
+        action="email_password_reset_completed",
+        entity_type="auth",
+        entity_id=user.id,
+        new_value={"role": user.role},
+    )
+    db.commit()
+    return {"status": "ok", "message": "Password reset successfully"}
 
 
 @router.post("/reset-password")
@@ -256,6 +408,7 @@ async def reset_password(
     payload: ResetPasswordRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
+    cleanup_reset_tokens(db)
     phone = _resolve_phone_for_identifier(payload.identifier, db)
     if phone is None:
         raise HTTPException(
@@ -295,6 +448,14 @@ async def reset_password(
     user.password_hash = hash_password(payload.new_password)
     user.must_change_password = False
     invalidate_user_sessions(user)
+    create_audit_log(
+        db=db,
+        actor_user_id=user.id,
+        action="otp_password_reset_completed",
+        entity_type="auth",
+        entity_id=user.id,
+        new_value={"role": user.role},
+    )
     db.commit()
 
     return {"status": "ok", "message": "Password reset successfully"}

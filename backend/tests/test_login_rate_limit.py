@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -98,3 +99,17 @@ class LoginRateLimitTests(unittest.TestCase):
         # slowapi returns a JSON detail with the rate limit info
         body = response.json()
         self.assertIn("error", body)
+
+    @patch("routes.auth.send_password_reset_email", return_value={"success": True})
+    def test_email_forgot_password_is_limited_to_five_requests_per_ip(self, _send):
+        for _ in range(5):
+            response = self.client.post(
+                "/api/v1/auth/forgot-password",
+                json={"identifier": "ratelimit@example.test"},
+            )
+            self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            "/api/v1/auth/forgot-password",
+            json={"identifier": "ratelimit@example.test"},
+        )
+        self.assertEqual(response.status_code, 429)

@@ -5,7 +5,7 @@ import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 
-const EMPTY_FILTERS = { entity_type: '', entity_id: '', actor_user_id: '', action: '', date_from: '', date_to: '' }
+const EMPTY_FILTERS = { category: 'operational', entity_type: '', entity_id: '', actor_user_id: '', action: '', date_from: '', date_to: '' }
 
 function formatTime(iso) {
   if (!iso) return '—'
@@ -26,11 +26,7 @@ function formatJson(value) {
 
 function ActorCell({ log, unknownActorLabel }) {
   if (!log.actor_name && !log.actor_email) {
-    return (
-      <span className="audit-id" title={log.actor_user_id}>
-        {log.actor_user_id}
-      </span>
-    )
+    return <span className="muted">{unknownActorLabel}</span>
   }
 
   return (
@@ -76,6 +72,7 @@ export default function AuditLogsPage() {
   function applyFilters(event) {
     event.preventDefault()
     setFilters({
+      category: draft.category,
       entity_type: draft.entity_type.trim(),
       entity_id: draft.entity_id.trim(),
       actor_user_id: draft.actor_user_id.trim(),
@@ -127,6 +124,14 @@ export default function AuditLogsPage() {
       <p className="muted">{t('auditLogs.adminView')}</p>
 
       <form className="filters" onSubmit={applyFilters}>
+        <label className="field">
+          <span>{t('auditLogs.categoryFilter')}</span>
+          <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
+            <option value="operational">{t('auditLogs.categoryOperational')}</option>
+            <option value="auth">{t('auditLogs.categoryAuth')}</option>
+            <option value="all">{t('auditLogs.categoryAll')}</option>
+          </select>
+        </label>
         <label className="field">
           <span>{t('auditLogs.entityTypeFilter')}</span>
           <input

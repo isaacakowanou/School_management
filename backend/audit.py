@@ -20,7 +20,7 @@ def _json_safe(value):
 
 def create_audit_log(
     db: Session,
-    actor_user_id: UUID,
+    actor_user_id: UUID | None,
     action: str,
     entity_type: str,
     entity_id: UUID,

@@ -60,3 +60,7 @@ export function updateParent(parentId, { name, email, phone }) {
 export function deleteParent(parentId) {
   return apiDelete(`/parents/${parentId}`)
 }
+
+export function resetParentPassword(parentId) {
+  return apiPost(`/parents/${parentId}/reset-password`)
+}

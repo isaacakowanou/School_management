@@ -85,6 +85,12 @@
     "identifierPlaceholder": "nom@exemple.com ou +22961000000",
     "requestError": "Impossible d'envoyer le code. Réessayez.",
     "sendCode": "Envoyer le code",
+    "sendRecovery": "Envoyer les instructions",
+    "emailSentMessage": "Si ce compte existe, un lien de réinitialisation a été envoyé par email.",
+    "emailResetTitle": "Créer un nouveau mot de passe",
+    "emailResetSubtitle": "Choisissez un nouveau mot de passe pour votre compte.",
+    "emailResetDone": "Votre mot de passe a été réinitialisé. Vous pouvez maintenant vous connecter.",
+    "invalidResetLink": "Ce lien est invalide, expiré ou a déjà été utilisé.",
     "sending": "Envoi en cours…",
     "backToLogin": "Retour à la connexion",
     "step2Title": "Saisissez votre code",
@@ -618,6 +624,16 @@
     "passwordChanged": "Mot de passe modifié avec succès.",
     "passwordError": "Impossible de changer le mot de passe."
   },
+  "authReset": {
+    "action": "Réinitialiser le mot de passe",
+    "title": "Réinitialiser le mot de passe",
+    "confirm": "Réinitialiser le mot de passe de {{name}} ? Cette personne sera déconnectée sur tous ses appareils.",
+    "done": "Mot de passe temporaire généré",
+    "tempHint": "Partagez ce mot de passe temporaire. Il ne sera plus affiché et devra être modifié à la prochaine connexion.",
+    "emailSent": "Le mot de passe temporaire a été envoyé par email.",
+    "smsSent": "Le mot de passe temporaire a été envoyé par SMS/WhatsApp.",
+    "manualDelivery": "Aucun moyen de livraison n'est disponible. Transmettez le mot de passe manuellement."
+  },
   "trash": {
     "subtitle": "Tous les éléments supprimés récupérables sont listés ici.",
     "retention": "Les éléments sont supprimés définitivement après {{days}} jours.",
@@ -714,6 +730,10 @@
   },
   "auditLogs": {
     "adminView": "Vue administrateur",
+    "categoryFilter": "Catégorie",
+    "categoryOperational": "Opérationnel",
+    "categoryAuth": "Authentification",
+    "categoryAll": "Tout",
     "entityTypeFilter": "Type d'entité",
     "entityId": "ID de l'entité",
     "actorId": "ID de l'acteur",
@@ -752,7 +772,15 @@
       "report_sent": "Bulletin envoyé",
       "report_regenerated": "Bulletin régénéré",
       "report_summary_updated": "Résumé de bulletin modifié",
-      "report_details_updated": "Détails de bulletin modifiés"
+      "report_details_updated": "Détails de bulletin modifiés",
+      "auth_login_succeeded": "Connexion réussie",
+      "auth_login_failed": "Échec de connexion",
+      "password_changed": "Mot de passe modifié",
+      "forced_password_change_completed": "Mot de passe temporaire remplacé",
+      "otp_password_reset_completed": "Réinitialisation SMS terminée",
+      "email_password_reset_requested": "Réinitialisation email demandée",
+      "email_password_reset_completed": "Réinitialisation email terminée",
+      "admin_password_reset": "Mot de passe réinitialisé par un administrateur"
     }
   },
   "classReports": {

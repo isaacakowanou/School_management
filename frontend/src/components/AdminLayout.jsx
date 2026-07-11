@@ -61,6 +61,7 @@ export default function AdminLayout() {
         </Link>
         <div className="topbar-right">
           {user && <span className="parent-name">{user.name}</span>}
+          <Link to="/admin/settings" className="btn btn-ghost">{t('common.settings')}</Link>
           <LanguageSwitcher />
           <button type="button" className="btn btn-ghost" onClick={logout}>
             {t('common.logout')}

@@ -8,6 +8,7 @@ export function getAuditLogs(filters = {}) {
   if (filters.entity_type) params.set('entity_type', filters.entity_type)
   if (filters.entity_id) params.set('entity_id', filters.entity_id)
   if (filters.actor_user_id) params.set('actor_user_id', filters.actor_user_id)
+  if (filters.category) params.set('category', filters.category)
   const qs = params.toString()
   return apiGet(`/audit-logs${qs ? `?${qs}` : ''}`)
 }

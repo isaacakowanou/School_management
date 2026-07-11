@@ -15,11 +15,9 @@ export default function Layout() {
         </Link>
         <div className="topbar-right">
           {user && <span className="parent-name">{user.name}</span>}
-          {role === 'parent' && (
-            <Link to="/settings" className="btn btn-ghost">
-              {t('common.settings')}
-            </Link>
-          )}
+          <Link to={role === 'teacher' ? '/teacher/settings' : '/settings'} className="btn btn-ghost">
+            {t('common.settings')}
+          </Link>
           <LanguageSwitcher />
           <button type="button" className="btn btn-ghost" onClick={logout}>
             {t('common.logout')}

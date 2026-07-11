@@ -33,13 +33,15 @@ import AdminSubjectsPage from './pages/AdminSubjectsPage.jsx'
 import AdminDangerZonePage from './pages/AdminDangerZonePage.jsx'
 import AdminTrashPage from './pages/AdminTrashPage.jsx'
 import ChangePasswordPage from './pages/ChangePasswordPage.jsx'
-import ParentSettingsPage from './pages/ParentSettingsPage.jsx'
+import AccountSettingsPage from './pages/AccountSettingsPage.jsx'
+import EmailResetPasswordPage from './pages/EmailResetPasswordPage.jsx'
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<EmailResetPasswordPage />} />
 
       {/* Change password — any authenticated role; bypasses must_change_password guard */}
       <Route
@@ -60,7 +62,7 @@ export default function App() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
-        <Route path="/settings" element={<ParentSettingsPage />} />
+        <Route path="/settings" element={<AccountSettingsPage />} />
         <Route path="/students/:studentId" element={<ParentStudentPage />} />
         <Route path="/students/:studentId/reports" element={<StudentReportsPage />} />
         <Route path="/reports/:reportId" element={<ReportDetailPage />} />
@@ -75,6 +77,7 @@ export default function App() {
         }
       >
         <Route path="/teacher" element={<TeacherCoursesPage />} />
+        <Route path="/teacher/settings" element={<AccountSettingsPage />} />
         <Route path="/teacher/courses/:courseId" element={<TeacherCourseDetailPage />} />
       </Route>
 
@@ -87,6 +90,7 @@ export default function App() {
         }
       >
         <Route path="/admin" element={<AdminDashboardPage />} />
+        <Route path="/admin/settings" element={<AccountSettingsPage />} />
         <Route path="/admin/reports" element={<AdminReportsPage />} />
         <Route path="/admin/reports/class" element={<AdminClassReportsPage />} />
         <Route path="/admin/reports/:reportId" element={<AdminReportDetailPage />} />

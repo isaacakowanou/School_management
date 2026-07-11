@@ -11,7 +11,8 @@ from audit import create_audit_log
 from auth import get_current_user, hash_password, invalidate_user_sessions, require_admin
 from database import get_db
 from models import Course, Grade, Teacher, User
-from schemas import CourseResponse, StatusResponse, TeacherCreate, TeacherCreateResponse, TeacherResponse, TeacherUpdate
+from schemas import AdminPasswordResetResponse, CourseResponse, StatusResponse, TeacherCreate, TeacherCreateResponse, TeacherResponse, TeacherUpdate
+from services.account_security import reset_profile_password
 from services.email_service import send_account_created_email
 from services.sms_service import send_account_created_sms
 from utils import to_course_response
@@ -249,6 +250,20 @@ def update_teacher(
     db.commit()
     db.refresh(teacher)
     return to_teacher_response(teacher)
+
+
+@router.post("/{teacher_id}/reset-password", response_model=AdminPasswordResetResponse)
+def reset_teacher_password(
+    teacher_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminPasswordResetResponse:
+    teacher = get_teacher_or_404(db, teacher_id)
+    return AdminPasswordResetResponse(
+        **reset_profile_password(
+            db, profile=teacher, actor=current_user, entity_type="teacher"
+        )
+    )
 
 
 @router.delete("/{teacher_id}", response_model=StatusResponse)

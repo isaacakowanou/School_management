@@ -103,6 +103,24 @@ class UserResponse(BaseModel):
     must_change_password: bool = False
 
 
+class AccountProfileResponse(BaseModel):
+    name: str
+    email: str | None = None
+    phone: str | None = None
+    role: str
+
+
+class AccountProfileUpdate(BaseModel):
+    name: str
+    phone: str | None = None
+
+
+class AdminPasswordResetResponse(BaseModel):
+    temp_password: str
+    email_sent: bool | None = None
+    sms_sent: bool | None = None
+
+
 class StatusResponse(BaseModel):
     status: str
     message: str
@@ -647,7 +665,7 @@ class CourseResultCalculationResponse(BaseModel):
 
 class AuditLogResponse(BaseModel):
     id: UUID
-    actor_user_id: UUID
+    actor_user_id: UUID | None = None
     actor_name: str | None = None
     actor_email: str | None = None
     action: str

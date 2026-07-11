@@ -1,4 +1,4 @@
-import { apiGet, apiPost, setToken } from './client.js'
+import { apiGet, apiPost, apiPut, setToken } from './client.js'
 
 // POST /api/v1/auth/login -> { access_token, token_type, role, user_id, must_change_password }
 // identifier: email, employee number (teachers), or phone (parents)
@@ -9,6 +9,14 @@ export function login(identifier, password) {
 // GET /api/v1/auth/me -> { id, name, email, role, must_change_password }
 export function getMe() {
   return apiGet('/auth/me')
+}
+
+export function getProfile() {
+  return apiGet('/auth/profile')
+}
+
+export function updateProfile({ name, phone }) {
+  return apiPut('/auth/profile', { name: name.trim(), phone: (phone || '').trim() || null })
 }
 
 // POST /api/v1/auth/change-password
@@ -30,4 +38,8 @@ export function forgotPassword(identifier) {
 // POST /api/v1/auth/reset-password
 export function resetPassword(identifier, otp, newPassword) {
   return apiPost('/auth/reset-password', { identifier, otp, new_password: newPassword })
+}
+
+export function resetPasswordByEmail(token, newPassword) {
+  return apiPost('/auth/reset-password/email', { token, new_password: newPassword })
 }

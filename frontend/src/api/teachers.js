@@ -39,3 +39,7 @@ export function getTeacherCourses(teacherId) {
 export function deleteTeacher(teacherId) {
   return apiDelete(`/teachers/${teacherId}`)
 }
+
+export function resetTeacherPassword(teacherId) {
+  return apiPost(`/teachers/${teacherId}/reset-password`)
+}

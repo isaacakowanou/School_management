@@ -34,10 +34,16 @@ def list_audit_logs(
     entity_type: str | None = None,
     entity_id: UUID | None = None,
     actor_user_id: UUID | None = None,
+    category: str = "operational",
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[AuditLogResponse]:
     query = select(AuditLog).options(joinedload(AuditLog.actor))
+
+    if category == "auth":
+        query = query.where(AuditLog.entity_type == "auth")
+    elif category == "operational":
+        query = query.where(AuditLog.entity_type != "auth")
 
     if entity_type is not None:
         query = query.where(AuditLog.entity_type == entity_type)

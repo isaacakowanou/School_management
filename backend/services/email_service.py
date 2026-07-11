@@ -312,6 +312,61 @@ def send_account_created_email(
     }
 
 
+def send_password_reset_email(
+    name: str,
+    to_email: str,
+    reset_token: str,
+    config: dict | None = None,
+) -> dict:
+    config = config or _get_email_config()
+    reset_link = f"{config['app_base_url'].rstrip('/')}/reset-password?token={reset_token}"
+    subject = "Réinitialisation de votre mot de passe GGFK / Reset your GGFK password"
+    body = "\n".join(
+        [
+            f"Bonjour {name},",
+            "",
+            "Utilisez le lien ci-dessous dans les 45 minutes pour réinitialiser votre mot de passe :",
+            reset_link,
+            "",
+            "Ce lien ne peut être utilisé qu'une seule fois.",
+            "",
+            f"Hello {name},",
+            "",
+            "Use the link below within 45 minutes to reset your password:",
+            reset_link,
+            "",
+            "This link can only be used once.",
+        ]
+    )
+    secrets = _config_secrets(config)
+    clean_to_email = (to_email or "").strip()
+    try:
+        if config["provider"] == "resend":
+            provider_message_id = _send_resend_email(
+                config, to_email=clean_to_email, subject=subject, body=body
+            )
+        else:
+            _send_smtp_email(config, to_email=clean_to_email, subject=subject, body=body)
+            provider_message_id = None
+    except Exception as exc:
+        return {
+            "email": clean_to_email,
+            "sent": False,
+            "success": False,
+            "provider": config["provider"],
+            "provider_message_id": None,
+            "error": _sanitize_error(exc, secrets),
+        }
+    return {
+        "email": clean_to_email,
+        "sent": True,
+        "success": True,
+        "provider": config["provider"],
+        "provider_message_id": provider_message_id,
+        "error": None,
+    }
+
+
 def _build_grades_email_body(
     parent_name: str,
     student_name: str,

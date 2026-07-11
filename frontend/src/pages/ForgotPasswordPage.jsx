@@ -22,7 +22,8 @@ export default function ForgotPasswordPage() {
     setSubmitting(true)
     try {
       await forgotPassword(identifier.trim())
-      setStep(2)
+      if (identifier.includes('@')) setDone(true)
+      else setStep(2)
     } catch (err) {
       setError(err.message || t('forgotPassword.requestError'))
     } finally {
@@ -57,7 +58,7 @@ export default function ForgotPasswordPage() {
         <div className="card login-card">
           <h1 className="login-title">{t('forgotPassword.successTitle')}</h1>
           <p className="muted" style={{ marginBottom: '1.25rem' }}>
-            {t('forgotPassword.successMessage')}
+            {identifier.includes('@') ? t('forgotPassword.emailSentMessage') : t('forgotPassword.successMessage')}
           </p>
           <Link to="/login" className="btn btn-primary" style={{ display: 'block', textAlign: 'center' }}>
             {t('forgotPassword.backToSignIn')}
@@ -93,7 +94,7 @@ export default function ForgotPasswordPage() {
           </label>
 
           <button type="submit" className="btn btn-primary" disabled={submitting || !identifier.trim()}>
-            {submitting ? t('forgotPassword.sending') : t('forgotPassword.sendCode')}
+            {submitting ? t('forgotPassword.sending') : t('forgotPassword.sendRecovery')}
           </button>
 
           <p style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.875rem' }}>

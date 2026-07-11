@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { deleteTeacher, getTeacher, getTeacherCourses, updateTeacher } from '../api/teachers.js'
+import { deleteTeacher, getTeacher, getTeacherCourses, resetTeacherPassword, updateTeacher } from '../api/teachers.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -28,6 +28,9 @@ export default function AdminTeacherDetailPage() {
   const [deleting, setDeleting] = useState(false)
   const [editError, setEditError] = useState(null)
   const [editMessage, setEditMessage] = useState(null)
+  const [resetConfirm, setResetConfirm] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [resetResult, setResetResult] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -119,6 +122,19 @@ export default function AdminTeacherDetailPage() {
     }
   }
 
+  async function handleResetPassword() {
+    setResetting(true)
+    setEditError(null)
+    try {
+      setResetResult(await resetTeacherPassword(teacherId))
+      setResetConfirm(false)
+    } catch (err) {
+      setEditError(err.message)
+    } finally {
+      setResetting(false)
+    }
+  }
+
   if (error) {
     return (
       <section className="admin-page">
@@ -166,6 +182,13 @@ export default function AdminTeacherDetailPage() {
             </button>
             <button
               type="button"
+              className="btn btn-ghost"
+              onClick={() => setResetConfirm(true)}
+            >
+              {t('authReset.action')}
+            </button>
+            <button
+              type="button"
               className="btn btn-ghost btn-danger-subtle"
               onClick={handleDeleteTeacher}
               disabled={deleting}
@@ -176,6 +199,19 @@ export default function AdminTeacherDetailPage() {
         )}
       </div>
       {editMessage && <p className="grade-summary">{editMessage}</p>}
+      {resetResult && (
+        <div className="card admin-form">
+          <h3>{t('authReset.done')}</h3>
+          <code>{resetResult.temp_password}</code>
+          <button type="button" className="btn btn-ghost" onClick={() => navigator.clipboard.writeText(resetResult.temp_password)}>{t('common.copy')}</button>
+          <p className="muted">{t('authReset.tempHint')}</p>
+          {resetResult.email_sent === true && <p className="grade-summary">{t('authReset.emailSent')}</p>}
+          {resetResult.sms_sent === true && <p className="grade-summary">{t('authReset.smsSent')}</p>}
+          {resetResult.email_sent === null && resetResult.sms_sent === null && <p className="muted">{t('authReset.manualDelivery')}</p>}
+          {resetResult.email_sent === false && <ErrorBanner message={t('common.notifyEmailFailed')} />}
+          {resetResult.sms_sent === false && <ErrorBanner message={t('common.notifySmsFailed')} />}
+        </div>
+      )}
       {editError && !showEditForm && <ErrorBanner message={editError} />}
       {showEditForm && (
         <form className="card admin-form detail-form" onSubmit={handleEditTeacher}>
@@ -270,6 +306,15 @@ export default function AdminTeacherDetailPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {resetConfirm && (
+        <div className="modal-backdrop" onClick={() => !resetting && setResetConfirm(false)}>
+          <div className="card modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3>{t('authReset.title')}</h3>
+            <p>{t('authReset.confirm', { name: teacher.name })}</p>
+            <div className="form-actions"><button type="button" className="btn btn-ghost" onClick={() => setResetConfirm(false)} disabled={resetting}>{t('common.cancel')}</button><button type="button" className="btn btn-primary" onClick={handleResetPassword} disabled={resetting}>{resetting ? t('common.saving') : t('authReset.action')}</button></div>
+          </div>
         </div>
       )}
     </section>

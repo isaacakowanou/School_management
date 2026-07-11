@@ -21,7 +21,9 @@ from schemas import (
     ParentUpdate,
     StatusResponse,
     StudentResponse,
+    AdminPasswordResetResponse,
 )
+from services.account_security import reset_profile_password
 from services.email_service import send_account_created_email
 from services.sms_service import send_account_created_sms
 from utils import to_student_response
@@ -378,6 +380,20 @@ def update_parent(
     db.commit()
     db.refresh(parent)
     return to_parent_response(parent)
+
+
+@router.post("/{parent_id}/reset-password", response_model=AdminPasswordResetResponse)
+def reset_parent_password(
+    parent_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminPasswordResetResponse:
+    parent = get_parent_or_404(db, parent_id)
+    return AdminPasswordResetResponse(
+        **reset_profile_password(
+            db, profile=parent, actor=current_user, entity_type="parent"
+        )
+    )
 
 
 @router.delete("/{parent_id}", response_model=StatusResponse)

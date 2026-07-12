@@ -1,3 +1,12 @@
+"""Manage courses, yearly setup cloning, and school-wide trimester advancement.
+
+Catalog-linked courses derive their display name and language track from the
+subject so bulletin grouping cannot drift from the catalog. Year cloning copies
+setup only, never grades or enrollments. Coefficients remain explicit admin
+configuration. Trimester preview warnings inform Conseil de classe readiness,
+but advancement follows the school calendar and remains idempotent/audited.
+"""
+
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status

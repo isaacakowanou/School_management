@@ -1,3 +1,11 @@
+"""Idempotent legacy development seed, invoked explicitly rather than at startup.
+
+It creates recognizable local accounts and rewrites those seed users to the
+shared development password for repeatable access; never point it at production.
+Freshly created course/items use the canonical first trimester; existing rows
+remain untouched because this seed intentionally does not migrate local data.
+"""
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -82,7 +90,7 @@ def get_or_create_course(db: Session, *, teacher: Teacher) -> Course:
         name="Mathematics",
         code="MATH-12-FALL-2026",
         teacher=teacher,
-        term="Fall",
+        term="1er Trimestre",
         school_year="2026-2027",
     )
     db.add(course)
@@ -113,7 +121,7 @@ def get_or_create_grade_item(
         category=category,
         max_score=max_score,
         weight=weight,
-        term="Fall",
+        term="1er Trimestre",
     )
     db.add(grade_item)
     return grade_item

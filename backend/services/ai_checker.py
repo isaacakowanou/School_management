@@ -1,3 +1,11 @@
+"""Produce advisory integrity warnings without mutating grades or bulletins.
+
+Checks compare active enrollments, items, scores, calculated results, and stored
+bulletin snapshots to surface suspicious omissions or drift. Warning severity
+guides human review only; this service must not recalculate official values or
+silently repair data because those actions require audited domain workflows.
+"""
+
 from uuid import UUID
 
 from sqlalchemy import select

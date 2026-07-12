@@ -1,3 +1,10 @@
+"""Manage the recoverable links between active students and courses.
+
+Unenrollment soft-deletes and audits the link instead of erasing academic
+history. Roster reads require an active course, student, enrollment, and (for
+teachers) ownership of the course, preventing Trash records from resurfacing.
+"""
+
 from datetime import datetime, timezone
 from uuid import UUID
 

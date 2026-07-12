@@ -1,3 +1,12 @@
+"""Admin-only low-level user account operations beneath role profile workflows.
+
+This router edits the shared ``User`` row, not teacher/parent profile lifecycle.
+Any password assignment passes the universal schema validator and increments
+``token_version`` so existing sessions die. Deletion is a guarded hard delete:
+database relationships block removal when school/profile records still depend
+on the account, which is intentionally distinct from recoverable profile Trash.
+"""
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status

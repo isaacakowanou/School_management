@@ -1,3 +1,12 @@
+"""Persist teacher-entered scores and trigger privacy-safe availability notices.
+
+Only the assigned teacher (or an admin acting through that course) may write
+scores for enrolled students. In batch entry, ``score=null`` means an audited
+soft deletion so clearing a cell cannot resurrect an old grade. Notifications
+are sent per affected student after the save/recalculation workflow and announce
+availability without exposing scores or averages outside the parent portal.
+"""
+
 import logging
 from datetime import datetime, timezone
 from uuid import UUID

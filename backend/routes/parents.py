@@ -1,3 +1,12 @@
+"""Manage parent profiles, active student links, and score-only parent access.
+
+Every parent-facing student lookup requires an active profile, active link, and
+active student. Mid-trimester grades expose individual scored items for any
+canonical term in the latest school year, never CourseResult averages. Profile
+deletion is blocked by active links and invalidates sessions; restoring the
+profile does not revive its old JWTs.
+"""
+
 import logging
 import secrets
 from datetime import datetime, timezone

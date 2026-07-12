@@ -1,3 +1,11 @@
+"""Generate constrained, parent-friendly advisory text from bulletin snapshot data.
+
+The prompt forbids invented facts, recalculation, and unsupported behavioral or
+personal judgments. Scale labels are explicit so legacy /100 and current /20
+values are not confused. Output is screen-only assistance: it is not an
+academic calculation and never belongs in the official PDF.
+"""
+
 import os
 
 

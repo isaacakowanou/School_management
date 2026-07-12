@@ -1,3 +1,11 @@
+"""Expose advisory AI checks and screen-only summaries without changing official grades.
+
+Teachers may check only students reached through their active courses, while
+summary generation operates on the latest draft snapshot. Rechecking replaces
+stored warnings so they describe current data rather than accumulating history;
+AI output remains advisory and never changes bulletin status or PDF content.
+"""
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status

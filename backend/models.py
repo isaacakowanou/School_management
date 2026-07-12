@@ -1,3 +1,20 @@
+"""Relational persistence model for school records, snapshots, security, and Trash.
+
+Academic/setup entities use ``deleted_at`` and optional ``deleted_batch_id`` so
+normal queries can hide recoverable data while Nettoyage restores dependency
+bundles. Bulletin courses and assessment rows are snapshots: they preserve the
+official document instead of following later live-grade edits. Relationship
+cascades are intentionally limited; permanent purge computes an explicit
+child-first plan rather than trusting broad ORM cascades around academic data.
+
+``User.token_version`` is the global JWT invalidation counter, and password
+reset tokens bind to that version. Audit actors are nullable because failed
+login and anti-enumeration recovery events occur before identity is proven.
+Several enums remain validated application strings rather than database enums
+to keep SQLite and Postgres behavior aligned; corresponding schemas/constants
+own the closed vocabularies.
+"""
+
 import uuid
 from datetime import date, datetime
 

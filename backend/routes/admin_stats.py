@@ -1,3 +1,13 @@
+"""Compute the admin dashboard's live, soft-delete-aware school summary.
+
+GGFK has canonical trimester values but no persisted "current term" setting.
+The dashboard therefore selects the latest active school year, then the latest
+canonical trimester with real grade/result/report activity, falling back to the
+first trimester when the year has no activity. Counts use SQL aggregates and
+exclude trashed profiles, students, classes, courses, and bulletins so cleanup
+does not leave misleading dashboard totals.
+"""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import case, func, select, union_all
 from sqlalchemy.orm import Session

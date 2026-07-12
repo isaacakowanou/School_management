@@ -1,3 +1,11 @@
+"""Manage teacher profiles, generated credentials, and assigned-course visibility.
+
+Teacher creation uses a temporary forced-change credential and reports delivery
+outcomes to the admin. Self-read access is limited to the matching profile;
+course lists exclude trashed courses. Deletion is blocked while active courses
+or submitted academic data depend on the teacher and invalidates existing JWTs.
+"""
+
 import logging
 import secrets
 from datetime import datetime, timezone

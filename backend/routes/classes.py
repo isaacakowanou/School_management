@@ -1,3 +1,11 @@
+"""Manage GGFK classes and class-wide setup operations.
+
+Bulk creation is anchored to the locked bilingual taxonomy, while bulk
+enrollment previews the exact missing links before creating them idempotently.
+Class deletion remains guarded by active students/courses and uses recoverable
+soft deletion because class ownership affects broad academic history.
+"""
+
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 

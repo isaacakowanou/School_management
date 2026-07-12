@@ -1,3 +1,13 @@
+"""Assemble the FastAPI application and its cross-cutting HTTP boundaries.
+
+Router prefixes are centralized here so route modules describe paths relative
+to one versioned ``/api/v1`` surface. SlowAPI's shared limiter is installed on
+the application, and every FastAPI ``HTTPException`` keeps its existing body
+while gaining ``X-Error-Code`` for frontend localization. That header boundary
+must not replace structured ``detail.code`` or expose raw backend English as UI
+copy; the frontend resolves both to localized messages.
+"""
+
 import config  # noqa: F401
 from fastapi import FastAPI
 from slowapi import _rate_limit_exceeded_handler

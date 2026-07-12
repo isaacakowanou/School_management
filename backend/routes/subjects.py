@@ -1,3 +1,11 @@
+"""Manage the bilingual subject catalog that constrains course setup.
+
+``applicable_classes=null`` deliberately means every class in a level group;
+an empty list is rejected because it would be ambiguous. Class-name matching is
+taxonomy-normalized, and subjects with active courses cannot be deleted. Safe
+deletion is recoverable so catalog references remain available to Trash.
+"""
+
 from datetime import datetime, timezone
 from uuid import UUID
 

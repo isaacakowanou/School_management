@@ -1,3 +1,12 @@
+"""Manage student identity, family links, recoverable deletion, and admin grade views.
+
+Normal lookups reject trashed students, while the separate "any student" lookup
+exists only for restore semantics. Student deletion preserves parent links and
+all academic history; deleted-student views are compatibility/filter surfaces
+over the same recoverable state. Teachers may read only students reached through
+active assigned-course enrollment, and cross-course grade detail is admin-only.
+"""
+
 from datetime import datetime, timezone
 from uuid import UUID
 

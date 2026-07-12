@@ -1,3 +1,19 @@
+"""Transactional email delivery and parent notification dispatch.
+
+Resend is the launch email path, with SMTP retained as an environment-selected
+fallback. A ``resend.dev`` sender is test mode and can reach only the Resend
+account-owner inbox; production delivery needs DNS verification and a school
+``EMAIL_FROM`` value, not code changes. Credential emails intentionally contain
+plaintext temporary passwords because those credentials are short-lived,
+force a first-login change, and invalidate prior sessions.
+
+Grade-entry notifications name the student/course but expose no score or
+average; bulletin-send notifications link to the approved/sent snapshot.
+Averages remain inside authenticated bulletins, never notification bodies.
+Dispatch targets only active parent links and profiles and returns structured
+per-channel outcomes so callers can distinguish delivery from state changes.
+"""
+
 import os
 import smtplib
 from email.message import EmailMessage
@@ -241,6 +257,8 @@ def send_report_available_email(
 
 
 def _build_account_created_body(name: str, email: str, temp_password: str, app_base_url: str) -> str:
+    # Plaintext is limited to the generated forced-change credential. Do not
+    # reuse this channel for permanent passwords or write the value to logs.
     return "\n".join(
         [
             f"Dear {name},",
@@ -470,6 +488,9 @@ def send_grades_notification(db: Session, course: Course, student: Student) -> l
 
     student_name = f"{student.first_name} {student.last_name}"
 
+    # Notify once per affected student in the grade-entry workflow. The portal
+    # is the disclosure boundary for scores; neither scores nor averages enter
+    # email/SMS payloads.
     parents = db.scalars(
         select(Parent)
         .join(StudentParent, StudentParent.parent_id == Parent.id)

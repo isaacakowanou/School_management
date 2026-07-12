@@ -1,3 +1,12 @@
+"""Append-only construction helper for operational and authentication audit rows.
+
+Callers own transaction boundaries so an audit row commits atomically with the
+action it describes. Values are normalized to JSON-safe UUID/date strings.
+``actor_user_id`` may be null for security events where no identity is proven,
+notably failed login and anti-enumeration reset requests; see the auth module for
+why those events must not manufacture or disclose an actor.
+"""
+
 from datetime import date, datetime
 from uuid import UUID
 

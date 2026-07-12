@@ -1,3 +1,14 @@
+"""Optional OTP and messaging adapter for phone delivery.
+
+The current implementation targets Twilio Verify plus Twilio SMS/WhatsApp, but
+the production provider decision is still pending and Africa's Talking is the
+planned direction. Treat this module as an adapter, not a settled launch
+dependency. Missing provider configuration fails delivery safely rather than
+blocking core school records. Messages announce grades or bulletins without
+including scores or averages; temporary credentials are the sole intentional
+plaintext secret because first login forces their replacement.
+"""
+
 import logging
 import os
 from uuid import UUID
@@ -126,7 +137,7 @@ def send_account_created_sms(
     temp_password: str,
     config: dict | None = None,
 ) -> list[dict]:
-    """Notify a newly-created user of their temporary password via SMS + WhatsApp."""
+    """Notify a newly-created user of their forced-change credential."""
     try:
         cfg = config or _get_twilio_config()
     except ValueError as exc:

@@ -1,5 +1,9 @@
-// Tiny fetch wrapper: prefixes /api/v1, attaches the JWT, normalizes errors,
-// and signals global 401s so the app can log out.
+// Authentication/error boundary for every frontend API call. Callers replace
+// the stored JWT with fresh tokens returned after login/password changes.
+// detail.code takes precedence over X-Error-Code, and both resolve through the
+// active locale; raw backend English stays diagnostic-only and an unmapped or
+// absent code becomes localized request_failed. Authenticated 401s clear the
+// token globally, while login 401s remain ordinary invalid-credential errors.
 
 import i18n from '../i18n.js'
 
@@ -11,6 +15,8 @@ export function getToken() {
 }
 
 export function setToken(token) {
+  // Replacement, rather than token accumulation, is required by the backend's
+  // token_version session-kill contract after password changes.
   if (token) localStorage.setItem(TOKEN_KEY, token)
   else localStorage.removeItem(TOKEN_KEY)
 }

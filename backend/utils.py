@@ -1,3 +1,11 @@
+"""Shared active-entity lookups and stable API response adapters.
+
+The lookup helpers intentionally treat soft-deleted rows as absent so callers
+cannot accidentally re-expose Corbeille data through an otherwise normal route.
+Response adapters centralize relationship-derived labels and default statistics;
+they do not authorize access, which remains the owning route's responsibility.
+"""
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status

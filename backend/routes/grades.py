@@ -150,6 +150,9 @@ def notify_grades(
         ).all()
     )
 
+    # This endpoint follows successful save/recalculation and batches delivery
+    # by affected student. It announces availability only; exposing an average
+    # here would bypass the approved-bulletin publication boundary.
     notified = 0
     for student_id in payload.student_ids:
         if student_id not in enrolled_ids:

@@ -1,3 +1,12 @@
+"""Admin API for the unified Corbeille and its irreversible purge actions.
+
+Every listing first performs the lazy 30-day retention sweep, then returns both
+batch and standalone entries from ``services.trash``. ``entity_type`` is a
+filtered view of that same source, which keeps per-entity deleted pages aligned
+with the main bin. Restore is recoverable; DELETE endpoints are explicit,
+audited hard deletes and therefore return 404 on any later restore attempt.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -36,6 +45,8 @@ def _entry_response(entry) -> TrashEntryResponse:
 
 
 def _auto_purge(db: Session, current_user: User) -> None:
+    # BackgroundTasks cannot schedule daily work after a process sleeps or
+    # restarts, so access-triggered cleanup is the reliable scheduler-free path.
     counts = purge_expired_entries(db, current_user=current_user)
     if counts:
         db.commit()

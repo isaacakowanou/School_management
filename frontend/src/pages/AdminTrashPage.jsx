@@ -1,3 +1,7 @@
+// Unified Corbeille UI: batch deletions and standalone soft-deletes arrive in
+// one response, while entity-specific deleted pages request filtered views of
+// that same API. Restore is recoverable; purge/empty confirmations are styled
+// and explicit because those actions permanently remove the selected trees.
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { emptyTrash, listTrash, purgeTrashEntry, restoreTrashEntry } from '../api/trash.js'

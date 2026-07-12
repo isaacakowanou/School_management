@@ -1,3 +1,15 @@
+"""Owner Nettoyage preview and recoverable cascade-to-trash operations.
+
+Nettoyage is not a hard-delete API: it computes a dependency plan, requires
+typed confirmation, tags every selected row with one ``DeletionBatch``, and
+leaves restoration to the unified Corbeille. Production requires the explicit
+``ENABLE_DANGER_ZONE`` opt-in. Student/class/parent boundaries are deliberately
+conservative so a broad setup cleanup does not silently include unrelated
+people. Trashing teacher/parent profiles invalidates their sessions through the
+token-version mechanism documented in ``auth.py``; restore never resurrects an
+old JWT.
+"""
+
 import os
 from datetime import datetime, timezone
 from uuid import UUID
@@ -498,6 +510,8 @@ def _mark_plan(db: Session, plan: dict[str, set[UUID]], *, batch_id: UUID, delet
         for row in rows:
             row.deleted_at = deleted_at
             row.deleted_batch_id = batch_id
+            # See auth.py for the token-version contract. Restoring the profile
+            # clears trash fields only; previously issued sessions stay dead.
             if isinstance(row, (Teacher, Parent)):
                 invalidate_user_sessions(row.user)
         counts[table] = len(rows)

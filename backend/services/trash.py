@@ -1,3 +1,21 @@
+"""Unified Corbeille listing, restore, retention, and permanent purge logic.
+
+The bin deliberately merges two existing sources: recoverable
+``DeletionBatch`` bundles created by Nettoyage and unbatched rows whose
+``deleted_at`` is set without a batch id. Reading both avoided migrating old
+soft-deletes or rewriting the already-working batch restore path; entity pages
+such as deleted students are filters over this same service.
+
+Unbatched child restoration validates that required parents are active, because
+restoring an orphan would make normal routes inconsistent. Permanent purge is
+child-first, restricted to IDs in the selected deleted entry's plan, and wrapped
+in a nested transaction per entry. Purged entries have no recovery path.
+Retention is 30 days from ``deleted_at``; restore clears that clock, and a later
+deletion starts a fresh window. Cleanup is lazy on Corbeille access because the
+app has no scheduler (FastAPI BackgroundTasks are request-bound); indexed
+``deleted_at`` columns keep the sweep bounded.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -207,6 +225,9 @@ def _deleted_rows_query(table: str, model):
 
 
 def list_trash_entries(db: Session, *, entity_type: str | None = None) -> list[TrashEntry]:
+    # Do not collapse this into one source unless historical soft-deletes are
+    # migrated first: batch rows and standalone deleted rows have different,
+    # already-proven restore semantics but intentionally share one UI/API.
     entries: list[TrashEntry] = []
     batches = db.scalars(
         select(DeletionBatch)
@@ -277,6 +298,9 @@ def _restore_conflict(parent_label: str) -> None:
 
 
 def validate_restore_dependencies(row) -> None:
+    # A soft-deleted child may be individually visible in Corbeille even while
+    # its parent remains deleted. Returning 409 preserves referential meaning
+    # and tells the admin to restore the ownership chain first.
     if isinstance(row, Student) and row.school_class is not None and row.school_class.deleted_at is not None:
         _restore_conflict("class")
     if isinstance(row, Course):
@@ -463,6 +487,9 @@ def _counts_from_plan(plan: dict[str, set[UUID]]) -> dict[str, int]:
 
 
 def purge_plan(db: Session, plan: dict[str, set[UUID]]) -> dict[str, int]:
+    # PURGE_ORDER is child-first to satisfy foreign keys. Only precomputed IDs
+    # belonging to this deleted entry are touched; do not broaden these queries
+    # to relationship-wide deletes that could consume active school data.
     counts: dict[str, int] = {}
     for table in PURGE_ORDER:
         ids = plan.get(table) or set()
@@ -503,6 +530,8 @@ def purge_entry(db: Session, *, entry_id: str, current_user: User, audit_action:
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found") from exc
 
+    # One savepoint per entry prevents a failed cascade from leaving a partially
+    # purged tree while still allowing empty-trash/retention sweeps to iterate.
     with db.begin_nested():
         if source == "batch":
             label, counts = purge_batch_entry(db, batch_id=entity_id)
@@ -524,6 +553,8 @@ def purge_entry(db: Session, *, entry_id: str, current_user: User, audit_action:
 
 
 def purge_expired_entries(db: Session, *, current_user: User) -> dict[str, int]:
+    # The retention clock is the entry's deleted_at, not batch creation or last
+    # access. restore clears deleted_at, so re-deletion naturally gets 30 days.
     cutoff = _now() - timedelta(days=RETENTION_DAYS)
     expired = [entry for entry in list_trash_entries(db) if entry.deleted_at < cutoff]
     aggregate: dict[str, int] = {}

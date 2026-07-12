@@ -1,3 +1,12 @@
+"""Admin read API for the append-only audit journal.
+
+Operational events are the default so high-volume login activity does not bury
+school actions. Authentication and all-event views remain explicit filters;
+nothing is silently discarded. Null actors are valid for anonymous failed-login
+and recovery requests, while authenticated actions resolve the linked user when
+that account still exists.
+"""
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends

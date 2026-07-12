@@ -1,3 +1,7 @@
+// Shared parent/teacher/admin settings flow. Role controls only the shell and
+// editable profile fields (admins have no phone profile); password changes use
+// the same current-password API, whose fresh JWT replaces this device's token
+// while the backend invalidates every other session.
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'

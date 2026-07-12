@@ -1,3 +1,20 @@
+"""Official bulletin lifecycle, class-level processing, and publication routes.
+
+Bulletins are immutable academic snapshots with a controlled state machine:
+``draft -> approved -> sent`` plus ``needs_review``. Editing conduct, work
+habits, or comments after approval persists ``needs_review`` because the stored
+document must never silently diverge from what staff approved or parents
+received. Newer course results derive the same review state for list views.
+Recovery is regeneration back to a draft, followed by approval and sending;
+human-entered details survive regeneration while computed course rows do not.
+
+Parents can read only approved/sent snapshots, so moving a sent bulletin to
+``needs_review`` intentionally withdraws it. Staleness guards block approving
+or sending obsolete snapshots unless an admin explicitly acknowledges the
+override. Class batch actions and asynchronous merged PDFs support the Conseil
+de classe workflow, where the school processes a whole class each trimester.
+"""
+
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -193,6 +210,12 @@ def _course_result_key(student_id: UUID, term: str, school_year: str) -> tuple[U
 
 
 def _report_needs_review(report_card: ReportCard, latest_calculated_at: datetime | None) -> bool:
+    """Unify persisted content edits and derived grade staleness for admin UI.
+
+    Keep this as the single list/class-view interpretation; otherwise the same
+    bulletin could receive different badges or filters depending on whether a
+    human field or a course result caused re-review.
+    """
     if report_card.status == REVIEW_REQUIRED_STATUS:
         return True
     if report_card.status not in PARENT_VISIBLE_STATUSES:
@@ -286,6 +309,8 @@ def ensure_report_student_active(report_card: ReportCard) -> None:
 
 
 def ensure_report_is_draft(report_card: ReportCard) -> None:
+    # needs_review cannot be re-approved in place. Regeneration must first
+    # create a fresh computed snapshot and deliberately return it to draft.
     if report_card.status != "draft":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft reports can be reviewed")
 
@@ -296,6 +321,8 @@ def ensure_report_can_be_sent(report_card: ReportCard) -> None:
 
 
 def update_report_summary(report_card: ReportCard, payload: ReportReviewUpdate) -> tuple[str | None, str | None]:
+    # ai_summary is screen-only assistance and is not rendered on the official
+    # PDF. Its edits intentionally do not invalidate approval or sending.
     old_summary = report_card.ai_summary
     if "ai_summary" in payload.model_fields_set:
         report_card.ai_summary = payload.ai_summary
@@ -357,6 +384,8 @@ def _create_report_card(db: Session, student_id: UUID, term: str, school_year: s
     build_report_card_data) for missing students or missing course results;
     flushes but does NOT commit — the caller owns the transaction.
     """
+    # Snapshot now rather than recomputing on read: an approved official
+    # document must retain exactly the figures that were reviewed.
     report_data = build_report_card_data(db, student_id, term, school_year)
 
     report_card = ReportCard(
@@ -488,6 +517,12 @@ def _stale_report_student(report_card: ReportCard, staleness) -> StaleReportStud
 
 
 def _ensure_report_snapshot_fresh_or_allowed(db: Session, report_card: ReportCard, allow_stale: bool) -> None:
+    """Require current snapshot data or an explicit admin override.
+
+    A 409 lets the UI show the old/new context before retrying with the override;
+    silently recomputing here would change the official document being approved
+    or sent without returning it through draft review.
+    """
     staleness = get_report_card_staleness(db, report_card)
     if not staleness.is_stale or allow_stale:
         return
@@ -531,6 +566,9 @@ def generate_report_card(
 
 
 # --- Conseil de classe: class-scoped status + batch actions -----------------
+# GGFK closes each of three trimesters as a class-level ceremony. These routes
+# intentionally mirror the single-student guards while removing repetitive
+# per-student clicks; batch convenience must never weaken snapshot integrity.
 # NOTE: these are static paths and must stay declared before the /{report_id}
 # routes further down, or FastAPI tries to parse them as report UUIDs.
 
@@ -659,7 +697,8 @@ def batch_generate_reports(
 ) -> ClassReportBatchGenerateResponse:
     """Generate draft report cards for every student of the class who has
     course results for the term and no report card yet. One transaction —
-    a class generates atomically or not at all."""
+    a class generates atomically or not at all because Conseil de classe should
+    not leave an ambiguous half-generated class after a database failure."""
     get_class_or_404(db, payload.class_id)
     term = payload.term.value
     students = _class_students(db, payload.class_id)
@@ -900,8 +939,10 @@ def _class_pdf_reports(db: Session, class_id: UUID, term: str, school_year: str)
 def _run_class_pdf_job(job_id: UUID) -> None:
     """Background task: render + merge every bulletin of the class.
 
-    Runs after the response is sent, so it opens its own session — the
-    request-scoped one is already closed.
+    Runs after the response is sent because WeasyPrint time scales with class
+    size and can outlive an HTTP request. It opens its own session because the
+    request-scoped one is already closed. Each page is rebuilt from the stored
+    approved/sent snapshot, never from current live grades.
     """
     db = SessionLocal()
     try:
@@ -1285,6 +1326,9 @@ def regenerate_report_card(
         ],
     }
 
+    # Replace only computed course snapshot data. Conduct, work habits, all four
+    # comments, and ai_summary are human input and deliberately survive the
+    # needs_review -> regenerate -> draft recovery path.
     for course in db.scalars(
         select(ReportCardCourse).where(ReportCardCourse.report_card_id == report_card.id)
     ).all():
@@ -1394,6 +1438,9 @@ def update_report_details(
     new_value = _report_details_snapshot(report_card)
     if new_value != old_value:
         changed_categories = _changed_report_detail_categories(old_value, new_value)
+        # Withdrawal is intentional: a sent document edited after delivery is
+        # no longer the approved parent-facing artifact. Regenerate/re-approve/
+        # re-send is the only route that publishes the revised content again.
         if old_status in PARENT_VISIBLE_STATUSES:
             report_card.status = REVIEW_REQUIRED_STATUS
         create_audit_log(
@@ -1425,8 +1472,9 @@ def download_report_pdf(
     report_card = get_report_card_or_404(db, report_id)
     ensure_can_view_report(db, current_user, report_card)
 
-    # Regenerate the PDF in memory from the stored snapshot so download does not
-    # depend on a local file existing (deployment-safe). pdf_url is left untouched.
+    # Regenerate bytes from the stored snapshot, never live CourseResults: an
+    # official PDF must remain reproducible after later grade changes. This also
+    # avoids deployment-local file state; pdf_url is left untouched.
     report_data = build_report_card_data_from_report_card(db, report_card)
     pdf_bytes = render_report_card_pdf_bytes(report_data)
     filename = _build_pdf_filename(report_data)

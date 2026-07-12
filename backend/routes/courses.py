@@ -383,6 +383,8 @@ def preview_advance_term(
 
     Warnings are informational only — the POST never blocks on them. The
     counts show how complete each course's CLOSING term is before the switch.
+    This is a Conseil de classe operation rather than ordinary course editing:
+    GGFK advances the school's courses together at each trimester boundary.
     """
     courses = db.scalars(
         select(Course)
@@ -469,7 +471,9 @@ def advance_term(
 
     Idempotent: courses already on the target term are skipped. Warnings from
     the preview never block — the school calendar wins. Backward moves are
-    allowed (mistake recovery) and audit-logged like any other change.
+    allowed for mistake recovery and audit-logged like any other change. Do not
+    turn readiness warnings into a hard gate; incomplete grade/bulletin guards
+    already protect official outputs while the calendar must still advance.
     """
     target = payload.target_term.value
     courses = db.scalars(

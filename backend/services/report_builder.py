@@ -160,6 +160,15 @@ def _current_courses_by_id(report_data: dict) -> dict[UUID, dict]:
 
 
 def get_report_card_staleness(db: Session, report_card: ReportCard) -> ReportCardStaleness:
+    """Compare an official snapshot with the result set available now.
+
+    Persisted ``needs_review`` is stale even when numeric values match because
+    human-authored bulletin content changed after approval/sending. For other
+    statuses, compare snapshot totals, course membership, course averages, and
+    letters; inability to rebuild current data is also stale, not "unchanged".
+    This conservative rule prevents obsolete or incomplete academic data from
+    being re-approved merely because comparison data disappeared.
+    """
     if report_card.status == REVIEW_REQUIRED_STATUS:
         return ReportCardStaleness(
             is_stale=True,

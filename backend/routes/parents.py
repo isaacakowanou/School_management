@@ -285,7 +285,9 @@ def list_current_parent_student_grades(
 
     # Parent mid-trimester access intentionally exposes atomic scores only.
     # Do not join CourseResult or add aggregates here: running averages and
-    # rankings become parent-visible only through approved bulletin snapshots.
+    # rankings become parent-visible only through the approved/sent bulletin
+    # pipeline. A withdrawn needs_review bulletin is therefore not replaceable
+    # by a live-average back door on this endpoint.
     grades = db.scalars(
         select(Grade)
         .join(Grade.grade_item)

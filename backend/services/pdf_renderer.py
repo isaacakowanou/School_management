@@ -1,8 +1,11 @@
-"""WeasyPrint HTML -> PDF renderer for the GGFK Collège bulletin (A1.7b).
+"""WeasyPrint entry points for single and merged official bulletins (A1.7b).
 
 Thin wrapper: report_data dict -> Jinja template -> WeasyPrint -> bytes. No disk
 access, no file storage. The logo is embedded as a base64 data URI and skipped
-gracefully if the asset is missing.
+gracefully if the asset is missing. Callers provide stored snapshot data so PDF
+downloads remain reproducible after grades change. The template intentionally
+omits screen-only ``ai_summary`` and course coefficients; do not add either to
+the official layout without an explicit school-format decision.
 """
 import base64
 import re
@@ -60,7 +63,8 @@ def render_class_bulletins_pdf_bytes(report_data_list: list[dict]) -> bytes:
 
     WeasyPrint documents merge natively (Document.copy over concatenated
     pages), so a class print run needs no extra dependency and no template
-    changes — each bulletin keeps its own @page layout.
+    changes — each bulletin keeps its own @page layout. Rendering is invoked by
+    a background job because cost grows with the number of students.
     """
     if not report_data_list:
         raise ValueError("report_data_list cannot be empty")

@@ -1,3 +1,13 @@
+"""Calculate and persist complete per-course trimester results.
+
+The route selects one grading engine per course: notation béninoise for
+French-track Collège courses, weighted items otherwise. Beninese calculation
+requires Interro(s), exactly one Devoir, and exactly one Composition for the
+course's canonical trimester. Missing student scores mean "not computable",
+never zero: recalculation skips that student and invalidates any stale result so
+bulletins cannot silently reuse an average built from old grades.
+"""
+
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -83,6 +93,9 @@ def validate_course_grade_items(grade_items: list[GradeItem], beninese: bool, te
             detail=f"Course has no grade items for {term}",
         )
 
+    # Shape validation is repeated at calculation time because historical or
+    # imported rows may bypass today's create-route guard. Otherwise the
+    # Ministry formula could run over a mixed or incomplete item set.
     if beninese:
         interros = [item for item in grade_items if item.item_type == "INTERRO"]
         devoirs = [item for item in grade_items if item.item_type == "DEVOIR"]
@@ -263,6 +276,9 @@ def calculate_results_for_students(
         grades_by_item_id = {grade.grade_item_id: grade for grade in grades}
         missing_grade_items = [item for item in grade_items if item.id not in grades_by_item_id]
 
+        # Missing is not zero. Keeping an earlier CourseResult here would make
+        # it disagree with current grades and could leak a stale average into a
+        # newly generated bulletin, so incomplete input invalidates the result.
         if missing_grade_items:
             existing_results = get_term_equivalent_course_results(
                 db,

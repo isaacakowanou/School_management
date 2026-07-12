@@ -1,3 +1,12 @@
+"""Manage grade-item definitions while protecting grading-mode invariants.
+
+French-track Collège courses use notation béninoise and accept only Interro,
+Devoir, and Composition items. Those items have no custom category or weight,
+and each trimester has exactly one Devoir and one Composition; allowing foreign
+types would make the Ministry formula ambiguous. Non-Beninese courses retain
+the legacy weighted-item path and cannot set a Beninese ``item_type``.
+"""
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -122,6 +131,9 @@ def create_grade_item(
 
     beninese = is_beninese_mode(course)
 
+    # This branch is the product boundary that prevents Homework/Exam/Project
+    # categories from entering a Ministry-formula course. Do not relax it to
+    # make mixed demo data save successfully; mixed modes cannot be calculated.
     if beninese:
         if payload.item_type is None:
             raise HTTPException(

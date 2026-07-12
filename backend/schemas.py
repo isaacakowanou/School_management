@@ -1,9 +1,14 @@
-"""Shared API schemas, including the universal password-setting policy.
+"""Shared API schemas and closed vocabularies for security and grading.
 
 All request models that can create or replace a password delegate to
 ``validate_password_strength``. Keeping the minimum length and non-whitespace
 rule here prevents privileged update routes, forced changes, and recovery flows
 from drifting into weaker policies than ordinary account creation.
+
+Grading writes use closed enums for GGFK's three canonical trimesters,
+Beninese Interro/Devoir/Composition item types, and nine letter grades. Keeping
+these as schemas prevents new API writes from recreating the legacy free-text
+term drift audited by ``scripts/count_legacy_terms.py``.
 """
 
 from datetime import date, datetime
@@ -50,14 +55,16 @@ class SubjectLevelGroup(str, Enum):
 
 
 class GradeItemType(str, Enum):
+    # Notation béninoise is intentionally closed to these three Ministry
+    # components. Weighted-course categories use ``category`` instead.
     INTERRO = "INTERRO"
     DEVOIR = "DEVOIR"
     COMPOSITION = "COMPOSITION"
 
 
 class LetterGrade(str, Enum):
-    # BISC 9-letter grade codes (A1.3). Single source of truth for the conduct /
-    # work-habit dropdowns; the frontend constant mirrors these values.
+    # GGFK /20 nine-letter bands (A1.3). Conduct and work habits select these
+    # codes directly; academic courses derive them from numeric /20 results.
     A_PLUS = "A+"
     A = "A"
     B_PLUS = "B+"

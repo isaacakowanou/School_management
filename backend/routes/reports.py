@@ -65,6 +65,9 @@ from utils import get_class_or_404, get_report_card_or_404
 
 
 router = APIRouter(tags=["reports"])
+# This is the publication boundary for averages and rankings. Parents may see
+# individual grade-item scores mid-trimester, but only approved/sent snapshots
+# expose calculated averages; draft/needs-review reports remain staff-only.
 PARENT_VISIBLE_STATUSES = {"approved", "sent"}
 REVIEW_REQUIRED_STATUS = "needs_review"
 

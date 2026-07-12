@@ -1,3 +1,20 @@
+"""Build immutable bulletin snapshots and compare them with current results.
+
+The builder consumes completed ``CourseResult`` rows rather than live grade
+items, normalizes historical values to /20, and freezes the values parents
+later receive in approved bulletins. It keeps French, English, and bilingual
+averages separate because GGFK operates parallel language tracks; bilingual is
+the equal blend of the two track averages and is absent until both exist.
+Conduct and work-habit letter assessments are snapshot domains distinct from
+numeric course averages.
+
+Courses are coefficient-weighted within each track and in the overall average
+when an admin configures coefficients; coefficient 1 preserves equal weight,
+which is the effective state of all current courses. Coefficients remain
+calculation metadata and are intentionally absent from the printed bulletin,
+matching the school's official format. Do not add a printed ``Coef`` column.
+"""
+
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -83,7 +100,10 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
     course_averages = [course["average"] for course in courses]
     coefficients = [course["coefficient"] for course in courses]
 
-    # A1.6 three averages, coefficient-weighted within each language track.
+    # A1.6 three parallel-track averages. Admin-configured coefficients apply
+    # here; coefficient 1 is deliberately ordinary equal weight. The reference
+    # coefficient catalog guides upper-class setup but is not auto-loaded,
+    # because the admin owns each course's configuration.
     # Untagged (null-language_group) courses are excluded from track averages.
     def _group_average(group: str) -> float | None:
         group_courses = [c for c in courses if c["language_group"] == group]
@@ -97,9 +117,9 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
     french_average = _group_average(LanguageGroup.FRENCH.value)
     english_average = _group_average(LanguageGroup.ENGLISH.value)
     if french_average is not None and english_average is not None:
-        # Bilingual = equal-weight blend of the two already-weighted track
-        # averages. The coefficient weighting is internal to each track;
-        # the two tracks themselves carry equal institutional weight.
+        # The two language tracks carry equal institutional weight. Averaging
+        # every course together would let the track with more subjects dominate
+        # and would no longer represent GGFK's parallel-track design.
         bilingual_average = calculate_overall_average([french_average, english_average])
     else:
         bilingual_average = None

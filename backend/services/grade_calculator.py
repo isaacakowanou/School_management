@@ -1,4 +1,16 @@
-"""Deterministic grade calculation helpers."""
+"""Deterministic implementations of GGFK's numeric grading rules.
+
+Numeric course grades are normalized and stored on a /20 scale. French-track
+Collège courses use the Benin Ministry of Education formula: average all
+Interros into ``Moy_Int``, average ``Moy_Int`` with the Devoir into ``MCC``,
+then average ``MCC`` with the Composition into the trimester ``Moy``. This
+chain is a school-domain requirement, not a weighting scheme to simplify or
+rebalance. Other courses retain the separate weighted-item calculation.
+
+The resulting /20 value maps to GGFK's nine academic letter bands
+(A+/A/B+/B/C+/C/D/E/F). Conduct and work habits use the same set of letter
+codes as direct assessments, but remain separate from numeric course grades.
+"""
 
 
 WEIGHT_TOLERANCE_MIN = 0.999
@@ -124,9 +136,16 @@ def is_beninese_mode(course) -> bool:
 
 
 def calculate_beninese_average(interros, devoir, composition):
-    """Beninese Moy_Int → MCC → Moy formula on the /20 scale.
+    """Apply the official Beninese Moy_Int -> MCC -> Moy chain on /20.
 
     Each item must be a dict or object with score and max_score fields.
+    Step 1: Moy_Int = arithmetic mean of every Interro.
+    Step 2: MCC = (Moy_Int + Devoir) / 2.
+    Step 3: Moy = (MCC + Composition) / 2.
+
+    These nested equal means are the Benin Ministry convention implemented for
+    GGFK. Do not flatten the inputs or assign direct weights to Interros,
+    Devoir, and Composition; that would produce a different official result.
     Returns (moy, moy_int, mcc), all rounded to 2 decimal places.
     """
     if not interros:

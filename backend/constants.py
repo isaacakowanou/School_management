@@ -1,9 +1,14 @@
-"""Reference data for report-card conduct and work-habit items (A1.7a).
+"""Canonical GGFK school taxonomy and bulletin reference data.
 
-Each item is ``(item_key, label_en, label_fr)``. ``item_key`` is what gets
-stored in the ``report_conduct_items`` / ``report_work_habit_items`` tables; the
-labels are display data owned by the backend and returned in the report
-response so the admin UI never has to duplicate them.
+This module owns the locked Nursery/Primary/Collège class taxonomy, bilingual
+French/JSS naming, second-cycle C/D streams, the nine-letter /20 grading key,
+conduct/work-habit definitions, and the three canonical trimester strings.
+Term-bearing tables must use exactly ``1er Trimestre``, ``2ème Trimestre``, or
+``3ème Trimestre``; ``scripts/count_legacy_terms.py`` audits historical drift.
+
+Conduct and work-habit items store letter assessments directly. They share the
+A+/A/B+/B/C+/C/D/E/F vocabulary with academic results but are not numeric
+course grades and must not feed course-average calculations.
 """
 
 import unicodedata
@@ -33,7 +38,10 @@ WORK_HABIT_ITEM_KEYS = [key for key, _, _ in WORK_HABIT_ITEMS]
 
 # --- A1.9 Subject catalog reference data ---
 
-# Locked 18-class GGFK taxonomy (A1.8/A1.10). Single source of truth: the
+# Locked 18-class GGFK taxonomy (A1.8/A1.10). Nursery, Primary, and Collège
+# are distinct school stages; Collège uses dual French/English names and C/D
+# streams at 1ère/Terminale. These are school-owned names, not display aliases
+# that may be freely consolidated. Single source of truth: the
 # subject level-group mapping derives from it and the bulk-create action seeds
 # from it. name_en is the anglophone track name printed on the bulletin header
 # (e.g. "JSS4/3eme"); nursery and primary bulletins print the French name only,
@@ -119,7 +127,9 @@ GRADING_KEY_LEGEND = (
     "C+ = 12-11; C = 10-9; D = 8-7; E = 6-4; F = 3-0"
 )
 
-# Canonical GGFK trimester term values; list position == trimester number.
+# Exactly three canonical cycles per school year. Persist only these strings;
+# aliases below exist solely to recognize legacy data, not to permit new labels.
+# scripts/count_legacy_terms.py provides the read-only production drift audit.
 TRIMESTER_TERMS = ["1er Trimestre", "2ème Trimestre", "3ème Trimestre"]
 FINAL_TRIMESTER_NUMBER = len(TRIMESTER_TERMS)  # 3
 

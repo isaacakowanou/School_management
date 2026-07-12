@@ -283,6 +283,9 @@ def list_current_parent_student_grades(
     if selected_term not in TRIMESTER_TERMS:
         raise HTTPException(status_code=422, detail="term must be a canonical trimester")
 
+    # Parent mid-trimester access intentionally exposes atomic scores only.
+    # Do not join CourseResult or add aggregates here: running averages and
+    # rankings become parent-visible only through approved bulletin snapshots.
     grades = db.scalars(
         select(Grade)
         .join(Grade.grade_item)

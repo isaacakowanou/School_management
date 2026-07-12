@@ -1,5 +1,20 @@
 # GGFK System Documentation
 
+## Grading and School Domain Rules
+
+- GGFK uses three canonical terms per school year: `1er Trimestre`, `2ème Trimestre`, and `3ème Trimestre`. All new term-bearing writes use these exact values; `backend/scripts/count_legacy_terms.py` is the read-only audit for legacy labels.
+- Numeric course grades are normalized to `/20` and map to the nine-letter scale `A+ / A / B+ / B / C+ / C / D / E / F`. Conduct and work habits use letter assessments separately and never enter numeric course calculations.
+- French-track Collège courses use the Benin Ministry notation-béninoise chain: `Moy_Int = mean(Interros)`, `MCC = mean(Moy_Int, Devoir)`, and trimester `Moy = mean(MCC, Composition)`. Only Interro, Devoir, and Composition items are valid in this mode.
+- The bilingual bulletin carries distinct French, English, and bilingual averages. Bilingual is the equal mean of the French and English track averages and remains unavailable until both tracks have a value.
+- GGFK's locked class taxonomy covers Nursery (`maternelle`), Primary (`primaire`), and Collège, with French/JSS dual names in Collège and C/D streams for `1ère` and `Terminale`.
+- Parents may inspect individual scores during a trimester, but running averages and rankings are visible only in approved or sent bulletin snapshots.
+
+### Course Coefficients
+
+- Overall and language-track averages coefficient-weight courses when an admin configures coefficients on the course. A coefficient of `1` means ordinary equal weight, and all current courses use `1`.
+- `backend/ggfk_coefficients.json` is intentional reference data for admins configuring upper classes (`4ème` through `Terminale`); it is not auto-loaded because course setup remains an explicit admin decision.
+- Coefficients affect calculations but are not printed on the bulletin. This matches the school's official bulletin format; do not add a `Coef` column to the PDF.
+
 ## Local Unpushed Work
 
 ### A1.13b — Student Soft-Delete + Restore

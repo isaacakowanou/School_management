@@ -1,3 +1,11 @@
+"""Shared API schemas, including the universal password-setting policy.
+
+All request models that can create or replace a password delegate to
+``validate_password_strength``. Keeping the minimum length and non-whitespace
+rule here prevents privileged update routes, forced changes, and recovery flows
+from drifting into weaker policies than ordinary account creation.
+"""
+
 from datetime import date, datetime
 from enum import Enum
 from typing import Any

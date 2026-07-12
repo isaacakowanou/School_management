@@ -1,3 +1,15 @@
+"""Authentication lifecycle routes for login, profiles, and password recovery.
+
+Login supports email, teacher employee number, and parent phone while preserving
+anti-enumeration: unknown accounts, bad passwords, and trashed profiles receive
+the same generic failure. Voluntary password changes require the current
+password; forced first-login changes and OTP/email resets do not because the
+temporary password, OTP, or reset token has just established identity. Every
+successful password event increments ``token_version`` so old JWTs stop working.
+Email recovery also returns the same response for known, unknown, and trashed
+profiles; trashed profiles receive no token and no email.
+"""
+
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -140,6 +152,8 @@ async def login(request: Request, db: Session = Depends(get_db)) -> LoginRespons
     elif user is not None and user.role == "parent":
         profile = db.scalar(select(Parent).where(Parent.user_id == user.id))
 
+    # A specific "profile deleted" response would disclose account state. Keep
+    # trashed profiles indistinguishable from unknown users and bad passwords.
     if (
         user is None
         or (profile is not None and profile.deleted_at is not None)
@@ -236,6 +250,9 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChangePasswordResponse:
+    # Forced-change users authenticated with a temporary password moments ago;
+    # requiring that same value again adds no proof. Voluntary changes must
+    # verify the current password to protect unattended authenticated sessions.
     if not current_user.must_change_password:
         if not payload.current_password:
             raise HTTPException(
@@ -260,6 +277,8 @@ def change_password(
         new_value={"role": current_user.role},
     )
     db.commit()
+    # The version bump invalidates the request's JWT too. Returning a freshly
+    # versioned token preserves this device while disconnecting all others.
     return ChangePasswordResponse(
         status="ok",
         message="Password changed successfully",
@@ -270,6 +289,8 @@ def change_password(
 
 @router.post("/logout")
 def logout(_: User = Depends(get_current_user)) -> dict[str, str]:
+    # JWT logout is client-side token disposal; server-side global revocation is
+    # reserved for password and profile-trash events via token_version.
     return {"status": "ok", "message": "Logged out"}
 
 
@@ -340,6 +361,9 @@ async def forgot_password(
             entity_id=active_user.id if active_user else uuid.uuid4(),
             new_value={"identifier_type": "email"},
         )
+        # Unknown/trashed users deliberately fall through to the identical
+        # success response. One active token also prevents repeated requests
+        # from flooding a real user's inbox.
         if active_user is not None and not has_active_reset_token(db, active_user):
             raw_token = issue_reset_token(db, active_user)
             try:

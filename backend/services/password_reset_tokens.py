@@ -1,3 +1,12 @@
+"""Issue and validate recoverable email password-reset credentials.
+
+Only SHA-256 digests are stored, so a database leak does not expose usable reset
+links. Tokens are single-use, expire after 45 minutes, and are bound to the
+user's ``token_version`` so any intervening password event invalidates them.
+Issuance replaces the user's prior unused token, and endpoint-driven lazy
+cleanup prevents expired or consumed rows from growing without bound.
+"""
+
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -16,6 +25,7 @@ def _now() -> datetime:
 
 
 def token_digest(raw_token: str) -> str:
+    # The raw bearer secret exists only in the email URL; compare its digest.
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
@@ -30,6 +40,8 @@ def cleanup_reset_tokens(db: Session) -> None:
 
 def issue_reset_token(db: Session, user: User) -> str:
     cleanup_reset_tokens(db)
+    # One unused token per user limits inbox flooding and makes the newest
+    # recovery attempt the only credential worth retaining.
     db.execute(
         delete(PasswordResetToken).where(
             PasswordResetToken.user_id == user.id,
@@ -70,6 +82,8 @@ def get_valid_reset_token(db: Session, raw_token: str) -> PasswordResetToken | N
     expires_at = token.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
+    # Version binding revokes an emailed link after any other password reset or
+    # change, even when the link itself has not expired or been consumed.
     if expires_at <= _now() or token.token_version != token.user.token_version:
         return None
     return token

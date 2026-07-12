@@ -1,3 +1,10 @@
+"""Shared IP rate limiting for authentication and other abuse-prone routes.
+
+The production proxy appends the real client address to ``X-Forwarded-For``;
+using its final entry prevents clients from bypassing login and password-reset
+limits by supplying a rotating spoofed first entry.
+"""
+
 from fastapi import Request
 from slowapi import Limiter
 

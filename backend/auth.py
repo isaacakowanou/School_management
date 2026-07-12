@@ -1,3 +1,13 @@
+"""Authentication primitives and the server-side session security boundary.
+
+JWTs carry the user's current ``token_version`` in a ``ver`` claim and are
+accepted only while that claim matches the database. Every password event
+increments the version, providing a global session kill without maintaining a
+token denylist. The authenticated-user dependency also enforces forced password
+changes and rejects trashed teacher/parent profiles on every request; frontend
+redirects and login-time checks are defense-in-depth, not the security boundary.
+"""
+
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -63,6 +73,7 @@ def create_user_access_token(user: User) -> str:
 
 
 def invalidate_user_sessions(user: User) -> None:
+    # Versioning invalidates every previously issued JWT without storing tokens.
     user.token_version += 1
 
 
@@ -108,6 +119,8 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Do not accept legacy/versionless tokens: password resets and trash events
+    # rely on this exact comparison to terminate all earlier sessions.
     if payload.get("ver") != user.token_version:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -120,6 +133,8 @@ def get_current_user(
         profile = db.scalar(select(Teacher).where(Teacher.user_id == user.id))
     elif user.role == "parent":
         profile = db.scalar(select(Parent).where(Parent.user_id == user.id))
+    # Login-time filtering is insufficient because a profile may be trashed
+    # after a JWT was issued. Admin users intentionally have no such profile.
     if profile is not None and profile.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -127,6 +142,8 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Keep this allowlist narrow. must_change_password is enforced here so API
+    # clients cannot bypass the frontend's first-login redirect.
     forced_change_exemptions = {
         ("GET", "/api/v1/auth/me"),
         ("POST", "/api/v1/auth/change-password"),

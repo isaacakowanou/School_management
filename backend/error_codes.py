@@ -1,3 +1,10 @@
+"""Stable frontend-facing codes for backend errors, including auth failures.
+
+Authentication messages are mapped to semantic codes for localization without
+changing their deliberately generic HTTP bodies. Unknown errors collapse to a
+generic code rather than allowing raw server text to leak into the UI.
+"""
+
 from fastapi import HTTPException
 
 

@@ -1,3 +1,12 @@
+"""Security-sensitive account operations initiated by an administrator.
+
+An admin reset installs a generated temporary password, forces a first-login
+change, and increments ``token_version`` so every existing target-user session
+ends immediately. Delivery outcomes, but never the temporary password, are
+recorded in the audit log; the password is returned only to the calling admin
+for the existing credential handoff workflow.
+"""
+
 import secrets
 
 from sqlalchemy.orm import Session
@@ -42,6 +51,8 @@ def reset_profile_password(
         except Exception:
             sms_sent = False
 
+    # Never include temp_password in durable audit data: audit readers are more
+    # numerous and logs generally have a longer retention period than secrets.
     create_audit_log(
         db=db,
         actor_user_id=actor.id,

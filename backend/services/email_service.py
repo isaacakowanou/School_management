@@ -476,15 +476,31 @@ def send_grade_notification_email(
     }
 
 
-def send_grades_notification(db: Session, course: Course, student: Student) -> list[dict]:
-    from services.sms_service import send_grades_available_sms
+def _empty_grade_notification_summary() -> dict:
+    return {
+        "recipients": 0,
+        "delivered": {"email": 0, "sms": 0},
+        "failed": {"email": 0, "sms": 0},
+        "skipped": {"email": 0, "sms": 0},
+    }
+
+
+def send_grades_notification(db: Session, course: Course, student: Student) -> dict:
+    from services.sms_service import _get_messaging_config, send_grades_available_sms
 
     try:
         email_config = _get_email_config()
     except ValueError as exc:
         import logging
         logging.getLogger(__name__).warning("Email config missing, skipping grade notification: %s", exc)
-        return []
+        email_config = None
+
+    try:
+        sms_config = _get_messaging_config()
+    except ValueError as exc:
+        import logging
+        logging.getLogger(__name__).warning("SMS config missing, skipping grade notification: %s", exc)
+        sms_config = None
 
     student_name = f"{student.first_name} {student.last_name}"
 
@@ -501,33 +517,45 @@ def send_grades_notification(db: Session, course: Course, student: Student) -> l
         )
     ).all()
 
-    results = []
+    summary = _empty_grade_notification_summary()
     for parent in parents:
+        summary["recipients"] += 1
         parent_name = parent.user.name if parent.user and parent.user.name else "Parent/Guardian"
 
-        if parent.user.email:
-            results.append(
-                send_grade_notification_email(
-                    parent.user.email,
-                    parent_name,
-                    student_name,
-                    course.name,
-                    course.term,
-                    config=email_config,
-                )
+        if not parent.user.email or email_config is None:
+            summary["skipped"]["email"] += 1
+        else:
+            email_result = send_grade_notification_email(
+                parent.user.email,
+                parent_name,
+                student_name,
+                course.name,
+                course.term,
+                config=email_config,
             )
+            bucket = "delivered" if email_result.get("sent") else "failed"
+            summary[bucket]["email"] += 1
 
-        if parent.phone:
-            results.extend(
-                send_grades_available_sms(
-                    phone=parent.phone,
-                    student_name=student_name,
-                    course_name=course.name,
-                    term=course.term,
-                )
+        if not parent.phone or sms_config is None:
+            summary["skipped"]["sms"] += 1
+        else:
+            phone_results = send_grades_available_sms(
+                phone=parent.phone,
+                student_name=student_name,
+                course_name=course.name,
+                term=course.term,
+                config=sms_config,
             )
+            if not phone_results:
+                summary["failed"]["sms"] += 1
+            for result in phone_results:
+                if result.get("skipped"):
+                    bucket = "skipped"
+                else:
+                    bucket = "delivered" if result.get("sent") else "failed"
+                summary[bucket]["sms"] += 1
 
-    return results
+    return summary
 
 
 def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> list[dict]:

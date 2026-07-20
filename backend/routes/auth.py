@@ -1,13 +1,14 @@
 """Authentication lifecycle routes for login, profiles, and password recovery.
 
 Login supports email, teacher employee number, and parent phone while preserving
-anti-enumeration: unknown accounts, bad passwords, and trashed profiles receive
-the same generic failure. Voluntary password changes require the current
-password; forced first-login changes and OTP/email resets do not because the
-temporary password, OTP, or reset token has just established identity. Every
-successful password event increments ``token_version`` so old JWTs stop working.
-Email recovery also returns the same response for known, unknown, and trashed
-profiles; trashed profiles receive no token and no email.
+anti-enumeration: unknown accounts, bad passwords, and missing or trashed role
+profiles receive the same generic failure. Voluntary password changes require
+the current password; forced first-login changes and OTP/email resets do not
+because the temporary password, OTP, or reset token has just established
+identity. Every successful password event increments ``token_version`` so old
+JWTs stop working. Email recovery also returns the same response for known,
+unknown, missing-profile, and trashed-profile accounts; invalid role profiles
+receive no token and no email.
 """
 
 import logging
@@ -70,10 +71,10 @@ def _identifier_type(identifier: str) -> str:
 def _profile_is_active(user: User, db: Session) -> bool:
     if user.role == "teacher":
         profile = db.scalar(select(Teacher).where(Teacher.user_id == user.id))
-        return profile is None or profile.deleted_at is None
+        return profile is not None and profile.deleted_at is None
     if user.role == "parent":
         profile = db.scalar(select(Parent).where(Parent.user_id == user.id))
-        return profile is None or profile.deleted_at is None
+        return profile is not None and profile.deleted_at is None
     return True
 
 
@@ -152,10 +153,12 @@ async def login(request: Request, db: Session = Depends(get_db)) -> LoginRespons
     elif user is not None and user.role == "parent":
         profile = db.scalar(select(Parent).where(Parent.user_id == user.id))
 
-    # A specific "profile deleted" response would disclose account state. Keep
-    # trashed profiles indistinguishable from unknown users and bad passwords.
+    # A specific role-profile response would disclose account state. Missing and
+    # trashed profiles stay indistinguishable from unknown users and bad passwords.
+    role_profile_missing = user is not None and user.role in {"teacher", "parent"} and profile is None
     if (
         user is None
+        or role_profile_missing
         or (profile is not None and profile.deleted_at is not None)
         or not verify_password(password, user.password_hash)
     ):

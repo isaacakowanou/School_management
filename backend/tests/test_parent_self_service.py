@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import Base, Parent, User
+from models import Base, Parent, Teacher, User
 
 
 class ParentSelfServiceTests(unittest.TestCase):
@@ -64,7 +64,8 @@ class ParentSelfServiceTests(unittest.TestCase):
         self.db.add_all([self.parent_user, self.admin_user, self.teacher_user])
         self.db.flush()
         self.parent = Parent(user=self.parent_user, phone="555-0100")
-        self.db.add(self.parent)
+        self.teacher = Teacher(user=self.teacher_user, employee_number="ZZ-TEST-PARENT-SELF-TCH")
+        self.db.add_all([self.parent, self.teacher])
         self.db.commit()
 
     def _login(self, email: str) -> str:

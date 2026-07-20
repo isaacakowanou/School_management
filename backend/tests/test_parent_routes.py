@@ -220,13 +220,17 @@ class CurrentParentRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
-    def test_parent_without_profile_gets_404(self):
-        response = self.client.get(
-            "/api/v1/parents/me",
-            headers=self._auth_headers(self.parent_without_profile_user.email),
+    def test_parent_without_profile_cannot_authenticate(self):
+        response = self.client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": self.parent_without_profile_user.email,
+                "password": self.password,
+            },
         )
 
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], "Invalid credentials")
 
     def test_admin_can_create_parent(self):
         response = self.client.post(

@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from models import Base, ReportCard, ReportCardCourse, Student
+from models import Base, Course, ReportCard, ReportCardCourse, Student, Teacher, User
 from routes.ai import generate_summary_for_report, generate_summary_for_student
 from services.ai_summary import generate_report_summary
 
@@ -101,6 +101,20 @@ class AISummaryRouteTests(unittest.TestCase):
             last_name="Akowanou",
             student_number="STU001",
         )
+        self.teacher_user = User(
+            name="ZZ-TEST-AI Teacher",
+            email="zz-test-ai-teacher@example.test",
+            password_hash="ZZ-TEST-not-a-login-password",
+            role="teacher",
+        )
+        self.teacher = Teacher(user=self.teacher_user, employee_number="ZZ-TEST-AI-TCH")
+        self.course = Course(
+            name="Mathematics",
+            code="ZZ-TEST-AI-MATH",
+            teacher=self.teacher,
+            term="1er Trimestre",
+            school_year="2026-2027",
+        )
         self.report_card = ReportCard(
             student=self.student,
             term="1er Trimestre",
@@ -109,12 +123,12 @@ class AISummaryRouteTests(unittest.TestCase):
             gpa=4.0,
             status="draft",
         )
-        self.db.add(self.report_card)
+        self.db.add_all([self.course, self.report_card])
         self.db.flush()
         self.db.add(
             ReportCardCourse(
                 report_card=self.report_card,
-                course_id=uuid.uuid4(),
+                course_id=self.course.id,
                 course_name="Mathematics",
                 average=91.7,
                 letter_grade="A",

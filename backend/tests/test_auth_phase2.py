@@ -98,6 +98,26 @@ class AuthPhase2Tests(unittest.TestCase):
         self.assertEqual(admin_updated.status_code, 200)
         self.assertIsNone(admin_updated.json()["phone"])
 
+    def test_missing_teacher_profile_blocks_login_and_preexisting_jwt_without_version_bump(self):
+        token = self.login("zz-phase2-teacher@example.test")
+        headers = {"Authorization": f"Bearer {token}"}
+        db = self.SessionLocal()
+        user = db.get(User, self.teacher_user_id)
+        original_token_version = user.token_version
+        teacher = db.get(Teacher, self.teacher_id)
+        db.delete(teacher)
+        db.commit()
+        db.refresh(user)
+        self.assertEqual(user.token_version, original_token_version)
+        db.close()
+
+        relogin = self.client.post(
+            "/api/v1/auth/login",
+            json={"identifier": "zz-phase2-teacher@example.test", "password": self.password},
+        )
+        self.assertEqual(relogin.status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/auth/me", headers=headers).status_code, 401)
+
     def test_parent_shared_profile_and_password_change(self):
         db = self.SessionLocal()
         parent_user = User(

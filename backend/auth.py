@@ -4,8 +4,10 @@ JWTs carry the user's current ``token_version`` in a ``ver`` claim and are
 accepted only while that claim matches the database. Every password event
 increments the version, providing a global session kill without maintaining a
 token denylist. The authenticated-user dependency also enforces forced password
-changes and rejects trashed teacher/parent profiles on every request; frontend
-redirects and login-time checks are defense-in-depth, not the security boundary.
+changes and rejects missing or trashed teacher/parent profiles on every request;
+frontend redirects and login-time checks are defense-in-depth, not the security
+boundary. Hard-deleting a user invalidates every JWT independently of
+``token_version`` because authenticated requests require the subject row.
 """
 
 import os
@@ -133,9 +135,11 @@ def get_current_user(
         profile = db.scalar(select(Teacher).where(Teacher.user_id == user.id))
     elif user.role == "parent":
         profile = db.scalar(select(Parent).where(Parent.user_id == user.id))
-    # Login-time filtering is insufficient because a profile may be trashed
-    # after a JWT was issued. Admin users intentionally have no such profile.
-    if profile is not None and profile.deleted_at is not None:
+    # Login-time filtering is insufficient because a profile may be trashed or
+    # purged after a JWT was issued. Admin users intentionally have no profile;
+    # parent/teacher users require one for the account to remain valid.
+    role_profile_missing = user.role in {"teacher", "parent"} and profile is None
+    if role_profile_missing or (profile is not None and profile.deleted_at is not None):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",

@@ -1,5 +1,6 @@
 import unittest
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy import select
@@ -541,22 +542,13 @@ class BuildFromReportCardTests(unittest.TestCase):
         self.assertEqual(course["average"], 91.7)
         self.assertEqual(course["letter_grade"], "A")
 
-    def test_missing_course_falls_back_to_na(self):
-        self.db.add(
-            ReportCardCourse(
-                report_card_id=self.report_card.id,
-                course_id=uuid.uuid4(),
-                course_name="Ghost Course",
-                average=70.0,
-                letter_grade="C",
-            )
-        )
+    def test_deleted_course_falls_back_to_na(self):
+        self.math.deleted_at = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(self.report_card)
 
         data = build_report_card_data_from_report_card(self.db, self.report_card)
-        ghost = next(course for course in data["courses"] if course["course_name"] == "Ghost Course")
-        self.assertEqual(ghost["course_code"], "N/A")
+        self.assertEqual(data["courses"][0]["course_code"], "N/A")
 
     def test_does_not_recompute_from_course_results(self):
         # No CourseResult rows exist; build_report_card_data would raise. The

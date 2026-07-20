@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import Base, User
+from models import Base, Parent, User
 
 
 class ChangePasswordTests(unittest.TestCase):
@@ -42,6 +42,8 @@ class ChangePasswordTests(unittest.TestCase):
             must_change_password=True,
         )
         db.add(self.user)
+        db.flush()
+        db.add(Parent(user=self.user, phone="+2290100000082"))
         db.commit()
         db.refresh(self.user)
         db.close()
@@ -165,7 +167,7 @@ class ChangePasswordTests(unittest.TestCase):
         )
         self.assertEqual(changed.status_code, 200)
         fresh_headers = {"Authorization": f"Bearer {changed.json()['access_token']}"}
-        self.assertEqual(self.client.get("/api/v1/parents/me", headers=fresh_headers).status_code, 404)
+        self.assertEqual(self.client.get("/api/v1/parents/me", headers=fresh_headers).status_code, 200)
 
     def test_voluntary_change_requires_correct_current_password(self):
         db = self.SessionLocal()

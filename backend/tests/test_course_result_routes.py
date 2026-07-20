@@ -18,6 +18,7 @@ from models import (
     Enrollment,
     Grade,
     GradeItem,
+    Parent,
     ReportCard,
     ReportCardCourse,
     Student,
@@ -75,6 +76,7 @@ class CourseResultRouteTests(unittest.TestCase):
 
         self.teacher = Teacher(user=self.teacher_user, employee_number="T-COURSE-1")
         self.other_teacher = Teacher(user=self.other_teacher_user, employee_number="T-COURSE-2")
+        self.parent = Parent(user=self.parent_user, phone="+2290100000088")
         self.student_one = Student(
             first_name="Ada",
             last_name="Lovelace",
@@ -94,6 +96,7 @@ class CourseResultRouteTests(unittest.TestCase):
             [
                 self.teacher,
                 self.other_teacher,
+                self.parent,
                 self.student_one,
                 self.student_two,
                 self.unenrolled_student,

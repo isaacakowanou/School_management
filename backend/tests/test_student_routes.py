@@ -87,7 +87,8 @@ class StudentRouteTests(unittest.TestCase):
         )
         self.db.flush()
         self.parent = Parent(user=self.parent_user, phone="555-0100")
-        self.db.add(self.parent)
+        self.teacher = Teacher(user=self.teacher_user, employee_number="ZZ-TEST-STUDENT-TCH")
+        self.db.add_all([self.parent, self.teacher])
         self.db.commit()
 
     def _headers(self, email: str) -> dict[str, str]:
@@ -435,13 +436,13 @@ class StudentRouteTests(unittest.TestCase):
         self.assertEqual(audit_log.new_value["first_name"], "Updated")
 
     def _create_student_academic_history(self, student_number: str = "SOFT-DELETE-STU-001"):
-        teacher = Teacher(user=self.teacher_user, employee_number=f"T-{student_number}")
+        teacher = self.teacher
         student = Student(
             first_name="Soft",
             last_name="Deleted",
             student_number=student_number,
         )
-        self.db.add_all([teacher, student])
+        self.db.add(student)
         self.db.flush()
         course = Course(
             name=f"History {student_number}",
@@ -507,14 +508,14 @@ class StudentRouteTests(unittest.TestCase):
             sort_order=1,
             school_year="2026-2027",
         )
-        teacher = Teacher(user=self.teacher_user, employee_number="T-STUDENT-GRADES")
+        teacher = self.teacher
         student = Student(
             first_name="Grade",
             last_name="Visible",
             student_number="ADMIN-GRADES-001",
             school_class=school_class,
         )
-        self.db.add_all([school_class, teacher, student])
+        self.db.add_all([school_class, student])
         self.db.flush()
         course = Course(
             name="Mathematics",

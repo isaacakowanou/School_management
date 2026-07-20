@@ -8,8 +8,11 @@ such as deleted students are filters over this same service.
 
 Unbatched child restoration validates that required parents are active, because
 restoring an orphan would make normal routes inconsistent. Permanent purge is
-child-first, restricted to IDs in the selected deleted entry's plan, and wrapped
-in a nested transaction per entry. Purged entries have no recovery path.
+flush-explicit and FK-safe child-first, restricted to IDs in the selected
+deleted entry's plan, and wrapped in a nested transaction per entry. Parent and
+teacher profile purges include their one-to-one ``User`` account and reset
+tokens; audit history is retained with actor references nulled. Purged entries
+have no recovery path.
 Retention is 30 days from ``deleted_at``; restore clears that clock, and a later
 deletion starts a fresh window. Cleanup is lazy on Corbeille access because the
 app has no scheduler (FastAPI BackgroundTasks are request-bound); indexed
@@ -23,12 +26,13 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from audit import create_audit_log
 from models import (
     AIWarning,
+    AuditLog,
     Class,
     Course,
     CourseResult,
@@ -37,6 +41,7 @@ from models import (
     Grade,
     GradeItem,
     Parent,
+    PasswordResetToken,
     ReportCard,
     ReportCardCourse,
     ReportConductItem,
@@ -88,6 +93,7 @@ PURGE_ORDER = [
     "teachers",
     "classes",
     "subjects",
+    "users",
 ]
 
 ROW_ENTRY_PREFIX = "row:"
@@ -396,6 +402,19 @@ def _add_ids(plan: dict[str, set[UUID]], table: str, ids) -> None:
     plan[table].update(ids)
 
 
+def _empty_purge_plan() -> dict[str, set[UUID]]:
+    return {**{name: set() for name in RECOVERABLE_MODELS}, "users": set()}
+
+
+def _add_profile_users_to_plan(db: Session, plan: dict[str, set[UUID]]) -> None:
+    parent_ids = plan.get("parents") or set()
+    if parent_ids:
+        _add_ids(plan, "users", db.scalars(select(Parent.user_id).where(Parent.id.in_(parent_ids))).all())
+    teacher_ids = plan.get("teachers") or set()
+    if teacher_ids:
+        _add_ids(plan, "users", db.scalars(select(Teacher.user_id).where(Teacher.id.in_(teacher_ids))).all())
+
+
 def _report_ids_for_student(db: Session, student_id: UUID) -> set[UUID]:
     return set(db.scalars(select(ReportCard.id).where(ReportCard.student_id == student_id)).all())
 
@@ -429,7 +448,7 @@ def _add_courses_to_plan(db: Session, plan: dict[str, set[UUID]], course_ids: se
 
 
 def purge_plan_for_row(db: Session, *, table: str, entity_id: UUID) -> dict[str, set[UUID]]:
-    plan = {name: set() for name in RECOVERABLE_MODELS}
+    plan = _empty_purge_plan()
     row = db.get(RECOVERABLE_MODELS[table], entity_id)
     if row is None or row.deleted_at is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
@@ -469,6 +488,7 @@ def purge_plan_for_row(db: Session, *, table: str, entity_id: UUID) -> dict[str,
         _add_reports_to_plan(db, plan, {entity_id})
     else:
         _add_ids(plan, table, [entity_id])
+    _add_profile_users_to_plan(db, plan)
     return plan
 
 
@@ -476,9 +496,10 @@ def purge_plan_for_batch(db: Session, batch_id: UUID) -> dict[str, set[UUID]]:
     batch = db.get(DeletionBatch, batch_id)
     if batch is None or batch.restored_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
-    plan = {name: set() for name in RECOVERABLE_MODELS}
+    plan = _empty_purge_plan()
     for table, model in RECOVERABLE_MODELS.items():
         plan[table].update(db.scalars(select(model.id).where(model.deleted_batch_id == batch_id)).all())
+    _add_profile_users_to_plan(db, plan)
     return plan
 
 
@@ -486,12 +507,87 @@ def _counts_from_plan(plan: dict[str, set[UUID]]) -> dict[str, int]:
     return {table: len(ids) for table, ids in plan.items() if ids}
 
 
-def purge_plan(db: Session, plan: dict[str, set[UUID]]) -> dict[str, int]:
+def purge_user_accounts(
+    db: Session,
+    user_ids: set[UUID],
+    *,
+    protected_user_id: UUID | None = None,
+) -> dict[str, int]:
+    if not user_ids:
+        return {}
+    if protected_user_id in user_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "purge_current_user_blocked", "message": "The current account cannot purge itself"},
+        )
+
+    owned_batch_ids = set(
+        db.scalars(select(DeletionBatch.id).where(DeletionBatch.deleted_by_user_id.in_(user_ids))).all()
+    )
+    if owned_batch_ids:
+        # deleted_by_user_id is intentionally non-nullable historical provenance.
+        # A parent/teacher can reach this state only after an unusual role change;
+        # never rewrite or delete those batches silently.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "purge_user_owns_deletion_batches",
+                "message": "Account owns deletion history and cannot be purged automatically",
+                "deletion_batch_count": len(owned_batch_ids),
+            },
+        )
+
+    reset_tokens = db.scalars(
+        select(PasswordResetToken).where(PasswordResetToken.user_id.in_(user_ids))
+    ).all()
+    for token in reset_tokens:
+        db.delete(token)
+    db.flush()
+
+    # Preserve historical records while removing their nullable account links.
+    db.execute(update(AuditLog).where(AuditLog.actor_user_id.in_(user_ids)).values(actor_user_id=None))
+    db.execute(
+        update(ReportCard)
+        .where(ReportCard.approved_by_admin_id.in_(user_ids))
+        .values(approved_by_admin_id=None)
+    )
+    db.execute(
+        update(DeletionBatch)
+        .where(DeletionBatch.restored_by_user_id.in_(user_ids))
+        .values(restored_by_user_id=None)
+    )
+    db.flush()
+
+    users = db.scalars(select(User).where(User.id.in_(user_ids))).all()
+    for user in users:
+        db.delete(user)
+    db.flush()
+    counts = {"users": len(users)}
+    if reset_tokens:
+        counts["password_reset_tokens"] = len(reset_tokens)
+    return counts
+
+
+def purge_plan(
+    db: Session,
+    plan: dict[str, set[UUID]],
+    *,
+    protected_user_id: UUID | None = None,
+) -> dict[str, int]:
     # PURGE_ORDER is child-first to satisfy foreign keys. Only precomputed IDs
     # belonging to this deleted entry are touched; do not broaden these queries
     # to relationship-wide deletes that could consume active school data.
     counts: dict[str, int] = {}
     for table in PURGE_ORDER:
+        if table == "users":
+            counts.update(
+                purge_user_accounts(
+                    db,
+                    plan.get("users") or set(),
+                    protected_user_id=protected_user_id,
+                )
+            )
+            continue
         ids = plan.get(table) or set()
         if not ids:
             continue
@@ -499,28 +595,47 @@ def purge_plan(db: Session, plan: dict[str, set[UUID]]) -> dict[str, int]:
         rows = db.scalars(select(model).where(model.id.in_(ids))).all()
         for row in rows:
             db.delete(row)
+        # Make each FK layer disappear physically before its parent layer.
+        # The flush also keeps constraint failures inside purge_entry's savepoint.
+        db.flush()
         counts[table] = len(rows)
     return counts
 
 
-def purge_batch_entry(db: Session, *, batch_id: UUID) -> tuple[str, dict[str, int]]:
+def purge_batch_entry(
+    db: Session,
+    *,
+    batch_id: UUID,
+    protected_user_id: UUID | None = None,
+) -> tuple[str, dict[str, int]]:
     batch = db.get(DeletionBatch, batch_id)
     if batch is None or batch.restored_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
     label = batch.target_label
     plan = purge_plan_for_batch(db, batch_id)
-    counts = purge_plan(db, plan)
+    counts = purge_plan(db, plan, protected_user_id=protected_user_id)
+    for model in RECOVERABLE_MODELS.values():
+        remaining = db.scalar(select(func.count()).select_from(model).where(model.deleted_batch_id == batch_id))
+        if remaining:
+            raise RuntimeError(f"Purge plan left {remaining} batch reference(s) in {model.__tablename__}")
     db.delete(batch)
+    db.flush()
     return label, counts
 
 
-def purge_row_entry(db: Session, *, table: str, entity_id: UUID) -> tuple[str, dict[str, int]]:
+def purge_row_entry(
+    db: Session,
+    *,
+    table: str,
+    entity_id: UUID,
+    protected_user_id: UUID | None = None,
+) -> tuple[str, dict[str, int]]:
     row = db.get(RECOVERABLE_MODELS[table], entity_id)
     if row is None or row.deleted_at is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
     label = row_label(row)
     plan = purge_plan_for_row(db, table=table, entity_id=entity_id)
-    counts = purge_plan(db, plan)
+    counts = purge_plan(db, plan, protected_user_id=protected_user_id)
     return label, counts
 
 
@@ -534,11 +649,16 @@ def purge_entry(db: Session, *, entry_id: str, current_user: User, audit_action:
     # purged tree while still allowing empty-trash/retention sweeps to iterate.
     with db.begin_nested():
         if source == "batch":
-            label, counts = purge_batch_entry(db, batch_id=entity_id)
+            label, counts = purge_batch_entry(db, batch_id=entity_id, protected_user_id=current_user.id)
             entity_type = "deletion_batch"
         else:
             assert table is not None
-            label, counts = purge_row_entry(db, table=table, entity_id=entity_id)
+            label, counts = purge_row_entry(
+                db,
+                table=table,
+                entity_id=entity_id,
+                protected_user_id=current_user.id,
+            )
             entity_type = _entity_type_for_table(table)
         create_audit_log(
             db=db,

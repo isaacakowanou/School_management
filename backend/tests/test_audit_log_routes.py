@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, User
+from models import AuditLog, Base, Parent, Teacher, User
 
 
 class AuditLogRouteTests(unittest.TestCase):
@@ -56,6 +56,13 @@ class AuditLogRouteTests(unittest.TestCase):
             role="teacher",
         )
         self.parent_user = self._user(name="Pat Parent", email="parent-audit@example.test", role="parent")
+        self.db.flush()
+        self.db.add_all(
+            [
+                Teacher(user=self.teacher_user, employee_number="ZZ-TEST-AUDIT-TCH"),
+                Parent(user=self.parent_user, phone="+2290100000081"),
+            ]
+        )
         self.db.flush()
 
         self.entity_id = uuid.uuid4()

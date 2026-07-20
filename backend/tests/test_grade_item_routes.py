@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Course, Grade, GradeItem, Student, Teacher, User
+from models import AuditLog, Base, Course, Grade, GradeItem, Parent, Student, Teacher, User
 
 
 class GradeItemRouteTests(unittest.TestCase):
@@ -78,7 +78,8 @@ class GradeItemRouteTests(unittest.TestCase):
         self.db.flush()
         self.teacher = Teacher(user=self.teacher_user, employee_number="TCH-GI-1")
         self.other_teacher = Teacher(user=self.other_teacher_user, employee_number="TCH-GI-2")
-        self.db.add_all([self.teacher, self.other_teacher])
+        self.parent = Parent(user=self.parent_user, phone="+2290100000086")
+        self.db.add_all([self.teacher, self.other_teacher, self.parent])
         self.db.flush()
         self.course = Course(
             name="Grade Item Course",

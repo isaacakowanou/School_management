@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import Base, Class, Course, Student, Teacher, User
+from models import Base, Class, Course, Parent, Student, Teacher, User
 
 
 class ClassRouteTests(unittest.TestCase):
@@ -61,7 +61,8 @@ class ClassRouteTests(unittest.TestCase):
         self.teacher_user = self._user(name="Teacher", email="teacher-cls@example.test", role="teacher")
         self.db.flush()
         self.teacher = Teacher(user=self.teacher_user, employee_number="T-CLS-1")
-        self.db.add(self.teacher)
+        self.parent = Parent(user=self.parent_user, phone="+2290100000083")
+        self.db.add_all([self.teacher, self.parent])
         self.db.commit()
 
     def _headers(self, email):

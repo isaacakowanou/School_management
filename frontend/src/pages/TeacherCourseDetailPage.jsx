@@ -90,6 +90,7 @@ export default function TeacherCourseDetailPage() {
   const [calculating, setCalculating] = useState(false)
   const [calcSummary, setCalcSummary] = useState(null)
   const [calcError, setCalcError] = useState(null)
+  const [notificationNotice, setNotificationNotice] = useState(null)
   const [showGradeItemForm, setShowGradeItemForm] = useState(false)
   const [gradeItemForm, setGradeItemForm] = useState(EMPTY_GRADE_ITEM_FORM)
   const [addingGradeItem, setAddingGradeItem] = useState(false)
@@ -110,6 +111,7 @@ export default function TeacherCourseDetailPage() {
     setResults(null)
     setCalcSummary(null)
     setCalcError(null)
+    setNotificationNotice(null)
     setShowGradeItemForm(false)
     setGradeItemForm(EMPTY_GRADE_ITEM_FORM)
     setAddingGradeItem(false)
@@ -166,6 +168,7 @@ export default function TeacherCourseDetailPage() {
     if (changedStudentIds.length > 0) {
       setCalcSummary(null)
       setCalcError(null)
+      setNotificationNotice(null)
     }
 
     try {
@@ -178,13 +181,28 @@ export default function TeacherCourseDetailPage() {
     if (changedStudentIds.length > 0) {
       try {
         await recalculateAllResults()
-        notifyGradesChanged(courseId, changedStudentIds)
       } catch (err) {
         setCalcError(err.message)
         throw err
       }
+
+      try {
+        const outcome = await notifyGradesChanged(courseId, changedStudentIds)
+        if (outcome.recipients > 0) {
+          const delivered = outcome.delivered.email + outcome.delivered.sms
+          const failed = outcome.failed.email + outcome.failed.sms
+          const skipped = outcome.skipped.email + outcome.skipped.sms
+          setNotificationNotice(
+            failed === 0 && skipped === 0
+              ? t('courses.parentsNotified', { count: delivered })
+              : t('courses.notificationOutcome', { delivered, failed, skipped }),
+          )
+        }
+      } catch {
+        setNotificationNotice(t('courses.notificationUnavailable'))
+      }
     }
-  }, [courseId, recalculateAllResults])
+  }, [courseId, recalculateAllResults, t])
 
   function updateGradeItemField(field, value) {
     setGradeItemForm((current) => ({ ...current, [field]: value }))
@@ -733,6 +751,7 @@ export default function TeacherCourseDetailPage() {
           </div>
 
           {calcError && <ErrorBanner message={calcError} />}
+          {notificationNotice && <p className="grade-summary">{notificationNotice}</p>}
 
           {calcSummary && calcSummary.skipped_students.length > 0 && (
             <div className="state state-empty skipped-note">

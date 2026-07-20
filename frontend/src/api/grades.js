@@ -27,9 +27,5 @@ export function saveCourseGradesBatch(courseId, entries) {
 
 // POST /api/v1/courses/{courseId}/notify-grades -> fire grade notifications for changed students
 export async function notifyGradesChanged(courseId, studentIds) {
-  try {
-    await apiPost(`/courses/${courseId}/notify-grades`, { student_ids: studentIds })
-  } catch {
-    // silent-fail: notification is best-effort, grades already saved
-  }
+  return apiPost(`/courses/${courseId}/notify-grades`, { student_ids: studentIds })
 }

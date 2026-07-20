@@ -23,6 +23,7 @@ from schemas import (
     GradeBatchSaveRequest,
     GradeBatchSaveResponse,
     GradeCreate,
+    GradeNotificationResponse,
     GradeResponse,
     GradeUpdate,
     NotifyGradesPayload,
@@ -139,13 +140,13 @@ def soft_delete_grade(db: Session, *, grade: Grade, current_user: User) -> None:
     grade.deleted_at = datetime.now(timezone.utc)
 
 
-@router.post("/courses/{course_id}/notify-grades")
+@router.post("/courses/{course_id}/notify-grades", response_model=GradeNotificationResponse)
 def notify_grades(
     course_id: UUID,
     payload: NotifyGradesPayload,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> dict:
+) -> GradeNotificationResponse:
     course = get_course_or_404(db, course_id)
     if current_user.role != "admin":
         get_writable_teacher_for_course(db, current_user, course)
@@ -162,7 +163,12 @@ def notify_grades(
     # This endpoint follows successful save/recalculation and batches delivery
     # by affected student. It announces availability only; exposing an average
     # here would bypass the approved-bulletin publication boundary.
-    notified = 0
+    summary = {
+        "recipients": 0,
+        "delivered": {"email": 0, "sms": 0},
+        "failed": {"email": 0, "sms": 0},
+        "skipped": {"email": 0, "sms": 0},
+    }
     for student_id in payload.student_ids:
         if student_id not in enrolled_ids:
             continue
@@ -170,12 +176,29 @@ def notify_grades(
         if student is None or student.deleted_at is not None:
             continue
         try:
-            send_grades_notification(db, course, student)
-            notified += 1
+            result = send_grades_notification(db, course, student)
+            summary["recipients"] += result["recipients"]
+            for outcome in ("delivered", "failed", "skipped"):
+                for channel in ("email", "sms"):
+                    summary[outcome][channel] += result[outcome][channel]
         except Exception as exc:
             logger.warning("Grade notification failed for student %s: %s", student_id, exc)
 
-    return {"notified": notified}
+    if sum(summary["failed"].values()) > 0:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="grade_notifications_failed",
+            entity_type="course",
+            entity_id=course.id,
+            new_value={
+                "student_count": len(set(payload.student_ids)),
+                **summary,
+            },
+        )
+        db.commit()
+
+    return GradeNotificationResponse(**summary)
 
 
 @router.post("/courses/{course_id}/grades/batch", response_model=GradeBatchSaveResponse)

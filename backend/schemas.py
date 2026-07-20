@@ -642,6 +642,18 @@ class NotifyGradesPayload(BaseModel):
     student_ids: list[UUID]
 
 
+class NotificationChannelCounts(BaseModel):
+    email: int = 0
+    sms: int = 0
+
+
+class GradeNotificationResponse(BaseModel):
+    recipients: int
+    delivered: NotificationChannelCounts
+    failed: NotificationChannelCounts
+    skipped: NotificationChannelCounts
+
+
 class CourseResultResponse(BaseModel):
     id: UUID
     student_id: UUID

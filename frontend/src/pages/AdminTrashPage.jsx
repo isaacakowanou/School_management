@@ -131,8 +131,8 @@ export default function AdminTrashPage() {
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
       {!error && trash === null && <Spinner label={t('trash.loading')} />}
-      {!error && trash && entries.length === 0 && <Empty message={t('trash.empty')} />}
-      {!error && trash && entries.length > 0 && (
+      {trash && entries.length === 0 && <Empty message={t('trash.empty')} />}
+      {trash && entries.length > 0 && (
         <div className="table-scroll">
           <table className="table">
             <thead>

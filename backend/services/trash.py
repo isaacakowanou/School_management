@@ -9,10 +9,13 @@ such as deleted students are filters over this same service.
 Unbatched child restoration validates that required parents are active, because
 restoring an orphan would make normal routes inconsistent. Permanent purge is
 flush-explicit and FK-safe child-first, restricted to IDs in the selected
-deleted entry's plan, and wrapped in a nested transaction per entry. Parent and
-teacher profile purges include their one-to-one ``User`` account and reset
-tokens; audit history is retained with actor references nulled. Purged entries
-have no recovery path.
+deleted entry's ownership closure, and wrapped in a nested transaction per
+entry. Closure never follows shared references into unrelated live entities:
+student purges stop at courses/classes/teachers/parents, course purges stop at
+students/teachers/classes/subjects/reports, and report purges stop at
+students/courses. Parent and teacher profile purges include their one-to-one
+``User`` account and reset tokens; audit history is retained with actor
+references nulled. Purged entries have no recovery path.
 Retention is 30 days from ``deleted_at``; restore clears that clock, and a later
 deletion starts a fresh window. Cleanup is lazy on Corbeille access because the
 app has no scheduler (FastAPI BackgroundTasks are request-bound); indexed
@@ -42,6 +45,7 @@ from models import (
     GradeItem,
     Parent,
     PasswordResetToken,
+    PdfJob,
     ReportCard,
     ReportCardCourse,
     ReportConductItem,
@@ -76,6 +80,11 @@ RECOVERABLE_MODELS = {
     "ai_warnings": AIWarning,
 }
 
+# Hard-purge-only children do not appear independently in Corbeille and cannot
+# be restored, but their non-nullable ownership FKs must participate in purge.
+PURGE_ONLY_MODELS = {"pdf_jobs": PdfJob}
+PURGE_MODELS = {**RECOVERABLE_MODELS, **PURGE_ONLY_MODELS}
+
 PURGE_ORDER = [
     "ai_warnings",
     "report_work_habit_items",
@@ -91,6 +100,7 @@ PURGE_ORDER = [
     "students",
     "parents",
     "teachers",
+    "pdf_jobs",
     "classes",
     "subjects",
     "users",
@@ -403,7 +413,7 @@ def _add_ids(plan: dict[str, set[UUID]], table: str, ids) -> None:
 
 
 def _empty_purge_plan() -> dict[str, set[UUID]]:
-    return {**{name: set() for name in RECOVERABLE_MODELS}, "users": set()}
+    return {**{name: set() for name in PURGE_MODELS}, "users": set()}
 
 
 def _add_profile_users_to_plan(db: Session, plan: dict[str, set[UUID]]) -> None:
@@ -413,10 +423,6 @@ def _add_profile_users_to_plan(db: Session, plan: dict[str, set[UUID]]) -> None:
     teacher_ids = plan.get("teachers") or set()
     if teacher_ids:
         _add_ids(plan, "users", db.scalars(select(Teacher.user_id).where(Teacher.id.in_(teacher_ids))).all())
-
-
-def _report_ids_for_student(db: Session, student_id: UUID) -> set[UUID]:
-    return set(db.scalars(select(ReportCard.id).where(ReportCard.student_id == student_id)).all())
 
 
 def _add_reports_to_plan(db: Session, plan: dict[str, set[UUID]], report_ids: set[UUID]) -> None:
@@ -443,8 +449,86 @@ def _add_courses_to_plan(db: Session, plan: dict[str, set[UUID]], course_ids: se
     _add_ids(plan, "enrollments", db.scalars(select(Enrollment.id).where(Enrollment.course_id.in_(course_ids))).all())
     _add_grade_items_to_plan(db, plan, set(db.scalars(select(GradeItem.id).where(GradeItem.course_id.in_(course_ids))).all()))
     _add_ids(plan, "course_results", db.scalars(select(CourseResult.id).where(CourseResult.course_id.in_(course_ids))).all())
-    report_ids = set(db.scalars(select(ReportCardCourse.report_card_id).where(ReportCardCourse.course_id.in_(course_ids))).all())
-    _add_reports_to_plan(db, plan, report_ids)
+    # Report cards belong to students, not courses. Remove only the snapshot
+    # links that carry the course FK; never consume the surrounding report.
+    _add_ids(
+        plan,
+        "report_card_courses",
+        db.scalars(select(ReportCardCourse.id).where(ReportCardCourse.course_id.in_(course_ids))).all(),
+    )
+
+
+def _expand_purge_plan_dependencies(db: Session, plan: dict[str, set[UUID]]) -> None:
+    """Expand non-nullable ownership edges without crossing shared boundaries.
+
+    * Student owns links, enrollments, grades, results, and reports. Closure
+      stops at parent, course, grade item, teacher, and class rows.
+    * Parent owns student-parent links and its role account. Closure stops at
+      students.
+    * Teacher owns submitted grades, assigned courses, and its role account.
+      Course closure then stops at students, class, subject, and report roots.
+    * Course owns enrollments, grade items/grades, results, and report-course
+      snapshot links. It never deletes students, teachers, classes, subjects,
+      or the report cards around those snapshot links.
+    * Grade item owns grades. Report owns its snapshot/conduct/work/warning
+      children. Class owns transient PDF jobs; student/course class references
+      are nullable and handled separately. Subject owns no course rows.
+    """
+    teacher_ids = plan["teachers"]
+    if teacher_ids:
+        _add_ids(
+            plan,
+            "grades",
+            db.scalars(select(Grade.id).where(Grade.submitted_by_teacher_id.in_(teacher_ids))).all(),
+        )
+        _add_courses_to_plan(
+            db,
+            plan,
+            set(db.scalars(select(Course.id).where(Course.teacher_id.in_(teacher_ids))).all()),
+        )
+
+    student_ids = plan["students"]
+    if student_ids:
+        _add_ids(
+            plan,
+            "student_parents",
+            db.scalars(select(StudentParent.id).where(StudentParent.student_id.in_(student_ids))).all(),
+        )
+        _add_ids(
+            plan,
+            "enrollments",
+            db.scalars(select(Enrollment.id).where(Enrollment.student_id.in_(student_ids))).all(),
+        )
+        _add_ids(plan, "grades", db.scalars(select(Grade.id).where(Grade.student_id.in_(student_ids))).all())
+        _add_ids(
+            plan,
+            "course_results",
+            db.scalars(select(CourseResult.id).where(CourseResult.student_id.in_(student_ids))).all(),
+        )
+        _add_reports_to_plan(
+            db,
+            plan,
+            set(db.scalars(select(ReportCard.id).where(ReportCard.student_id.in_(student_ids))).all()),
+        )
+
+    parent_ids = plan["parents"]
+    if parent_ids:
+        _add_ids(
+            plan,
+            "student_parents",
+            db.scalars(select(StudentParent.id).where(StudentParent.parent_id.in_(parent_ids))).all(),
+        )
+
+    # Courses may have been present initially or added by teacher closure.
+    _add_courses_to_plan(db, plan, set(plan["courses"]))
+    _add_grade_items_to_plan(db, plan, set(plan["grade_items"]))
+    _add_reports_to_plan(db, plan, set(plan["report_cards"]))
+
+    class_ids = plan["classes"]
+    if class_ids:
+        _add_ids(plan, "pdf_jobs", db.scalars(select(PdfJob.id).where(PdfJob.class_id.in_(class_ids))).all())
+
+    _add_profile_users_to_plan(db, plan)
 
 
 def purge_plan_for_row(db: Session, *, table: str, entity_id: UUID) -> dict[str, set[UUID]]:
@@ -452,43 +536,8 @@ def purge_plan_for_row(db: Session, *, table: str, entity_id: UUID) -> dict[str,
     row = db.get(RECOVERABLE_MODELS[table], entity_id)
     if row is None or row.deleted_at is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
-
-    if table == "students":
-        _add_ids(plan, "students", [entity_id])
-        _add_ids(plan, "student_parents", db.scalars(select(StudentParent.id).where(StudentParent.student_id == entity_id)).all())
-        _add_ids(plan, "enrollments", db.scalars(select(Enrollment.id).where(Enrollment.student_id == entity_id)).all())
-        _add_ids(plan, "grades", db.scalars(select(Grade.id).where(Grade.student_id == entity_id)).all())
-        _add_ids(plan, "course_results", db.scalars(select(CourseResult.id).where(CourseResult.student_id == entity_id)).all())
-        _add_reports_to_plan(db, plan, _report_ids_for_student(db, entity_id))
-    elif table == "parents":
-        _add_ids(plan, "parents", [entity_id])
-        _add_ids(plan, "student_parents", db.scalars(select(StudentParent.id).where(StudentParent.parent_id == entity_id)).all())
-    elif table == "teachers":
-        _add_ids(plan, "teachers", [entity_id])
-        _add_ids(plan, "grades", db.scalars(select(Grade.id).where(Grade.submitted_by_teacher_id == entity_id, Grade.deleted_at.is_not(None))).all())
-        deleted_course_ids = set(db.scalars(select(Course.id).where(Course.teacher_id == entity_id, Course.deleted_at.is_not(None))).all())
-        _add_courses_to_plan(db, plan, deleted_course_ids)
-    elif table == "classes":
-        _add_ids(plan, "classes", [entity_id])
-        deleted_course_ids = set(db.scalars(select(Course.id).where(Course.class_id == entity_id, Course.deleted_at.is_not(None))).all())
-        _add_courses_to_plan(db, plan, deleted_course_ids)
-    elif table == "subjects":
-        _add_ids(plan, "subjects", [entity_id])
-    elif table == "courses":
-        _add_courses_to_plan(db, plan, {entity_id})
-    elif table == "grade_items":
-        _add_grade_items_to_plan(db, plan, {entity_id})
-    elif table == "enrollments":
-        _add_ids(plan, "enrollments", [entity_id])
-    elif table == "grades":
-        _add_ids(plan, "grades", [entity_id])
-    elif table == "course_results":
-        _add_ids(plan, "course_results", [entity_id])
-    elif table == "report_cards":
-        _add_reports_to_plan(db, plan, {entity_id})
-    else:
-        _add_ids(plan, table, [entity_id])
-    _add_profile_users_to_plan(db, plan)
+    _add_ids(plan, table, [entity_id])
+    _expand_purge_plan_dependencies(db, plan)
     return plan
 
 
@@ -499,12 +548,10 @@ def purge_plan_for_batch(db: Session, batch_id: UUID) -> dict[str, set[UUID]]:
     plan = _empty_purge_plan()
     for table, model in RECOVERABLE_MODELS.items():
         plan[table].update(db.scalars(select(model.id).where(model.deleted_batch_id == batch_id)).all())
-    _add_profile_users_to_plan(db, plan)
+    # Legacy batches can contain only their root while newer dependent rows have
+    # no batch tag. Expand from every selected row before any physical delete.
+    _expand_purge_plan_dependencies(db, plan)
     return plan
-
-
-def _counts_from_plan(plan: dict[str, set[UUID]]) -> dict[str, int]:
-    return {table: len(ids) for table, ids in plan.items() if ids}
 
 
 def purge_user_accounts(
@@ -568,6 +615,30 @@ def purge_user_accounts(
     return counts
 
 
+def _null_external_references(db: Session, plan: dict[str, set[UUID]]) -> None:
+    """Detach nullable references from live rows outside the ownership closure."""
+    class_ids = plan["classes"]
+    if class_ids:
+        student_update = update(Student).where(Student.class_id.in_(class_ids))
+        if plan["students"]:
+            student_update = student_update.where(Student.id.not_in(plan["students"]))
+        db.execute(student_update.values(class_id=None))
+
+        course_update = update(Course).where(Course.class_id.in_(class_ids))
+        if plan["courses"]:
+            course_update = course_update.where(Course.id.not_in(plan["courses"]))
+        db.execute(course_update.values(class_id=None))
+
+    subject_ids = plan["subjects"]
+    if subject_ids:
+        course_update = update(Course).where(Course.subject_id.in_(subject_ids))
+        if plan["courses"]:
+            course_update = course_update.where(Course.id.not_in(plan["courses"]))
+        db.execute(course_update.values(subject_id=None))
+
+    db.flush()
+
+
 def purge_plan(
     db: Session,
     plan: dict[str, set[UUID]],
@@ -577,6 +648,7 @@ def purge_plan(
     # PURGE_ORDER is child-first to satisfy foreign keys. Only precomputed IDs
     # belonging to this deleted entry are touched; do not broaden these queries
     # to relationship-wide deletes that could consume active school data.
+    _null_external_references(db, plan)
     counts: dict[str, int] = {}
     for table in PURGE_ORDER:
         if table == "users":
@@ -591,7 +663,7 @@ def purge_plan(
         ids = plan.get(table) or set()
         if not ids:
             continue
-        model = RECOVERABLE_MODELS[table]
+        model = PURGE_MODELS[table]
         rows = db.scalars(select(model).where(model.id.in_(ids))).all()
         for row in rows:
             db.delete(row)

@@ -12,6 +12,7 @@ from auth import hash_password
 from database import get_db
 from main import app
 from models import (
+    AIWarning,
     AuditLog,
     Base,
     Class,
@@ -25,6 +26,8 @@ from models import (
     PasswordResetToken,
     ReportCard,
     ReportCardCourse,
+    ReportConductItem,
+    ReportWorkHabitItem,
     Student,
     StudentParent,
     Teacher,
@@ -284,6 +287,40 @@ class TrashRouteTests(unittest.TestCase):
             )
             self.assertEqual(remaining, 0, model.__tablename__)
 
+    def test_batch_student_purge_expands_untagged_legacy_dependencies_without_crossing_owners(self):
+        tree = self._student_tree("ZZ-TEST-LEGACY-BATCH-STUDENT")
+        survivor = self._student_tree("ZZ-TEST-LEGACY-BATCH-SURVIVOR")
+        student_id = tree["student"].id
+        result_id = tree["result"].id
+        item_id = tree["item"].id
+        survivor_id = survivor["student"].id
+        survivor_grade_id = survivor["grade"].id
+        course_id = self.course.id
+        teacher_id = self.teacher.id
+        parent_id = self.parent.id
+        class_id = self.school_class.id
+        batch = self._batch_rows(
+            entity_type="student",
+            entity_id=student_id,
+            target_label="ZZ-TEST Legacy Batch Student",
+            rows=[tree["student"]],
+        )
+        self.assertIsNone(self.db.get(CourseResult, result_id).deleted_batch_id)
+
+        response = self.client.delete(self._entry_url(f"batch:{batch.id}"), headers=self._headers())
+        self.assertEqual(response.status_code, 200, response.text)
+
+        self.db.expire_all()
+        self.assertIsNone(self.db.get(Student, student_id))
+        self.assertIsNone(self.db.get(CourseResult, result_id))
+        self.assertIsNotNone(self.db.get(GradeItem, item_id))
+        self.assertIsNotNone(self.db.get(Course, course_id))
+        self.assertIsNotNone(self.db.get(Teacher, teacher_id))
+        self.assertIsNotNone(self.db.get(Parent, parent_id))
+        self.assertIsNotNone(self.db.get(Class, class_id))
+        self.assertIsNotNone(self.db.get(Student, survivor_id))
+        self.assertIsNotNone(self.db.get(Grade, survivor_grade_id))
+
     @patch("routes.parents.send_account_created_sms", return_value=[])
     @patch("routes.parents.send_account_created_email", return_value={"success": False})
     def test_batch_parent_purge_deletes_user_tokens_preserves_audit_and_reuses_email(self, _email, _sms):
@@ -482,6 +519,149 @@ class TrashRouteTests(unittest.TestCase):
         self.assertIsNone(self.db.get(User, teacher_user_id))
         self.assertIsNone(self.db.get(Parent, parent_id))
         self.assertIsNone(self.db.get(User, parent_user_id))
+
+    def test_empty_trash_handles_production_shaped_mixed_bin_without_crossing_live_owners(self):
+        legacy = self._student_tree("ZZ-TEST-PROD-LEGACY-STU")
+        survivor = self._student_tree("ZZ-TEST-PROD-SURVIVOR-STU")
+        legacy_student_id = legacy["student"].id
+        legacy_result_id = legacy["result"].id
+        survivor_student_id = survivor["student"].id
+        survivor_result_id = survivor["result"].id
+        legacy_batch = self._batch_rows(
+            entity_type="student",
+            entity_id=legacy_student_id,
+            target_label="ZZ-TEST Prod Legacy Student",
+            rows=[legacy["student"]],
+        )
+        legacy_batch_id = legacy_batch.id
+        shared_course_id = self.course.id
+        shared_teacher_id = self.teacher.id
+
+        course_student = Student(
+            first_name="ZZ-TEST",
+            last_name="Course Owner Boundary",
+            school_level="college",
+            student_number="ZZ-TEST-PROD-COURSE-STU",
+            school_class=self.school_class,
+        )
+        course = Course(
+            name="ZZ-TEST Prod Course",
+            code="ZZ-TEST-PROD-COURSE",
+            teacher=self.teacher,
+            term="1er Trimestre",
+            school_year="2026-2027",
+            school_class=self.school_class,
+        )
+        self.db.add_all([course_student, course])
+        self.db.flush()
+        enrollment = Enrollment(student=course_student, course=course)
+        item = GradeItem(
+            course=course,
+            title="ZZ-TEST Prod Interro",
+            item_type="INTERRO",
+            max_score=20,
+            term="1er Trimestre",
+        )
+        self.db.add_all([enrollment, item])
+        self.db.flush()
+        grade = Grade(student=course_student, grade_item=item, score=16, submitted_by_teacher=self.teacher)
+        result = CourseResult(
+            student=course_student,
+            course=course,
+            term="1er Trimestre",
+            average=16,
+            letter_grade="B",
+            scale="20",
+        )
+        report = ReportCard(
+            student=course_student,
+            term="1er Trimestre",
+            school_year="2026-2027",
+            overall_average=16,
+            scale="20",
+            status="approved",
+        )
+        self.db.add_all([grade, result, report])
+        self.db.flush()
+        report_course = ReportCardCourse(
+            report_card=report,
+            course=course,
+            course_name=course.name,
+            average=16,
+            letter_grade="B",
+        )
+        conduct = ReportConductItem(report_card=report, item_key="conduct", letter_grade="A")
+        work_habit = ReportWorkHabitItem(report_card=report, item_key="organization", letter_grade="B")
+        warning = AIWarning(
+            report_card=report,
+            warning_type="ZZ-TEST-warning",
+            message="ZZ-TEST retained report warning",
+            severity="low",
+        )
+        self.db.add_all([report_course, conduct, work_habit, warning])
+        self.db.commit()
+        course_id = course.id
+        course_student_id = course_student.id
+        enrollment_id = enrollment.id
+        item_id = item.id
+        grade_id = grade.id
+        result_id = result.id
+        report_id = report.id
+        report_course_id = report_course.id
+        conduct_id = conduct.id
+        work_habit_id = work_habit.id
+        warning_id = warning.id
+        course_batch = self._batch_rows(
+            entity_type="course",
+            entity_id=course_id,
+            target_label="ZZ-TEST Prod Course",
+            rows=[course],
+        )
+        course_batch_id = course_batch.id
+
+        orphan_teacher_user = self._user(
+            name="ZZ-TEST Prod Unbatched Teacher",
+            email="zz-test-prod-unbatched-teacher@example.test",
+            role="teacher",
+        )
+        orphan_teacher = Teacher(
+            user=orphan_teacher_user,
+            employee_number="ZZ-TEST-PROD-UNBATCHED-TCH",
+            deleted_at=datetime.now(timezone.utc),
+        )
+        self.db.add(orphan_teacher)
+        self.db.commit()
+        orphan_teacher_id = orphan_teacher.id
+        orphan_teacher_user_id = orphan_teacher_user.id
+
+        response = self.client.delete("/api/v1/admin/trash", headers=self._headers())
+        self.assertEqual(response.status_code, 200, response.text)
+
+        self.db.expire_all()
+        self.assertIsNone(self.db.get(DeletionBatch, legacy_batch_id))
+        self.assertIsNone(self.db.get(DeletionBatch, course_batch_id))
+        self.assertIsNone(self.db.get(Student, legacy_student_id))
+        self.assertIsNone(self.db.get(CourseResult, legacy_result_id))
+        self.assertIsNone(self.db.get(Course, course_id))
+        self.assertIsNone(self.db.get(Enrollment, enrollment_id))
+        self.assertIsNone(self.db.get(GradeItem, item_id))
+        self.assertIsNone(self.db.get(Grade, grade_id))
+        self.assertIsNone(self.db.get(CourseResult, result_id))
+        self.assertIsNone(self.db.get(ReportCardCourse, report_course_id))
+        self.assertIsNone(self.db.get(Teacher, orphan_teacher_id))
+        self.assertIsNone(self.db.get(User, orphan_teacher_user_id))
+
+        # Course closure stops at its student and report roots. Their own report
+        # children survive because the report itself was not a trash target.
+        self.assertIsNotNone(self.db.get(Student, course_student_id))
+        self.assertIsNotNone(self.db.get(ReportCard, report_id))
+        self.assertIsNotNone(self.db.get(ReportConductItem, conduct_id))
+        self.assertIsNotNone(self.db.get(ReportWorkHabitItem, work_habit_id))
+        self.assertIsNotNone(self.db.get(AIWarning, warning_id))
+        self.assertIsNotNone(self.db.get(Student, survivor_student_id))
+        self.assertIsNotNone(self.db.get(CourseResult, survivor_result_id))
+        self.assertIsNotNone(self.db.get(Course, shared_course_id))
+        self.assertIsNotNone(self.db.get(Teacher, shared_teacher_id))
 
     def test_auto_purge_uses_deleted_at_retention_boundary(self):
         old_student = self._student_tree("ZZ-TEST-OLD")["student"]

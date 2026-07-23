@@ -30,7 +30,7 @@ export function listCourses({ schoolYear } = {}) {
 // POST /api/v1/courses (admin). With a subjectId the backend derives name and
 // language_group from the subject, so neither is sent (a conflicting value
 // would be rejected with a 422).
-export function createCourse({ name, code, teacherId, term, schoolYear, languageGroup, classId, subjectId, coefficient = 1 }) {
+export function createCourse({ name, code, teacherId, term, schoolYear, languageGroup, classId, subjectId, coefficient = 1, gradingSystem }) {
   return apiPost('/courses', {
     name: subjectId ? null : name.trim(),
     code: code.trim(),
@@ -41,13 +41,14 @@ export function createCourse({ name, code, teacherId, term, schoolYear, language
     class_id: classId || null,
     subject_id: subjectId || null,
     coefficient: Number(coefficient) || 1,
+    grading_system: gradingSystem || null,
   })
 }
 
 // PUT /api/v1/courses/{course_id} (admin). Same subject rule as createCourse:
 // with a subjectId, name / language_group are omitted so the backend derives
 // them from the subject.
-export function updateCourse(courseId, { name, code, teacherId, term, schoolYear, languageGroup, classId, subjectId, coefficient }) {
+export function updateCourse(courseId, { name, code, teacherId, term, schoolYear, languageGroup, classId, subjectId, coefficient, gradingSystem, confirmGradingSystemChange = false }) {
   const body = {
     code: code.trim(),
     teacher_id: teacherId,
@@ -55,6 +56,8 @@ export function updateCourse(courseId, { name, code, teacherId, term, schoolYear
     class_id: classId || null,
     subject_id: subjectId || null,
     coefficient: coefficient != null ? Number(coefficient) || 1 : 1,
+    grading_system: gradingSystem || null,
+    confirm_grading_system_change: confirmGradingSystemChange,
   }
   // A non-canonical (legacy) term is omitted rather than sent: the backend
   // only accepts the three trimesters, and omitting leaves it unchanged.

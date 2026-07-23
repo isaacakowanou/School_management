@@ -29,7 +29,7 @@ function isUnchanged(draftValue, existing) {
 
 const TYPE_ORDER = { INTERRO: 0, DEVOIR: 1, COMPOSITION: 2 }
 
-export default function GradeEntryTable({ courseId, students, gradeItems, grades, onSaved, gradingMode = 'WEIGHTED' }) {
+export default function GradeEntryTable({ courseId, students, gradeItems, grades, onSaved, gradingMode = 'WEIGHTED', readOnly = false }) {
   const { t } = useTranslation()
   const isBeninese = gradingMode === 'BENINESE'
   const inputRefs = useRef(new Map())
@@ -256,7 +256,7 @@ export default function GradeEntryTable({ courseId, students, gradeItems, grades
         />
       </label>
 
-      <div className="report-sticky-actions grade-save-bar">
+      {!readOnly && <div className="report-sticky-actions grade-save-bar">
         <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
           {saving ? t('gradeEntry.saving') : t('gradeEntry.saveGrades')}
         </button>
@@ -272,7 +272,7 @@ export default function GradeEntryTable({ courseId, students, gradeItems, grades
                   : t('gradeEntry.saved')}
           </span>
         )}
-      </div>
+      </div>}
 
       {filteredStudents.length === 0 ? (
         <Empty message={t('gradeEntry.noMatchingStudents')} />
@@ -316,7 +316,7 @@ export default function GradeEntryTable({ courseId, students, gradeItems, grades
                           onChange={(e) => setCell(key, e.target.value)}
                           onKeyDown={(event) => handleCellKeyDown(event, studentIndex, itemIndex)}
                           ref={(node) => setInputRef(key, node)}
-                          disabled={saving}
+                          disabled={saving || readOnly}
                           aria-label={`${student.last_name} ${student.first_name} — ${item.title}`}
                         />
                         {error && <div className="grade-cell-error">{error}</div>}

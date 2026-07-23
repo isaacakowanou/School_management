@@ -11,6 +11,8 @@ import {
   regenerateReport,
 } from '../api/reports.js'
 import { listClasses } from '../api/classes.js'
+import { listTrimesterLocks, setTrimesterLock } from '../api/trimesterLocks.js'
+import { TRIMESTER_TERMS } from '../constants/terms.js'
 import { formatReportAverage } from '../utils/format.js'
 import ClassSelect from '../components/ClassSelect.jsx'
 import TermSelect from '../components/TermSelect.jsx'
@@ -32,6 +34,9 @@ export default function AdminClassReportsPage() {
   const [runningAction, setRunningAction] = useState(null)
   const [regeneratingId, setRegeneratingId] = useState(null)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [trimesterLocks, setTrimesterLocks] = useState([])
+  const [updatingLockTerm, setUpdatingLockTerm] = useState(null)
+  const [lockError, setLockError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -56,6 +61,46 @@ export default function AdminClassReportsPage() {
     () => ({ classId, schoolYear, term }),
     [classId, schoolYear, term],
   )
+
+  useEffect(() => {
+    let cancelled = false
+    setLockError(null)
+    if (!schoolYear) {
+      setTrimesterLocks([])
+      return () => { cancelled = true }
+    }
+    listTrimesterLocks(schoolYear)
+      .then((data) => {
+        if (!cancelled) setTrimesterLocks(data)
+      })
+      .catch((err) => {
+        if (!cancelled) setLockError(err.message)
+      })
+    return () => { cancelled = true }
+  }, [schoolYear])
+
+  async function handleToggleLock(termToChange, currentlyLocked) {
+    const confirmation = currentlyLocked
+      ? t('classReports.confirmUnlockTrimester', { term: termToChange })
+      : t('classReports.confirmLockTrimester', { term: termToChange })
+    if (!window.confirm(confirmation)) return
+    setUpdatingLockTerm(termToChange)
+    setLockError(null)
+    try {
+      const updated = await setTrimesterLock({
+        schoolYear,
+        term: termToChange,
+        isLocked: !currentlyLocked,
+      })
+      setTrimesterLocks((current) => current.map((lock) => (
+        lock.term === updated.term ? updated : lock
+      )))
+    } catch (err) {
+      setLockError(err.message)
+    } finally {
+      setUpdatingLockTerm(null)
+    }
+  }
 
   const loadStatus = useCallback(async () => {
     if (!classId || !term || !schoolYear) {
@@ -265,6 +310,43 @@ export default function AdminClassReportsPage() {
           </p>
         )}
       </div>
+
+      {schoolYear && (
+        <section className="trimester-lock-panel" aria-labelledby="trimester-lock-title">
+          <div>
+            <h3 id="trimester-lock-title">{t('classReports.trimesterLockTitle')}</h3>
+            <p className="muted">{t('classReports.trimesterLockScope')}</p>
+          </div>
+          <div className="trimester-lock-grid">
+            {TRIMESTER_TERMS.map((lockTerm) => {
+              const locked = trimesterLocks.find((item) => item.term === lockTerm)?.is_locked || false
+              return (
+                <div className="trimester-lock-row" key={lockTerm}>
+                  <div>
+                    <strong>{lockTerm}</strong>
+                    <span className={`badge ${locked ? 'badge-review' : 'badge-approved'}`}>
+                      {locked ? t('classReports.locked') : t('classReports.unlocked')}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={Boolean(updatingLockTerm)}
+                    onClick={() => handleToggleLock(lockTerm, locked)}
+                  >
+                    {updatingLockTerm === lockTerm
+                      ? t('common.saving')
+                      : locked
+                        ? t('classReports.unlock')
+                        : t('classReports.lock')}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+          {lockError && <ErrorBanner message={lockError} />}
+        </section>
+      )}
 
       {error && <ErrorBanner message={error} />}
       {loading && <Spinner label={t('classReports.loading')} />}

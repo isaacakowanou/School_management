@@ -56,6 +56,34 @@ class User(Base):
     )
 
 
+class TrimesterLock(Base):
+    """Current school-wide write lock for one school year and trimester.
+
+    AuditLog owns lock history. This row only stores current state; a missing
+    row is interpreted as unlocked so existing school years remain writable.
+    """
+
+    __tablename__ = "trimester_locks"
+    __table_args__ = (
+        UniqueConstraint("school_year", "term", name="uq_trimester_lock_school_year_term"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    term: Mapped[str] = mapped_column(String(50), nullable=False)
+    is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa.false())
+    updated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    updated_by_admin: Mapped["User | None"] = orm_relationship()
+
+
 class Class(Base):
     __tablename__ = "classes"
     __table_args__ = (UniqueConstraint("name_fr", "school_year", name="uq_class_name_fr_school_year"),)

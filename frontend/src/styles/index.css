@@ -1725,3 +1725,93 @@ a.card:active {
   right: 1.25rem;
   z-index: 100;
 }
+/* School-year trimester controls and course-detail term navigation. */
+.trimester-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0 16px;
+  border-bottom: 1px solid var(--border, #d9e0e8);
+  padding-bottom: 8px;
+}
+
+.trimester-tab {
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.trimester-tab:hover,
+.trimester-tab.is-active {
+  border-color: #9aa9bd;
+  background: #eef3f8;
+}
+
+.trimester-tab.is-active {
+  font-weight: 700;
+}
+
+.trimester-lock-notice {
+  margin-bottom: 16px;
+  border-left: 4px solid #b93823;
+  background: #fff4f1;
+  text-align: left;
+}
+
+.trimester-lock-notice p {
+  margin: 4px 0 0;
+}
+
+.trimester-lock-notice-admin {
+  border-left-color: #9b6b14;
+  background: #fff8e8;
+}
+
+.trimester-lock-panel {
+  margin: 16px 0 24px;
+  border-top: 1px solid var(--border, #d9e0e8);
+  border-bottom: 1px solid var(--border, #d9e0e8);
+  padding: 16px 0;
+}
+
+.trimester-lock-panel h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.trimester-lock-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.trimester-lock-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border, #d9e0e8);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.trimester-lock-row > div {
+  display: grid;
+  gap: 6px;
+}
+
+@media (max-width: 760px) {
+  .trimester-lock-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trimester-tab {
+    flex: 1 1 100%;
+    text-align: left;
+  }
+}

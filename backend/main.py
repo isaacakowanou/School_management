@@ -35,6 +35,7 @@ from routes.students import router as students_router
 from routes.subjects import router as subjects_router
 from routes.teachers import router as teachers_router
 from routes.trash import router as trash_router
+from routes.trimester_locks import router as trimester_locks_router
 from routes.users import router as users_router
 
 
@@ -69,6 +70,7 @@ app.include_router(students_router, prefix="/api/v1/students")
 app.include_router(subjects_router, prefix="/api/v1/subjects")
 app.include_router(teachers_router, prefix="/api/v1/teachers")
 app.include_router(trash_router, prefix="/api/v1")
+app.include_router(trimester_locks_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1/users")
 
 

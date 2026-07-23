@@ -24,6 +24,7 @@ const EMPTY_FORM = {
   classId: '',
   subjectId: '',
   coefficient: '1',
+  gradingSystem: 'WEIGHTED',
 }
 
 const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
@@ -37,6 +38,7 @@ export default function AdminCourseCreatePage() {
   const [saving, setSaving] = useState(false)
   const [classes, setClasses] = useState([])
   const [subjects, setSubjects] = useState([])
+  const [gradingSystemTouched, setGradingSystemTouched] = useState(false)
 
   // Selecting a class narrows the catalog to that class's subjects; a subject
   // that falls out of the narrowed list is deselected.
@@ -104,6 +106,16 @@ export default function AdminCourseCreatePage() {
   const selectedSubject = form.subjectId
     ? subjects.find((subject) => subject.id === form.subjectId) || null
     : null
+  const selectedClass = classes.find((schoolClass) => schoolClass.id === form.classId) || null
+
+  useEffect(() => {
+    if (gradingSystemTouched) return
+    const languageGroup = selectedSubject?.section || form.languageGroup
+    const inferred = languageGroup === 'FRENCH' && selectedClass?.school_level === 'college'
+      ? 'BENINESE'
+      : 'WEIGHTED'
+    setForm((current) => ({ ...current, gradingSystem: inferred }))
+  }, [form.languageGroup, gradingSystemTouched, selectedClass?.school_level, selectedSubject?.section])
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -267,6 +279,23 @@ export default function AdminCourseCreatePage() {
               required
             />
             <span className="muted">{t('courses.coefficientHint')}</span>
+          </label>
+
+          <label className="field">
+            <span>{t('courses.gradingSystem')}</span>
+            <select
+              className="grade-input"
+              value={form.gradingSystem}
+              onChange={(event) => {
+                setGradingSystemTouched(true)
+                updateField('gradingSystem', event.target.value)
+              }}
+              disabled={saving}
+              style={{ width: '100%', textAlign: 'left' }}
+            >
+              <option value="BENINESE">{t('courses.gradingSystemBeninese')}</option>
+              <option value="WEIGHTED">{t('courses.gradingSystemWeighted')}</option>
+            </select>
           </label>
 
           <datalist id="course-school-year-options">

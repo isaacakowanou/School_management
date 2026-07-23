@@ -6,8 +6,12 @@ import { createGradeItem, listGradeItems, updateGradeItem } from '../api/gradeIt
 import { listCourseGrades, notifyGradesChanged } from '../api/grades.js'
 import {
   calculateCourseResults,
+  calculateSelectedCourseResults,
   listCourseResults,
 } from '../api/courseResults.js'
+import { listTrimesterLocks } from '../api/trimesterLocks.js'
+import { TRIMESTER_TERMS } from '../constants/terms.js'
+import { assessmentDataForTerm, lockByTerm } from '../utils/courseTrimester.js'
 import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -85,6 +89,8 @@ export default function TeacherCourseDetailPage() {
   const [gradeItems, setGradeItems] = useState(null)
   const [grades, setGrades] = useState(null)
   const [results, setResults] = useState(null)
+  const [trimesterLocks, setTrimesterLocks] = useState([])
+  const [selectedTerm, setSelectedTerm] = useState('')
   const [error, setError] = useState(null)
 
   const [calculating, setCalculating] = useState(false)
@@ -109,6 +115,8 @@ export default function TeacherCourseDetailPage() {
     setGradeItems(null)
     setGrades(null)
     setResults(null)
+    setTrimesterLocks([])
+    setSelectedTerm('')
     setCalcSummary(null)
     setCalcError(null)
     setNotificationNotice(null)
@@ -137,6 +145,10 @@ export default function TeacherCourseDetailPage() {
         setGradeItems(gi)
         setGrades(g)
         setResults(r)
+        const locks = await listTrimesterLocks(c.school_year)
+        if (cancelled) return
+        setTrimesterLocks(locks)
+        setSelectedTerm(c.term)
         setGradeItemForm((current) => ({
           ...current,
           term: current.term || c.term || '',
@@ -153,7 +165,7 @@ export default function TeacherCourseDetailPage() {
   }, [courseId])
 
   const recalculateAllResults = useCallback(async () => {
-    const res = await calculateCourseResults(courseId)
+    const res = await calculateCourseResults(courseId, { term: selectedTerm })
     setCalcSummary({
       calculated_count: res.calculated_count,
       skipped_students: res.skipped_students || [],
@@ -162,7 +174,7 @@ export default function TeacherCourseDetailPage() {
     const refreshed = await listCourseResults(courseId)
     setResults(refreshed)
     return res
-  }, [courseId])
+  }, [courseId, selectedTerm])
 
   const handleGradesSaved = useCallback(async (changedStudentIds = []) => {
     if (changedStudentIds.length > 0) {
@@ -180,7 +192,13 @@ export default function TeacherCourseDetailPage() {
 
     if (changedStudentIds.length > 0) {
       try {
-        await recalculateAllResults()
+        const res = await calculateSelectedCourseResults(courseId, changedStudentIds, { term: selectedTerm })
+        setCalcSummary({
+          calculated_count: res.calculated_count,
+          skipped_students: res.skipped_students || [],
+          no_changes: false,
+        })
+        setResults(await listCourseResults(courseId))
       } catch (err) {
         setCalcError(err.message)
         throw err
@@ -202,7 +220,7 @@ export default function TeacherCourseDetailPage() {
         setNotificationNotice(t('courses.notificationUnavailable'))
       }
     }
-  }, [courseId, recalculateAllResults, t])
+  }, [courseId, selectedTerm, t])
 
   function updateGradeItemField(field, value) {
     setGradeItemForm((current) => ({ ...current, [field]: value }))
@@ -219,6 +237,7 @@ export default function TeacherCourseDetailPage() {
   }
 
   function openAddGradeItemForm() {
+    setGradeItemForm((current) => ({ ...current, term: selectedTerm }))
     setShowGradeItemForm(true)
     setGradeItemError(null)
     setGradeItemMessage(null)
@@ -232,7 +251,7 @@ export default function TeacherCourseDetailPage() {
     setGradeItemForm({
       ...EMPTY_GRADE_ITEM_FORM,
       title: titleMap[itemType] || '',
-      term: course?.term || '',
+      term: selectedTerm || course?.term || '',
       itemType,
     })
     setShowGradeItemForm(true)
@@ -328,15 +347,22 @@ export default function TeacherCourseDetailPage() {
     ? course.grading_system === 'BENINESE'
     : !!(course?.language_group === 'FRENCH' && course?.class_school_level === 'college')
 
-  // Term-scoped: results are calculated from the course's current term only,
-  // so the entry matrix, the one-Devoir/one-Composition rule, and the weight
-  // summary all look at this term's items (the list table shows every term).
-  const currentTermItems = gradeItemList.filter((i) => i.term === course?.term)
+  const selectedData = assessmentDataForTerm({
+    term: selectedTerm,
+    gradeItems: gradeItemList,
+    grades: grades || [],
+    results: results || [],
+  })
+  const selectedTermItems = selectedData.gradeItems
+  const selectedTermGrades = selectedData.grades
+  const selectedTermResults = selectedData.results
+  const locksByTerm = lockByTerm(trimesterLocks)
+  const selectedTermLocked = locksByTerm.get(selectedTerm) || false
 
-  const hasDevoir = currentTermItems.some((i) => i.item_type === 'DEVOIR')
-  const hasComposition = currentTermItems.some((i) => i.item_type === 'COMPOSITION')
+  const hasDevoir = selectedTermItems.some((i) => i.item_type === 'DEVOIR')
+  const hasComposition = selectedTermItems.some((i) => i.item_type === 'COMPOSITION')
 
-  const totalWeight = currentTermItems.reduce((sum, item) => sum + Number(item.weight || 0), 0)
+  const totalWeight = selectedTermItems.reduce((sum, item) => sum + Number(item.weight || 0), 0)
   const isWeightReady = Math.abs(totalWeight - 1) <= WEIGHT_TOLERANCE
   const weightSummary = isWeightReady
     ? t('courses.weightReady', { total: formatWeight(totalWeight) })
@@ -398,10 +424,41 @@ export default function TeacherCourseDetailPage() {
             </div>
           )}
 
+          <div className="trimester-tabs" role="tablist" aria-label={t('courses.trimesterSections')}>
+            {TRIMESTER_TERMS.map((term) => {
+              const locked = locksByTerm.get(term) || false
+              return (
+                <button
+                  key={term}
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedTerm === term}
+                  className={`trimester-tab${selectedTerm === term ? ' is-active' : ''}`}
+                  onClick={() => {
+                    setSelectedTerm(term)
+                    setGradeItemForm((current) => ({ ...current, term }))
+                    setShowGradeItemForm(false)
+                    setEditingGradeItemId(null)
+                    setCalcSummary(null)
+                    setCalcError(null)
+                  }}
+                >
+                  {term}{locked ? ` · ${t('courses.lockedShort')}` : ''}
+                </button>
+              )
+            })}
+          </div>
+          {selectedTermLocked && (
+            <div className="state trimester-lock-notice" role="status">
+              <strong>{t('courses.trimesterLockedTitle')}</strong>
+              <p>{t('courses.trimesterLockedTeacher')}</p>
+            </div>
+          )}
+
           <div className="section-heading">
             <h3>{t('courses.gradeItems')}</h3>
 
-            {!showGradeItemForm && (
+            {!showGradeItemForm && !selectedTermLocked && (
               <div className="grade-actions">
               {isBenineseMode ? (
                 <>
@@ -560,7 +617,7 @@ export default function TeacherCourseDetailPage() {
           )}
 
           {/* Grade items list */}
-          {gradeItems.length === 0 ? (
+          {selectedTermItems.length === 0 ? (
             <Empty message={t('courses.noGradeItemsYet')} />
           ) : (
             <div className="table-scroll">
@@ -580,7 +637,7 @@ export default function TeacherCourseDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {gradeItems.map((item) => (
+                  {selectedTermItems.map((item) => (
                     <Fragment key={item.id}>
                       <tr>
                         <td>{item.title}</td>
@@ -596,7 +653,7 @@ export default function TeacherCourseDetailPage() {
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            disabled={savingGradeItemEdit}
+                            disabled={savingGradeItemEdit || selectedTermLocked}
                             onClick={() => {
                               setShowGradeItemForm(false)
                               setGradeItemError(null)
@@ -722,10 +779,11 @@ export default function TeacherCourseDetailPage() {
           <GradeEntryTable
             courseId={courseId}
             students={students}
-            gradeItems={currentTermItems}
-            grades={grades}
+            gradeItems={selectedTermItems}
+            grades={selectedTermGrades}
             onSaved={handleGradesSaved}
             gradingMode={isBenineseMode ? 'BENINESE' : 'WEIGHTED'}
+            readOnly={selectedTermLocked}
           />
 
           <div className="section-heading">
@@ -766,7 +824,7 @@ export default function TeacherCourseDetailPage() {
             </div>
           )}
 
-          {results.length === 0 ? (
+          {selectedTermResults.length === 0 ? (
             <Empty message={t('courses.noResultsYet')} />
           ) : (
             <div className="table-scroll">
@@ -780,7 +838,7 @@ export default function TeacherCourseDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {results.map((result) => (
+                  {selectedTermResults.map((result) => (
                     <tr key={result.id}>
                       <td className="nowrap">
                         {studentNameById[result.student_id] || result.student_id}

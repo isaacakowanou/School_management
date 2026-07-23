@@ -3,7 +3,9 @@
 The route selects one grading engine per course: notation béninoise for
 French-track Collège courses, weighted items otherwise. Beninese calculation
 requires Interro(s), exactly one Devoir, and exactly one Composition for the
-course's canonical trimester. Missing student scores mean "not computable",
+requested canonical trimester. Omitted ``term`` remains backward-compatible
+and uses ``course.term``; an explicit historical term never mutates the current
+trimester's result. Missing student scores mean "not computable",
 never zero: recalculation skips that student and invalidates any stale result so
 bulletins cannot silently reuse an average built from old grades.
 """
@@ -25,6 +27,7 @@ from schemas import (
     CourseResultCalculationResponse,
     CourseResultResponse,
     SkippedCourseResultStudent,
+    TrimesterTerm,
 )
 from services.grade_calculator import (
     calculate_beninese_average,
@@ -166,12 +169,13 @@ def get_course_result_for_recalculation(
     *,
     student_id: UUID,
     course: Course,
+    term: str,
 ) -> CourseResult | None:
     candidates = get_term_equivalent_course_results(
         db,
         student_id=student_id,
         course_id=course.id,
-        term=course.term,
+        term=term,
     )
     if not candidates:
         return None
@@ -179,26 +183,26 @@ def get_course_result_for_recalculation(
     return sorted(
         candidates,
         key=lambda result: (
-            result.term != course.term,
+            result.term != term,
             result.deleted_at is not None,
         ),
     )[0]
 
 
-def get_course_grade_items(db: Session, course: Course) -> list[GradeItem]:
-    # Term-scoped: results are stored under course.term, so only that term's
+def get_course_grade_items(db: Session, course: Course, term: str) -> list[GradeItem]:
+    # Term-scoped: only the requested trimester's grade items may feed its
     # grade items may feed the average. Items tagged for another trimester
     # (prepared in advance, or left over after the term advanced) are excluded.
     grade_items = db.scalars(
         select(GradeItem)
         .where(
             GradeItem.course_id == course.id,
-            GradeItem.term == course.term,
+            GradeItem.term == term,
             GradeItem.deleted_at.is_(None),
         )
         .order_by(GradeItem.created_at)
     ).all()
-    validate_course_grade_items(list(grade_items), is_beninese_mode(course), course.term)
+    validate_course_grade_items(list(grade_items), is_beninese_mode(course), term)
     return list(grade_items)
 
 
@@ -251,6 +255,7 @@ def calculate_results_for_students(
     course: Course,
     grade_items: list[GradeItem],
     students: list[Student],
+    term: str,
     beninese: bool = False,
 ) -> tuple[list[CourseResult], list[SkippedCourseResultStudent], list[CourseResult]]:
     results: list[CourseResult] = []
@@ -284,7 +289,7 @@ def calculate_results_for_students(
                 db,
                 student_id=student.id,
                 course_id=course.id,
-                term=course.term,
+                term=term,
                 active_only=True,
             )
             for existing_result in existing_results:
@@ -339,13 +344,14 @@ def calculate_results_for_students(
             db,
             student_id=student.id,
             course=course,
+            term=term,
         )
 
         if course_result is None:
             course_result = CourseResult(
                 student_id=student.id,
                 course_id=course.id,
-                term=course.term,
+                term=term,
                 average=average,
                 letter_grade=letter_grade,
                 scale="20",
@@ -361,12 +367,12 @@ def calculate_results_for_students(
                 db,
                 student_id=student.id,
                 course_id=course.id,
-                term=course.term,
+                term=term,
                 active_only=True,
             ):
                 if duplicate_result.id != course_result.id:
                     duplicate_result.deleted_at = calculated_at
-            course_result.term = course.term
+            course_result.term = term
             course_result.average = average
             course_result.letter_grade = letter_grade
             # Recalculated averages are always on the /20 scale, even if this
@@ -387,6 +393,7 @@ def calculate_results_for_students(
 @router.post("/course-results/calculate/{course_id}", response_model=CourseResultCalculationResponse)
 def calculate_course_results(
     course_id: UUID,
+    term: TrimesterTerm | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CourseResultCalculationResponse:
@@ -394,7 +401,8 @@ def calculate_course_results(
     if not can_access_course_results(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
-    grade_items = get_course_grade_items(db, course)
+    calculation_term = term.value if term is not None else course.term
+    grade_items = get_course_grade_items(db, course, calculation_term)
     students = get_enrolled_students_for_course(db, course)
     beninese = is_beninese_mode(course)
     results, skipped_students, invalidated_results = calculate_results_for_students(
@@ -402,6 +410,7 @@ def calculate_course_results(
         course=course,
         grade_items=grade_items,
         students=students,
+        term=calculation_term,
         beninese=beninese,
     )
 
@@ -413,6 +422,7 @@ def calculate_course_results(
         entity_id=course.id,
         new_value={
             "course_id": course.id,
+            "term": calculation_term,
             "calculated_count": len(results),
             "skipped_students_count": len(skipped_students),
             "invalidated_count": len(invalidated_results),
@@ -424,7 +434,7 @@ def calculate_course_results(
 
     return CourseResultCalculationResponse(
         course_id=course.id,
-        term=course.term,
+        term=calculation_term,
         calculated_count=len(results),
         invalidated_count=len(invalidated_results),
         skipped_students=skipped_students,
@@ -436,6 +446,7 @@ def calculate_course_results(
 def calculate_selected_course_results(
     course_id: UUID,
     payload: CourseResultCalculationRequest,
+    term: TrimesterTerm | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CourseResultCalculationResponse:
@@ -443,7 +454,8 @@ def calculate_selected_course_results(
     if not can_access_course_results(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
-    grade_items = get_course_grade_items(db, course)
+    calculation_term = term.value if term is not None else course.term
+    grade_items = get_course_grade_items(db, course, calculation_term)
     students = get_selected_enrolled_students(db, course, payload.student_ids)
     beninese = is_beninese_mode(course)
     results, skipped_students, invalidated_results = calculate_results_for_students(
@@ -451,6 +463,7 @@ def calculate_selected_course_results(
         course=course,
         grade_items=grade_items,
         students=students,
+        term=calculation_term,
         beninese=beninese,
     )
 
@@ -462,6 +475,7 @@ def calculate_selected_course_results(
         entity_id=course.id,
         new_value={
             "course_id": course.id,
+            "term": calculation_term,
             "calculated_count": len(results),
             "skipped_students_count": len(skipped_students),
             "invalidated_count": len(invalidated_results),
@@ -474,7 +488,7 @@ def calculate_selected_course_results(
 
     return CourseResultCalculationResponse(
         course_id=course.id,
-        term=course.term,
+        term=calculation_term,
         calculated_count=len(results),
         invalidated_count=len(invalidated_results),
         skipped_students=skipped_students,

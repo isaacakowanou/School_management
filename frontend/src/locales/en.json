@@ -126,7 +126,9 @@
     "current_password_incorrect": "Current password is incorrect.",
     "partial_results": "Results are incomplete.",
     "stale_report_snapshot": "This report must be regenerated after the latest changes.",
-    "incomplete_report_results": "The report's current results are incomplete."
+    "incomplete_report_results": "The report's current results are incomplete.",
+    "trimester_locked": "Trimester locked by the administration",
+    "grading_system_change_requires_confirmation": "Confirm the grading-system change for this course."
   },
   "forgotPassword": {
     "title": "Forgot password?",
@@ -484,6 +486,15 @@
     "currentTeacher": "Current teacher",
     "coefficient": "Coefficient",
     "coefficientHint": "Weight for class average calculation (1 = standard)",
+    "gradingSystem": "Grading system",
+    "gradingSystemBeninese": "Beninese grading",
+    "gradingSystemWeighted": "Weight-based grading",
+    "confirmGradingSystemChange": "This course has {{count}} grade item(s). Existing item types may not match the new system. Continue?",
+    "trimesterSections": "Course trimesters",
+    "lockedShort": "Locked",
+    "trimesterLockedTitle": "Trimester locked",
+    "trimesterLockedTeacher": "This trimester is read-only. An administrator must unlock it before grade items or grades can be changed.",
+    "trimesterLockedAdmin": "Teachers have read-only access. Every administrative change is audited as an override and may make reports stale.",
     "benineseMode": "Beninese grading (collège — Moy Int → MCC → Moy)",
     "addInterro": "Add Interro",
     "addDevoir": "Add Devoir",
@@ -827,6 +838,9 @@
       "report_regenerated": "Report regenerated",
       "report_summary_updated": "Report summary updated",
       "report_details_updated": "Report details updated",
+      "trimester_locked": "Trimester locked",
+      "trimester_unlocked": "Trimester unlocked",
+      "locked_trimester_override": "Administrative locked-trimester override",
       "auth_login_succeeded": "Successful login",
       "auth_login_failed": "Failed login",
       "password_changed": "Password changed",
@@ -877,6 +891,14 @@
     "pdfGenerating": "Generating PDF…",
     "pdfReady": "Class PDF downloaded.",
     "pdfFailed": "PDF generation failed.",
-    "pdfTimeout": "PDF generation timed out — try again."
+    "pdfTimeout": "PDF generation timed out — try again.",
+    "trimesterLockTitle": "Trimester locking",
+    "trimesterLockScope": "The lock applies to every class in the selected school year.",
+    "locked": "Locked",
+    "unlocked": "Open",
+    "lock": "Lock",
+    "unlock": "Unlock",
+    "confirmLockTrimester": "Lock {{term}} for every class in this school year? Teachers will no longer be able to change grade items or grades.",
+    "confirmUnlockTrimester": "Unlock {{term}} for every class in this school year? Teachers will regain write access."
   }
 }

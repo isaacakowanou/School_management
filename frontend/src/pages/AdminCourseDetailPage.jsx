@@ -12,8 +12,9 @@ import {
 import { listStudents } from '../api/students.js'
 import { getTeacher, listTeachers } from '../api/teachers.js'
 import { createGradeItem, deleteGradeItem, listGradeItems, updateGradeItem } from '../api/gradeItems.js'
-import { listCourseResults } from '../api/courseResults.js'
+import { calculateSelectedCourseResults, listCourseResults } from '../api/courseResults.js'
 import { listCourseGrades } from '../api/grades.js'
+import { listTrimesterLocks } from '../api/trimesterLocks.js'
 import { listClasses } from '../api/classes.js'
 import { listSubjects } from '../api/subjects.js'
 import { SCHOOL_GROUPS } from '../constants/schoolGroups.js'
@@ -25,6 +26,13 @@ import Empty from '../components/Empty.jsx'
 import ClassSelect from '../components/ClassSelect.jsx'
 import SubjectSelect from '../components/SubjectSelect.jsx'
 import TermSelect from '../components/TermSelect.jsx'
+import GradeEntryTable from '../components/GradeEntryTable.jsx'
+import { TRIMESTER_TERMS } from '../constants/terms.js'
+import {
+  assessmentDataForTerm,
+  gradingSystemChangeNeedsConfirmation,
+  lockByTerm,
+} from '../utils/courseTrimester.js'
 
 const EMPTY_GRADE_ITEM_FORM = {
   title: '',
@@ -46,6 +54,7 @@ const EMPTY_COURSE_EDIT_FORM = {
   classId: '',
   subjectId: '',
   coefficient: '1',
+  gradingSystem: 'WEIGHTED',
 }
 
 const GRADE_ITEM_SUGGESTIONS = [
@@ -76,6 +85,11 @@ function courseToForm(course) {
     classId: course?.class_id || '',
     subjectId: course?.subject_id || '',
     coefficient: course?.coefficient != null ? String(course.coefficient) : '1',
+    gradingSystem: course?.grading_system || (
+      course?.language_group === 'FRENCH' && course?.class_school_level === 'college'
+        ? 'BENINESE'
+        : 'WEIGHTED'
+    ),
   }
 }
 
@@ -103,6 +117,8 @@ export default function AdminCourseDetailPage() {
   const [gradeItems, setGradeItems] = useState([])
   const [grades, setGrades] = useState([])
   const [results, setResults] = useState([])
+  const [trimesterLocks, setTrimesterLocks] = useState([])
+  const [selectedTerm, setSelectedTerm] = useState('')
   const [error, setError] = useState(null)
   const [enrollStudentId, setEnrollStudentId] = useState('')
   const [enrolling, setEnrolling] = useState(false)
@@ -136,6 +152,14 @@ export default function AdminCourseDetailPage() {
       /* non-fatal: keep the current course detail view visible */
     }
   }, [courseId])
+
+  const handleAdminGradesSaved = useCallback(async (changedStudentIds = []) => {
+    setGrades(await listCourseGrades(courseId))
+    if (changedStudentIds.length > 0) {
+      await calculateSelectedCourseResults(courseId, changedStudentIds, { term: selectedTerm })
+      setResults(await listCourseResults(courseId))
+    }
+  }, [courseId, selectedTerm])
 
   const [classes, setClasses] = useState([])
   const [subjects, setSubjects] = useState([])
@@ -187,6 +211,8 @@ export default function AdminCourseDetailPage() {
     setGradeItems([])
     setGrades([])
     setResults([])
+    setTrimesterLocks([])
+    setSelectedTerm('')
     setEnrollStudentId('')
     setEnrollError(null)
     setEnrollMessage(null)
@@ -215,6 +241,7 @@ export default function AdminCourseDetailPage() {
         courseData = await getCourse(courseId)
         if (cancelled) return
         setCourse(courseData)
+        setSelectedTerm(courseData.term)
         setEditForm(courseToForm(courseData))
         setGradeItemForm((current) => ({
           ...current,
@@ -225,7 +252,7 @@ export default function AdminCourseDetailPage() {
         return
       }
       // Related data is best-effort; each section degrades independently.
-      const [teacherRes, studentsRes, gradeItemsRes, resultsRes, gradesRes, allStudentsRes, allTeachersRes] = await Promise.allSettled([
+      const [teacherRes, studentsRes, gradeItemsRes, resultsRes, gradesRes, allStudentsRes, allTeachersRes, locksRes] = await Promise.allSettled([
         getTeacher(courseData.teacher_id),
         listCourseStudents(courseId),
         listGradeItems(courseId),
@@ -233,6 +260,7 @@ export default function AdminCourseDetailPage() {
         listCourseGrades(courseId),
         listStudents(),
         listTeachers(),
+        listTrimesterLocks(courseData.school_year),
       ])
       if (cancelled) return
       if (teacherRes.status === 'fulfilled') setTeacher(teacherRes.value)
@@ -242,6 +270,7 @@ export default function AdminCourseDetailPage() {
       if (gradesRes.status === 'fulfilled') setGrades(gradesRes.value)
       if (allStudentsRes.status === 'fulfilled') setAllStudents(allStudentsRes.value)
       if (allTeachersRes.status === 'fulfilled') setAllTeachers(allTeachersRes.value)
+      if (locksRes.status === 'fulfilled') setTrimesterLocks(locksRes.value)
     }
 
     load()
@@ -321,7 +350,22 @@ export default function AdminCourseDetailPage() {
 
     setSavingEdit(true)
     try {
-      await updateCourse(courseId, editForm)
+      let confirmGradingSystemChange = false
+      if (gradingSystemChangeNeedsConfirmation({
+        currentSystem: course.grading_system || (
+          course.language_group === 'FRENCH' && course.class_school_level === 'college'
+            ? 'BENINESE'
+            : 'WEIGHTED'
+        ),
+        nextSystem: editForm.gradingSystem,
+        gradeItemCount: gradeItems.length,
+      })) {
+        confirmGradingSystemChange = window.confirm(
+          t('courses.confirmGradingSystemChange', { count: gradeItems.length }),
+        )
+        if (!confirmGradingSystemChange) return
+      }
+      await updateCourse(courseId, { ...editForm, confirmGradingSystemChange })
       const refreshed = await getCourse(courseId)
       setCourse(refreshed)
       setEditForm(courseToForm(refreshed))
@@ -574,16 +618,20 @@ export default function AdminCourseDetailPage() {
   const isBenineseMode = course.grading_system
     ? course.grading_system === 'BENINESE'
     : !!(course.language_group === 'FRENCH' && course.class_school_level === 'college')
-  const currentTermItems = gradeItems.filter((item) => item.term === course.term)
-  const currentTermItemIds = new Set(currentTermItems.map((item) => item.id))
+  const selectedData = assessmentDataForTerm({ term: selectedTerm, gradeItems, grades, results })
+  const selectedTermItems = selectedData.gradeItems
+  const selectedTermGrades = selectedData.grades
+  const selectedTermResults = selectedData.results
+  const selectedTermLocked = lockByTerm(trimesterLocks).get(selectedTerm) || false
+  const selectedTermItemIds = new Set(selectedTermItems.map((item) => item.id))
   const enteredGradeCount = grades.filter(
-    (grade) => currentTermItemIds.has(grade.grade_item_id) && enrolledStudentIds.has(grade.student_id),
+    (grade) => selectedTermItemIds.has(grade.grade_item_id) && enrolledStudentIds.has(grade.student_id),
   ).length
-  const expectedGradeCount = students.length * currentTermItems.length
-  const hasDevoir = currentTermItems.some((item) => item.item_type === 'DEVOIR')
-  const hasComposition = currentTermItems.some((item) => item.item_type === 'COMPOSITION')
+  const expectedGradeCount = students.length * selectedTermItems.length
+  const hasDevoir = selectedTermItems.some((item) => item.item_type === 'DEVOIR')
+  const hasComposition = selectedTermItems.some((item) => item.item_type === 'COMPOSITION')
 
-  const totalWeight = currentTermItems.reduce((sum, item) => sum + Number(item.weight || 0), 0)
+  const totalWeight = selectedTermItems.reduce((sum, item) => sum + Number(item.weight || 0), 0)
   const isWeightReady = Math.abs(totalWeight - 1) <= WEIGHT_TOLERANCE
   const weightSummary = isWeightReady
     ? t('courses.weightReady', { total: formatWeight(totalWeight) })
@@ -597,7 +645,7 @@ export default function AdminCourseDetailPage() {
     setGradeItemForm({
       ...EMPTY_GRADE_ITEM_FORM,
       title: titleMap[itemType] || '',
-      term: course.term || '',
+      term: selectedTerm || course.term || '',
       itemType,
     })
     setGradeItemError(null)
@@ -782,6 +830,20 @@ export default function AdminCourseDetailPage() {
             <span className="muted">{t('courses.coefficientHint')}</span>
           </label>
 
+          <label className="field">
+            <span>{t('courses.gradingSystem')}</span>
+            <select
+              className="grade-input"
+              value={editForm.gradingSystem}
+              onChange={(event) => updateEditField('gradingSystem', event.target.value)}
+              disabled={savingEdit}
+              style={{ width: '100%', textAlign: 'left' }}
+            >
+              <option value="BENINESE">{t('courses.gradingSystemBeninese')}</option>
+              <option value="WEIGHTED">{t('courses.gradingSystemWeighted')}</option>
+            </select>
+          </label>
+
           <datalist id="course-edit-school-year-options">
             {SCHOOL_YEAR_SUGGESTIONS.map((value) => (
               <option key={value} value={value} />
@@ -907,6 +969,35 @@ export default function AdminCourseDetailPage() {
         </div>
       )}
 
+      <div className="trimester-tabs" role="tablist" aria-label={t('courses.trimesterSections')}>
+        {TRIMESTER_TERMS.map((term) => {
+          const locked = lockByTerm(trimesterLocks).get(term) || false
+          return (
+            <button
+              key={term}
+              type="button"
+              role="tab"
+              aria-selected={selectedTerm === term}
+              className={`trimester-tab${selectedTerm === term ? ' is-active' : ''}`}
+              onClick={() => {
+                setSelectedTerm(term)
+                setGradeItemForm((current) => ({ ...current, term }))
+                setShowGradeItemForm(false)
+                setEditingGradeItemId(null)
+              }}
+            >
+              {term}{locked ? ` · ${t('courses.lockedShort')}` : ''}
+            </button>
+          )
+        })}
+      </div>
+      {selectedTermLocked && (
+        <div className="state trimester-lock-notice trimester-lock-notice-admin" role="status">
+          <strong>{t('courses.trimesterLockedTitle')}</strong>
+          <p>{t('courses.trimesterLockedAdmin')}</p>
+        </div>
+      )}
+
       <div className="section-heading">
         <h3 className="section-title">{t('courses.gradeItems')}</h3>
         {!showGradeItemForm && (
@@ -938,6 +1029,7 @@ export default function AdminCourseDetailPage() {
               type="button"
               className="btn btn-primary"
               onClick={() => {
+                setGradeItemForm((current) => ({ ...current, term: selectedTerm }))
                 setGradeItemError(null)
                 setGradeItemMessage(null)
                 setEditingGradeItemId(null)
@@ -1062,7 +1154,7 @@ export default function AdminCourseDetailPage() {
         </div>
       )}
 
-      {gradeItems.length === 0 ? (
+      {selectedTermItems.length === 0 ? (
         <Empty message={t('courses.noGradeItems')} />
       ) : (
         <div className="table-scroll">
@@ -1079,7 +1171,7 @@ export default function AdminCourseDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {gradeItems.map((item) => (
+              {selectedTermItems.map((item) => (
                 <Fragment key={item.id}>
                   <tr>
                     <td>{item.title}</td>
@@ -1235,8 +1327,20 @@ export default function AdminCourseDetailPage() {
         </div>
       )}
 
+      <div className="section-heading">
+        <h3>{t('courses.gradeEntry')}</h3>
+      </div>
+      <GradeEntryTable
+        courseId={courseId}
+        students={students}
+        gradeItems={selectedTermItems}
+        grades={selectedTermGrades}
+        onSaved={handleAdminGradesSaved}
+        gradingMode={isBenineseMode ? 'BENINESE' : 'WEIGHTED'}
+      />
+
       <h3 className="section-title">{t('courses.results')}</h3>
-      {results.length === 0 ? (
+      {selectedTermResults.length === 0 ? (
         <div className="state state-empty">
           {t('courses.quietIncompleteResults', { entered: enteredGradeCount, total: expectedGradeCount })}
         </div>
@@ -1252,7 +1356,7 @@ export default function AdminCourseDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {results.map((result) => (
+              {selectedTermResults.map((result) => (
                 <tr key={result.id}>
                   <td>
                     {studentNameById.get(result.student_id) || (

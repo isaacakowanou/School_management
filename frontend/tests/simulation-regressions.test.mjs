@@ -32,3 +32,46 @@ test('BUG C: empty classes still allow opening the enrollment preview', async ()
     true,
   )
 })
+
+
+test('trimester view keeps historical items, scores, and results in their own section', async () => {
+  const { assessmentDataForTerm } = await import('../src/utils/courseTrimester.js')
+  const gradeItems = [
+    { id: 'first-item', term: '1er Trimestre' },
+    { id: 'third-item', term: '3ème Trimestre' },
+  ]
+  const grades = [
+    { id: 'first-grade', grade_item_id: 'first-item' },
+    { id: 'third-grade', grade_item_id: 'third-item' },
+  ]
+  const results = [
+    { id: 'first-result', term: '1er Trimestre' },
+    { id: 'third-result', term: '3ème Trimestre' },
+  ]
+
+  const historical = assessmentDataForTerm({
+    term: '1er Trimestre',
+    gradeItems,
+    grades,
+    results,
+  })
+
+  assert.deepEqual(historical.gradeItems.map((item) => item.id), ['first-item'])
+  assert.deepEqual(historical.grades.map((grade) => grade.id), ['first-grade'])
+  assert.deepEqual(historical.results.map((result) => result.id), ['first-result'])
+})
+
+
+test('grading-system change warns only when existing grade items could mismatch', async () => {
+  const { gradingSystemChangeNeedsConfirmation } = await import('../src/utils/courseTrimester.js')
+
+  assert.equal(gradingSystemChangeNeedsConfirmation({
+    currentSystem: 'WEIGHTED', nextSystem: 'BENINESE', gradeItemCount: 3,
+  }), true)
+  assert.equal(gradingSystemChangeNeedsConfirmation({
+    currentSystem: 'WEIGHTED', nextSystem: 'WEIGHTED', gradeItemCount: 3,
+  }), false)
+  assert.equal(gradingSystemChangeNeedsConfirmation({
+    currentSystem: 'WEIGHTED', nextSystem: 'BENINESE', gradeItemCount: 0,
+  }), false)
+})

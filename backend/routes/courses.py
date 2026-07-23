@@ -6,6 +6,8 @@ setup only, including grading identity, never grades or enrollments; new-year
 clones always begin at the first trimester. Coefficients remain explicit admin
 configuration. Trimester preview warnings inform Conseil de classe readiness,
 but advancement follows the school calendar and remains idempotent/audited.
+Explicit grading-system changes are guarded when active grade items exist;
+confirmation acknowledges incompatibility risk but never rewrites those items.
 """
 
 from uuid import UUID, uuid4
@@ -246,7 +248,11 @@ def create_course(
         class_id=payload.class_id,
         subject_id=payload.subject_id,
         coefficient=payload.coefficient,
-        grading_system=grading_system_for_setup(language_group, school_class),
+        grading_system=(
+            payload.grading_system.value
+            if payload.grading_system is not None
+            else grading_system_for_setup(language_group, school_class)
+        ),
     )
     db.add(course)
     db.flush()
@@ -574,6 +580,7 @@ def update_course(
         "class_id": course.class_id,
         "subject_id": course.subject_id,
         "coefficient": course.coefficient,
+        "grading_system": course.grading_system,
     }
 
     # Resolve the course's effective subject after this update: an explicit
@@ -631,6 +638,28 @@ def update_course(
     if payload.coefficient is not None:
         course.coefficient = payload.coefficient
 
+    effective_grading_system = course.grading_system or (
+        "BENINESE" if is_beninese_mode(course) else "WEIGHTED"
+    )
+    if payload.grading_system is not None and payload.grading_system.value != effective_grading_system:
+        active_item_count = db.scalar(
+            select(func.count(GradeItem.id)).where(
+                GradeItem.course_id == course.id,
+                GradeItem.deleted_at.is_(None),
+            )
+        ) or 0
+        if active_item_count and not payload.confirm_grading_system_change:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "grading_system_change_requires_confirmation",
+                    "message": "Changing grading system may not match existing grade items",
+                    "grade_item_count": active_item_count,
+                },
+            )
+    if payload.grading_system is not None:
+        course.grading_system = payload.grading_system.value
+
     new_value = {
         "name": course.name,
         "code": course.code,
@@ -641,6 +670,7 @@ def update_course(
         "class_id": course.class_id,
         "subject_id": course.subject_id,
         "coefficient": course.coefficient,
+        "grading_system": course.grading_system,
     }
     if new_value != old_value:
         create_audit_log(

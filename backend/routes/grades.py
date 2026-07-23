@@ -5,6 +5,8 @@ scores for enrolled students. In batch entry, ``score=null`` means an audited
 soft deletion so clearing a cell cannot resurrect an old grade. Notifications
 are sent per affected student after the save/recalculation workflow and announce
 availability without exposing scores or averages outside the parent portal.
+School-year trimester locks are enforced before every actual mutation; admins
+retain an audited override while teachers receive ``trimester_locked``.
 """
 
 import logging
@@ -30,6 +32,10 @@ from schemas import (
     StatusResponse,
 )
 from services.email_service import send_grades_notification
+from services.trimester_locks import (
+    audit_locked_trimester_override,
+    ensure_trimester_write_allowed,
+)
 from utils import get_current_teacher
 
 logger = logging.getLogger(__name__)
@@ -234,12 +240,34 @@ def save_course_grades_batch(
             if grade is None or grade.deleted_at is not None:
                 skipped_count += 1
                 continue
+            locked_override = ensure_trimester_write_allowed(
+                db,
+                current_user=current_user,
+                school_year=course.school_year,
+                term=grade_item.term,
+            )
             soft_delete_grade(db, grade=grade, current_user=current_user)
+            if locked_override:
+                audit_locked_trimester_override(
+                    db,
+                    current_user=current_user,
+                    entity_type="grade",
+                    entity_id=grade.id,
+                    operation="grade_deleted",
+                    school_year=course.school_year,
+                    term=grade_item.term,
+                )
             deleted_count += 1
             continue
 
         validate_score(entry.score, grade_item.max_score)
         if grade is None:
+            locked_override = ensure_trimester_write_allowed(
+                db,
+                current_user=current_user,
+                school_year=course.school_year,
+                term=grade_item.term,
+            )
             grade = Grade(
                 student=student,
                 grade_item=grade_item,
@@ -261,6 +289,16 @@ def save_course_grades_batch(
                     "submitted_by_teacher_id": grade.submitted_by_teacher_id,
                 },
             )
+            if locked_override:
+                audit_locked_trimester_override(
+                    db,
+                    current_user=current_user,
+                    entity_type="grade",
+                    entity_id=grade.id,
+                    operation="grade_submitted",
+                    school_year=course.school_year,
+                    term=grade_item.term,
+                )
             saved_count += 1
             saved_grades.append(grade)
             continue
@@ -272,6 +310,13 @@ def save_course_grades_batch(
             skipped_count += 1
             saved_grades.append(grade)
             continue
+
+        locked_override = ensure_trimester_write_allowed(
+            db,
+            current_user=current_user,
+            school_year=course.school_year,
+            term=grade_item.term,
+        )
 
         grade.score = entry.score
         grade.submitted_by_teacher = submitter
@@ -290,6 +335,16 @@ def save_course_grades_batch(
                 "submitted_by_teacher_id": grade.submitted_by_teacher_id,
             },
         )
+        if locked_override:
+            audit_locked_trimester_override(
+                db,
+                current_user=current_user,
+                entity_type="grade",
+                entity_id=grade.id,
+                operation="grade_submitted" if was_deleted else "grade_updated",
+                school_year=course.school_year,
+                term=grade_item.term,
+            )
         saved_count += 1
         saved_grades.append(grade)
 
@@ -342,6 +397,12 @@ def create_grade(
     grade_item = get_grade_item_or_404(db, payload.grade_item_id)
     course = grade_item.course
     teacher = get_writable_teacher_for_course(db, current_user, course)
+    ensure_trimester_write_allowed(
+        db,
+        current_user=current_user,
+        school_year=course.school_year,
+        term=grade_item.term,
+    )
 
     ensure_student_enrolled(db, student.id, course.id)
     validate_score(payload.score, grade_item.max_score)
@@ -394,6 +455,12 @@ def update_grade(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade not found")
     grade_item = grade.grade_item
     get_writable_teacher_for_course(db, current_user, grade_item.course)
+    ensure_trimester_write_allowed(
+        db,
+        current_user=current_user,
+        school_year=grade_item.course.school_year,
+        term=grade_item.term,
+    )
 
     validate_score(payload.score, grade_item.max_score)
     old_score = grade.score
@@ -421,6 +488,23 @@ def delete_grade(
     grade = get_grade_or_404(db, grade_id)
     if grade.student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade not found")
+    grade_item = grade.grade_item
+    locked_override = ensure_trimester_write_allowed(
+        db,
+        current_user=current_user,
+        school_year=grade_item.course.school_year,
+        term=grade_item.term,
+    )
     soft_delete_grade(db, grade=grade, current_user=current_user)
+    if locked_override:
+        audit_locked_trimester_override(
+            db,
+            current_user=current_user,
+            entity_type="grade",
+            entity_id=grade.id,
+            operation="grade_deleted",
+            school_year=grade_item.course.school_year,
+            term=grade_item.term,
+        )
     db.commit()
     return StatusResponse(status="ok", message="Grade moved to Trash")

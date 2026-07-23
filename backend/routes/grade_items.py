@@ -5,6 +5,8 @@ Devoir, and Composition items. Those items have no custom category or weight,
 and each trimester has exactly one Devoir and one Composition; allowing foreign
 types would make the Ministry formula ambiguous. Non-Beninese courses retain
 the legacy weighted-item path and cannot set a Beninese ``item_type``.
+Trimester locks protect create/update/delete at the server boundary; admin
+overrides keep the ordinary audit event plus a conspicuous override event.
 """
 
 from uuid import UUID
@@ -19,6 +21,10 @@ from database import get_db
 from models import Course, Grade, GradeItem, User
 from schemas import GradeItemCreate, GradeItemResponse, GradeItemType, GradeItemUpdate, StatusResponse
 from services.grade_calculator import is_beninese_mode
+from services.trimester_locks import (
+    audit_locked_trimester_override,
+    ensure_trimester_write_allowed,
+)
 from utils import get_current_teacher
 
 
@@ -109,7 +115,6 @@ def list_grade_items(
     course = get_course_or_404(db, course_id)
     if not can_manage_course_grade_items(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
-
     grade_items = db.scalars(
         select(GradeItem)
         .where(GradeItem.course_id == course_id, GradeItem.deleted_at.is_(None))
@@ -128,6 +133,12 @@ def create_grade_item(
     course = get_course_or_404(db, payload.course_id)
     if not can_manage_course_grade_items(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    locked_override = ensure_trimester_write_allowed(
+        db,
+        current_user=current_user,
+        school_year=course.school_year,
+        term=term,
+    )
 
     beninese = is_beninese_mode(course)
 
@@ -208,6 +219,16 @@ def create_grade_item(
             "due_date": str(grade_item.due_date) if grade_item.due_date else None,
         },
     )
+    if locked_override:
+        audit_locked_trimester_override(
+            db,
+            current_user=current_user,
+            entity_type="grade_item",
+            entity_id=grade_item.id,
+            operation="grade_item_created",
+            school_year=course.school_year,
+            term=term,
+        )
     db.commit()
     db.refresh(grade_item)
     return to_grade_item_response(grade_item)
@@ -224,6 +245,19 @@ def update_grade_item(
     grade_item = get_grade_item_or_404(db, grade_item_id)
     if not can_manage_course_grade_items(db, current_user, grade_item.course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    source_term = grade_item.term
+    target_term = payload.term.value if payload.term is not None else source_term
+    locked_override_terms = {
+        term
+        for term in {source_term, target_term}
+        if ensure_trimester_write_allowed(
+            db,
+            current_user=current_user,
+            school_year=grade_item.course.school_year,
+            term=term,
+        )
+    }
 
     if payload.item_type is not None:
         raise HTTPException(status_code=422, detail="item_type cannot be changed after creation")
@@ -278,6 +312,16 @@ def update_grade_item(
             old_value=old_value,
             new_value=new_value,
         )
+        for locked_term in locked_override_terms:
+            audit_locked_trimester_override(
+                db,
+                current_user=current_user,
+                entity_type="grade_item",
+                entity_id=grade_item.id,
+                operation="grade_item_updated",
+                school_year=grade_item.course.school_year,
+                term=locked_term,
+            )
 
     db.commit()
     db.refresh(grade_item)
@@ -291,6 +335,12 @@ def delete_grade_item(
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     grade_item = get_grade_item_or_404(db, grade_item_id)
+    locked_override = ensure_trimester_write_allowed(
+        db,
+        current_user=current_user,
+        school_year=grade_item.course.school_year,
+        term=grade_item.term,
+    )
     grade_count = db.scalar(
         select(func.count(Grade.id)).where(Grade.grade_item_id == grade_item_id, Grade.deleted_at.is_(None))
     )
@@ -313,6 +363,16 @@ def delete_grade_item(
         old_value=old_value,
         new_value=None,
     )
+    if locked_override:
+        audit_locked_trimester_override(
+            db,
+            current_user=current_user,
+            entity_type="grade_item",
+            entity_id=grade_item.id,
+            operation="grade_item_deleted",
+            school_year=grade_item.course.school_year,
+            term=grade_item.term,
+        )
     grade_item.deleted_at = func.now()
     db.commit()
     return StatusResponse(status="ok", message="Grade item moved to Trash")

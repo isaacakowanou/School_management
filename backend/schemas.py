@@ -52,6 +52,22 @@ class TrimesterTerm(str, Enum):
     THIRD = "3ème Trimestre"
 
 
+class TrimesterLockUpdate(BaseModel):
+    school_year: str
+    term: TrimesterTerm
+    is_locked: bool
+
+
+class TrimesterLockResponse(BaseModel):
+    id: UUID | None = None
+    school_year: str
+    term: TrimesterTerm
+    is_locked: bool
+    updated_by_admin_id: UUID | None = None
+    locked_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class SubjectLevelGroup(str, Enum):
     NURSERY = "NURSERY"
     PRIMARY = "PRIMARY"
@@ -490,6 +506,8 @@ class CourseCreate(BaseModel):
     # ge=1: a zero coefficient silently drops the course from the class
     # average and a negative one corrupts it.
     coefficient: int = Field(default=1, ge=1)
+    # Optional preserves the existing setup-based default for older clients.
+    grading_system: GradingSystem | None = None
 
 
 class CourseUpdate(BaseModel):
@@ -502,6 +520,8 @@ class CourseUpdate(BaseModel):
     class_id: UUID | None = None
     subject_id: UUID | None = None
     coefficient: int | None = Field(default=None, ge=1)
+    grading_system: GradingSystem | None = None
+    confirm_grading_system_change: bool = False
 
 
 class CourseCloneYearRequest(BaseModel):

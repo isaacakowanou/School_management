@@ -439,6 +439,69 @@ class CourseResultRouteTests(unittest.TestCase):
         self.assertGreater(student_one_result.calculated_at, original_one_calculated_at)
         self.assertGreater(student_two_result.calculated_at, original_two_calculated_at)
 
+    def test_historical_term_recalculation_does_not_recalculate_current_term(self):
+        """Regression: an explicit historical term must not fall back to course.term."""
+        self.course.term = "2ème Trimestre"
+        second_homework = GradeItem(
+            course=self.course,
+            title="Second Homework",
+            category="Homework",
+            max_score=100,
+            weight=0.5,
+            term="2ème Trimestre",
+        )
+        second_final = GradeItem(
+            course=self.course,
+            title="Second Final",
+            category="Final",
+            max_score=100,
+            weight=0.5,
+            term="2ème Trimestre",
+        )
+        self.db.add_all([second_homework, second_final])
+        self.db.flush()
+        self.db.add_all(
+            [
+                Grade(student=self.student_one, grade_item=second_homework, score=60, submitted_by_teacher=self.teacher),
+                Grade(student=self.student_one, grade_item=second_final, score=80, submitted_by_teacher=self.teacher),
+            ]
+        )
+        second_result = CourseResult(
+            student=self.student_one,
+            course=self.course,
+            term="2ème Trimestre",
+            average=14,
+            letter_grade="B",
+            scale="20",
+            calculated_at=self.base_time,
+        )
+        self.db.add(second_result)
+        first_grade = self.db.scalar(
+            select(Grade).where(
+                Grade.student_id == self.student_one.id,
+                Grade.grade_item_id == self.homework.id,
+            )
+        )
+        first_grade.score = 100
+        self.db.commit()
+        original_second_time = second_result.calculated_at
+
+        response = self.client.post(
+            f"/api/v1/course-results/calculate/{self.course.id}/students?term=1er%20Trimestre",
+            headers=self._headers(self.teacher_user.email),
+            json={"student_ids": [str(self.student_one.id)]},
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["term"], "1er Trimestre")
+        self.assertEqual(response.json()["results"][0]["average"], 19.0)
+        self.db.expire_all()
+        first_result = self.db.get(CourseResult, self.student_one_result.id)
+        unchanged_second = self.db.get(CourseResult, second_result.id)
+        self.assertEqual(first_result.average, 19.0)
+        self.assertEqual(unchanged_second.average, 14.0)
+        self.assertEqual(unchanged_second.calculated_at, original_second_time)
+
     def test_historical_course_result_returns_scale_100(self):
         # A result not yet recalculated keeps its historical /100 scale in the
         # response; recalculated results report /20.

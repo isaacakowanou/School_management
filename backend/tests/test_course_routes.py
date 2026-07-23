@@ -213,6 +213,21 @@ class CourseRouteTests(unittest.TestCase):
         course = self.db.scalar(select(Course).where(Course.code == "LANG-101"))
         self.assertEqual(course.language_group, "FRENCH")
 
+    def test_create_course_persists_explicit_grading_system(self):
+        payload = self._course_payload("MODE-101")
+        payload["grading_system"] = "BENINESE"
+
+        response = self.client.post(
+            "/api/v1/courses",
+            json=payload,
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()["grading_system"], "BENINESE")
+        course = self.db.scalar(select(Course).where(Course.code == "MODE-101"))
+        self.assertEqual(course.grading_system, "BENINESE")
+
     def test_create_course_with_invalid_language_group_is_rejected(self):
         payload = self._course_payload("BAD-LANG-101")
         payload["language_group"] = "SPANISH"
@@ -446,6 +461,38 @@ class CourseRouteTests(unittest.TestCase):
         self.db.expire_all()
         course = self.db.get(Course, self.existing_course.id)
         self.assertEqual(course.language_group, "ENGLISH")
+
+    def test_grading_system_change_with_items_requires_explicit_confirmation(self):
+        self.existing_course.grading_system = "WEIGHTED"
+        item = GradeItem(
+            course=self.existing_course,
+            title="Existing Weighted Item",
+            category="Homework",
+            max_score=20,
+            weight=1,
+            term="1er Trimestre",
+        )
+        self.db.add(item)
+        self.db.commit()
+
+        blocked = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={"grading_system": "BENINESE"},
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        self.assertEqual(blocked.json()["detail"]["code"], "grading_system_change_requires_confirmation")
+
+        confirmed = self.client.put(
+            f"/api/v1/courses/{self.existing_course.id}",
+            json={
+                "grading_system": "BENINESE",
+                "confirm_grading_system_change": True,
+            },
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(confirmed.status_code, 200, confirmed.text)
+        self.assertEqual(confirmed.json()["grading_system"], "BENINESE")
 
     def test_update_course_clears_language_group(self):
         self.existing_course.language_group = "FRENCH"

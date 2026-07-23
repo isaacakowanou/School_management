@@ -126,7 +126,9 @@
     "current_password_incorrect": "Le mot de passe actuel est incorrect.",
     "partial_results": "Les résultats sont incomplets.",
     "stale_report_snapshot": "Ce bulletin doit être régénéré après les dernières modifications.",
-    "incomplete_report_results": "Les résultats actuels du bulletin sont incomplets."
+    "incomplete_report_results": "Les résultats actuels du bulletin sont incomplets.",
+    "trimester_locked": "Trimestre verrouillé par l'administration",
+    "grading_system_change_requires_confirmation": "Confirmez le changement de système de notation pour ce cours."
   },
   "forgotPassword": {
     "title": "Mot de passe oublié ?",
@@ -484,6 +486,15 @@
     "currentTeacher": "Enseignant actuel",
     "coefficient": "Coefficient",
     "coefficientHint": "Coefficient de pondération pour la moyenne de classe (1 = standard)",
+    "gradingSystem": "Système de notation",
+    "gradingSystemBeninese": "Notation béninoise",
+    "gradingSystemWeighted": "Pondération par poids",
+    "confirmGradingSystemChange": "Ce cours contient {{count}} élément(s) de note. Les types existants peuvent ne pas correspondre au nouveau système. Continuer ?",
+    "trimesterSections": "Trimestres du cours",
+    "lockedShort": "Verrouillé",
+    "trimesterLockedTitle": "Trimestre verrouillé",
+    "trimesterLockedTeacher": "Ce trimestre est en lecture seule. L'administration doit le déverrouiller avant toute modification des éléments ou des notes.",
+    "trimesterLockedAdmin": "Les enseignants sont en lecture seule. Toute modification administrative est enregistrée comme dérogation et peut rendre les bulletins obsolètes.",
     "benineseMode": "Notation béninoise (collège — Moy Int → MCC → Moy)",
     "addInterro": "Ajouter une interro",
     "addDevoir": "Ajouter un devoir",
@@ -827,6 +838,9 @@
       "report_regenerated": "Bulletin régénéré",
       "report_summary_updated": "Résumé de bulletin modifié",
       "report_details_updated": "Détails de bulletin modifiés",
+      "trimester_locked": "Trimestre verrouillé",
+      "trimester_unlocked": "Trimestre déverrouillé",
+      "locked_trimester_override": "Dérogation administrative sur trimestre verrouillé",
       "auth_login_succeeded": "Connexion réussie",
       "auth_login_failed": "Échec de connexion",
       "password_changed": "Mot de passe modifié",
@@ -877,6 +891,14 @@
     "pdfGenerating": "Génération du PDF…",
     "pdfReady": "PDF de classe téléchargé.",
     "pdfFailed": "La génération du PDF a échoué.",
-    "pdfTimeout": "La génération du PDF a expiré — réessayez."
+    "pdfTimeout": "La génération du PDF a expiré — réessayez.",
+    "trimesterLockTitle": "Verrouillage des trimestres",
+    "trimesterLockScope": "Le verrouillage s'applique à toutes les classes de l'année scolaire sélectionnée.",
+    "locked": "Verrouillé",
+    "unlocked": "Ouvert",
+    "lock": "Verrouiller",
+    "unlock": "Déverrouiller",
+    "confirmLockTrimester": "Verrouiller {{term}} pour toutes les classes de cette année scolaire ? Les enseignants ne pourront plus modifier les notes ni les éléments de note.",
+    "confirmUnlockTrimester": "Déverrouiller {{term}} pour toutes les classes de cette année scolaire ? Les enseignants retrouveront l'accès en écriture."
   }
 }

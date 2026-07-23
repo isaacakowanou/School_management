@@ -1,10 +1,12 @@
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, inspect, select, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from auth import hash_password
@@ -802,6 +804,67 @@ class StudentRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["detail"], "Parent is already linked to student")
 
+    def test_legacy_duplicate_links_are_deduplicated_in_admin_and_parent_views(self):
+        student = self._create_student("ZZ-TEST-LINK-LEGACY")
+        self.db.execute(text("DROP INDEX uq_active_student_parent"))
+        self.db.add_all(
+            [
+                StudentParent(student=student, parent=self.parent, relationship="Guardian"),
+                StudentParent(student=student, parent=self.parent, relationship="Guardian"),
+            ]
+        )
+        self.db.commit()
+
+        admin_response = self.client.get(
+            f"/api/v1/students/{student.id}/parents",
+            headers=self._headers(self.admin_user.email),
+        )
+        parent_response = self.client.get(
+            f"/api/v1/parents/{self.parent.id}/students",
+            headers=self._headers(self.parent_user.email),
+        )
+
+        self.assertEqual(admin_response.status_code, 200, admin_response.text)
+        self.assertEqual(len(admin_response.json()), 1)
+        self.assertEqual(parent_response.status_code, 200, parent_response.text)
+        self.assertEqual(len(parent_response.json()), 1)
+
+    def test_active_parent_link_has_database_uniqueness_guard(self):
+        indexes = inspect(self.engine).get_indexes("student_parents")
+        active_unique = next(
+            (index for index in indexes if index["name"] == "uq_active_student_parent"),
+            None,
+        )
+
+        self.assertIsNotNone(active_unique)
+        self.assertTrue(active_unique["unique"])
+        predicate = active_unique.get("dialect_options", {}).get("sqlite_where")
+        self.assertIn("deleted_at IS NULL", str(predicate))
+
+    def test_duplicate_parent_link_race_returns_conflict_instead_of_server_error(self):
+        student = self._create_student("ZZ-TEST-LINK-RACE")
+        headers = self._headers(self.admin_user.email)
+        parent_id = self.parent.id
+        race_error = IntegrityError("insert", {}, Exception("unique conflict"))
+
+        original_flush = Session.flush
+
+        def fail_student_parent_insert(session, objects=None):
+            if any(isinstance(item, StudentParent) for item in session.new):
+                raise race_error
+            return original_flush(session, objects)
+
+        with patch.object(Session, "flush", autospec=True, side_effect=fail_student_parent_insert):
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.post(
+                    f"/api/v1/students/{student.id}/parents",
+                    json={"parent_id": str(parent_id), "relationship": "Guardian"},
+                    headers=headers,
+                )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "Parent is already linked to student")
+
     def test_missing_student_or_parent_link_is_handled_cleanly(self):
         student = self._create_student("LINK-STU-MISSING")
 
@@ -877,6 +940,49 @@ class StudentRouteTests(unittest.TestCase):
         )
         self.assertIsNotNone(removed_link)
         self.assertIsNotNone(removed_link.deleted_at)
+
+    def test_admin_can_relink_parent_after_soft_unlink(self):
+        student = self._create_student("ZZ-TEST-RELINK")
+        link = StudentParent(student=student, parent=self.parent, relationship="Guardian")
+        self.db.add(link)
+        self.db.commit()
+
+        unlink_response = self.client.delete(
+            f"/api/v1/students/{student.id}/parents/{self.parent.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+        self.assertEqual(unlink_response.status_code, 200)
+
+        relink_response = self.client.post(
+            f"/api/v1/students/{student.id}/parents",
+            json={"parent_id": str(self.parent.id), "relationship": "Mother"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(relink_response.status_code, 201, relink_response.text)
+        self.db.refresh(link)
+        self.assertIsNone(link.deleted_at)
+        self.assertEqual(link.relationship, "Mother")
+
+    def test_unlink_soft_deletes_all_legacy_active_duplicates(self):
+        student = self._create_student("ZZ-TEST-UNLINK-LEGACY")
+        self.db.execute(text("DROP INDEX uq_active_student_parent"))
+        links = [
+            StudentParent(student=student, parent=self.parent, relationship="Guardian"),
+            StudentParent(student=student, parent=self.parent, relationship="Guardian"),
+        ]
+        self.db.add_all(links)
+        self.db.commit()
+
+        response = self.client.delete(
+            f"/api/v1/students/{student.id}/parents/{self.parent.id}",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        for link in links:
+            self.db.refresh(link)
+            self.assertIsNotNone(link.deleted_at)
 
     def test_non_admin_cannot_unlink_parent_from_student(self):
         student = self._create_student("UNLINK-STU-NONADMIN")

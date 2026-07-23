@@ -2,7 +2,8 @@
 
 Catalog-linked courses derive their display name and language track from the
 subject so bulletin grouping cannot drift from the catalog. Year cloning copies
-setup only, never grades or enrollments. Coefficients remain explicit admin
+setup only, including grading identity, never grades or enrollments; new-year
+clones always begin at the first trimester. Coefficients remain explicit admin
 configuration. Trimester preview warnings inform Conseil de classe readiness,
 but advancement follows the school calendar and remains idempotent/audited.
 """
@@ -88,6 +89,12 @@ def derived_from_subject(subject: Subject) -> tuple[str, str]:
     if subject.section == LanguageGroup.FRENCH.value:
         return subject.name_fr, subject.section
     return subject.name_en, subject.section
+
+
+def grading_system_for_setup(language_group: str | None, school_class: Class | None) -> str:
+    if language_group == "FRENCH" and school_class is not None and school_class.school_level == "college":
+        return "BENINESE"
+    return "WEIGHTED"
 
 
 _SUBJECT_LANGUAGE_CONFLICT = "language_group conflicts with the subject's section; omit it or clear subject_id"
@@ -227,8 +234,7 @@ def create_course(
 
     get_teacher_or_404(db, payload.teacher_id)
     ensure_unique_course_code(db, code)
-    if payload.class_id is not None:
-        get_class_or_404(db, payload.class_id)
+    school_class = get_class_or_404(db, payload.class_id) if payload.class_id is not None else None
 
     course = Course(
         name=name,
@@ -240,6 +246,7 @@ def create_course(
         class_id=payload.class_id,
         subject_id=payload.subject_id,
         coefficient=payload.coefficient,
+        grading_system=grading_system_for_setup(language_group, school_class),
     )
     db.add(course)
     db.flush()
@@ -260,6 +267,7 @@ def create_course(
             "class_id": course.class_id,
             "subject_id": course.subject_id,
             "coefficient": course.coefficient,
+            "grading_system": course.grading_system,
         },
     )
     db.commit()
@@ -275,8 +283,9 @@ def clone_year(
 ) -> CourseCloneYearResponse:
     """Duplicate all courses from one school year into another (A1.9).
 
-    Copies subject/name, class (remapped by name into the target year),
-    language_group, and teacher assignment — no grade items, no enrollments.
+    Copies every reusable Course setup field. Class is remapped by name into
+    the target year, term is deliberately reset, and no grade items or
+    enrollments are copied.
     """
     source_year = clean_required_text(payload.source_year, "source_year")
     target_year = clean_required_text(payload.target_year, "target_year")
@@ -284,7 +293,7 @@ def clone_year(
         raise HTTPException(status_code=422, detail="source_year and target_year must differ")
 
     source_courses = db.scalars(
-        select(Course).where(Course.school_year == source_year).order_by(Course.name, Course.code)
+        select(Course).options(joinedload(Course.school_class)).where(Course.school_year == source_year).order_by(Course.name, Course.code)
         .where(Course.deleted_at.is_(None))
     ).all()
     if not source_courses:
@@ -343,12 +352,16 @@ def clone_year(
                 name=source_course.name,
                 code=new_code_by_id[source_course.id],
                 teacher_id=source_course.teacher_id,
-                term=source_course.term,
+                term=TRIMESTER_TERMS[0],
                 school_year=target_year,
                 language_group=source_course.language_group,
                 class_id=target_class_id,
                 subject_id=source_course.subject_id,
                 coefficient=source_course.coefficient,
+                grading_system=(
+                    source_course.grading_system
+                    or ("BENINESE" if is_beninese_mode(source_course) else "WEIGHTED")
+                ),
             )
         )
     db.flush()

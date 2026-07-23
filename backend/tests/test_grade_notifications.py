@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -173,6 +173,27 @@ class GradeNotificationTests(unittest.TestCase):
         self.assertEqual(result["delivered"], {"email": 1, "sms": 1})
         self.assertEqual(result["failed"], {"email": 0, "sms": 0})
         self.assertEqual(result["skipped"], {"email": 0, "sms": 1})
+
+    @patch("services.sms_service.send_grades_available_sms")
+    @patch("services.sms_service._get_messaging_config", return_value=SMS_CONFIG)
+    @patch("services.email_service._get_email_config", return_value=EMAIL_CONFIG)
+    @patch("services.email_service.send_grade_notification_email")
+    def test_legacy_duplicate_links_notify_each_parent_once(
+        self, email_send, _email_config, _sms_config, sms_send
+    ):
+        self.db.execute(text("DROP INDEX uq_active_student_parent"))
+        self.db.add(
+            StudentParent(student=self.student, parent=self.parent, relationship="guardian")
+        )
+        self.db.commit()
+        email_send.return_value = {"sent": True}
+        sms_send.return_value = [{"channel": "sms", "sent": True}]
+
+        result = send_grades_notification(self.db, self.course, self.student)
+
+        self.assertEqual(result["recipients"], 1)
+        email_send.assert_called_once()
+        sms_send.assert_called_once()
 
     @patch("routes.grades.send_grades_notification")
     def test_all_failure_response_is_audited_and_saved_grade_remains(self, send_notification):

@@ -571,9 +571,9 @@ export default function AdminCourseDetailPage() {
 
   // Grading mode mirrors TeacherCourseDetailPage: Beninese formula applies to
   // French-section collège courses; everything term-scoped to course.term.
-  const isBenineseMode = !!(
-    course.language_group === 'FRENCH' && course.class_school_level === 'college'
-  )
+  const isBenineseMode = course.grading_system
+    ? course.grading_system === 'BENINESE'
+    : !!(course.language_group === 'FRENCH' && course.class_school_level === 'college')
   const currentTermItems = gradeItems.filter((item) => item.term === course.term)
   const currentTermItemIds = new Set(currentTermItems.map((item) => item.id))
   const enteredGradeCount = grades.filter(

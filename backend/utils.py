@@ -67,6 +67,7 @@ def to_course_response(course: Course, stats: dict | None = None) -> CourseRespo
         class_school_level=course.school_class.school_level if course.school_class else None,
         subject_id=course.subject_id,
         coefficient=course.coefficient,
+        grading_system=course.grading_system,
         student_count=stats.get("student_count", 0),
         grade_item_count=stats.get("grade_item_count", 0),
         filled_score_count=stats.get("filled_score_count", 0),

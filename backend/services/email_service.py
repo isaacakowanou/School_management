@@ -515,6 +515,7 @@ def send_grades_notification(db: Session, course: Course, student: Student) -> d
             StudentParent.deleted_at.is_(None),
             Parent.deleted_at.is_(None),
         )
+        .distinct()
     ).all()
 
     summary = _empty_grade_notification_summary()
@@ -579,6 +580,7 @@ def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> li
             StudentParent.deleted_at.is_(None),
             Parent.deleted_at.is_(None),
         )
+        .distinct()
     ).all()
 
     results = []

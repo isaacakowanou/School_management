@@ -13,6 +13,8 @@ Parents can read only approved/sent snapshots, so moving a sent bulletin to
 or sending obsolete snapshots unless an admin explicitly acknowledges the
 override. Class batch actions and asynchronous merged PDFs support the Conseil
 de classe workflow, where the school processes a whole class each trimester.
+APPROVE publishes the reviewed snapshot to the parent portal; ENVOYER only
+delivers a notification that the already-published snapshot is available.
 """
 
 from datetime import datetime, timedelta, timezone

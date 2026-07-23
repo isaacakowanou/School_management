@@ -127,7 +127,10 @@ def calculate_overall_average(course_averages):
 
 
 def is_beninese_mode(course) -> bool:
-    """True when this course uses the Beninese formula (FR section, collège level)."""
+    """Use explicit grading identity, with legacy setup inference as fallback."""
+    grading_system = getattr(course, "grading_system", None)
+    if grading_system is not None:
+        return grading_system == "BENINESE"
     return (
         getattr(course, "language_group", None) == "FRENCH"
         and getattr(course, "school_class", None) is not None

@@ -135,7 +135,16 @@ class Parent(Base):
 
 class StudentParent(Base):
     __tablename__ = "student_parents"
-    __table_args__ = (UniqueConstraint("student_id", "parent_id", name="uq_student_parent"),)
+    __table_args__ = (
+        sa.Index(
+            "uq_active_student_parent",
+            "student_id",
+            "parent_id",
+            unique=True,
+            postgresql_where=sa.text("deleted_at IS NULL"),
+            sqlite_where=sa.text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("students.id"), nullable=False)
@@ -238,6 +247,9 @@ class Course(Base):
     subject_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True
     )
+    # Explicit grading identity survives year cloning and class remapping.
+    # Null is only a compatibility state for rows created before this field.
+    grading_system: Mapped[str | None] = mapped_column(String(20), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -18,6 +18,7 @@ import { generateReport, getStudentReports } from '../api/reports.js'
 import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
 import { TRIMESTER_TERMS } from '../constants/terms.js'
 import { formatReportAverage } from '../utils/format.js'
+import { createSingleFlight } from '../utils/singleFlight.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -100,6 +101,7 @@ export default function AdminStudentDetailPage() {
   const [editError, setEditError] = useState(null)
   const [editMessage, setEditMessage] = useState(null)
   const [classes, setClasses] = useState([])
+  const runLinkRequest = useRef(createSingleFlight())
 
   useEffect(() => {
     let cancelled = false
@@ -287,15 +289,17 @@ export default function AdminStudentDetailPage() {
 
     setLinking(true)
     try {
-      await linkStudentParent(studentId, {
-        parentId: linkParentId,
-        relationship,
+      await runLinkRequest.current(async () => {
+        await linkStudentParent(studentId, {
+          parentId: linkParentId,
+          relationship,
+        })
+        const linked = await getStudentParents(studentId)
+        setParents(linked)
+        setRelationship('')
+        setLinkMessage(t('students.parentLinked'))
+        setShowLinkParentForm(false)
       })
-      const linked = await getStudentParents(studentId)
-      setParents(linked)
-      setRelationship('')
-      setLinkMessage(t('students.parentLinked'))
-      setShowLinkParentForm(false)
     } catch (err) {
       setLinkError(err.message)
     } finally {

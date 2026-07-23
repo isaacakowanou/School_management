@@ -474,14 +474,15 @@ def list_parent_students(
     if not can_read_parent(current_user, parent):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
-    links = db.scalars(
-        select(StudentParent)
-        .join(StudentParent.student)
-        .options(joinedload(StudentParent.student).joinedload(Student.school_class))
+    students = db.scalars(
+        select(Student)
+        .join(StudentParent, StudentParent.student_id == Student.id)
+        .options(joinedload(Student.school_class))
         .where(
             StudentParent.parent_id == parent_id,
             StudentParent.deleted_at.is_(None),
             Student.deleted_at.is_(None),
         )
+        .distinct()
     ).all()
-    return [to_student_response(link.student) for link in links]
+    return [to_student_response(student) for student in students]

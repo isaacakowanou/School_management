@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select, union_all
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from audit import create_audit_log
@@ -449,10 +450,14 @@ def list_student_parents(
     get_student_or_404(db, student_id)
     links = db.scalars(
         select(StudentParent)
+        .join(Parent, StudentParent.parent_id == Parent.id)
         .options(joinedload(StudentParent.parent).joinedload(Parent.user))
         .where(StudentParent.student_id == student_id, StudentParent.deleted_at.is_(None), Parent.deleted_at.is_(None))
     ).all()
-    return [to_linked_parent_response(link) for link in links]
+    unique_links = {}
+    for link in links:
+        unique_links.setdefault(link.parent_id, link)
+    return [to_linked_parent_response(link) for link in unique_links.values()]
 
 
 @router.post("/{student_id}/parents", response_model=LinkedParentResponse, status_code=status.HTTP_201_CREATED)
@@ -478,9 +483,32 @@ def link_student_parent(
     if existing_link is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Parent is already linked to student")
 
-    link = StudentParent(student=student, parent=parent, relationship=relationship)
-    db.add(link)
-    db.flush()
+    deleted_link = db.scalar(
+        select(StudentParent)
+        .where(
+            StudentParent.student_id == student.id,
+            StudentParent.parent_id == parent.id,
+            StudentParent.deleted_at.is_not(None),
+        )
+        .order_by(StudentParent.deleted_at.desc())
+    )
+    if deleted_link is not None:
+        link = deleted_link
+        link.deleted_at = None
+        link.deleted_batch_id = None
+        link.relationship = relationship
+    else:
+        link = StudentParent(student=student, parent=parent, relationship=relationship)
+        db.add(link)
+
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Parent is already linked to student",
+        ) from exc
     create_audit_log(
         db=db,
         actor_user_id=current_user.id,
@@ -507,30 +535,32 @@ def unlink_student_parent(
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     get_student_or_404(db, student_id)
-    link = db.scalar(
+    links = db.scalars(
         select(StudentParent).where(
             StudentParent.student_id == student_id,
             StudentParent.parent_id == parent_id,
             StudentParent.deleted_at.is_(None),
         )
-    )
-    if link is None:
+    ).all()
+    if not links:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent link not found")
 
-    old_value = {
-        "student_id": link.student_id,
-        "parent_id": link.parent_id,
-        "relationship": link.relationship,
-    }
-    create_audit_log(
-        db=db,
-        actor_user_id=current_user.id,
-        action="parent_unlinked_from_student",
-        entity_type="student_parent",
-        entity_id=link.id,
-        old_value=old_value,
-        new_value=None,
-    )
-    link.deleted_at = datetime.now(timezone.utc)
+    deleted_at = datetime.now(timezone.utc)
+    for link in links:
+        old_value = {
+            "student_id": link.student_id,
+            "parent_id": link.parent_id,
+            "relationship": link.relationship,
+        }
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="parent_unlinked_from_student",
+            entity_type="student_parent",
+            entity_id=link.id,
+            old_value=old_value,
+            new_value=None,
+        )
+        link.deleted_at = deleted_at
     db.commit()
     return StatusResponse(status="ok", message="Parent unlinked from student")

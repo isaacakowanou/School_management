@@ -322,6 +322,7 @@ class CourseRouteTests(unittest.TestCase):
                 "class_id": None,
                 "subject_id": None,
                 "coefficient": 1,
+                "grading_system": "WEIGHTED",
             },
         )
 

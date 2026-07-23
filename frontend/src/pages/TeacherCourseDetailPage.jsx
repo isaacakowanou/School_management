@@ -324,9 +324,9 @@ export default function TeacherCourseDetailPage() {
   const gradeItemList = gradeItems || []
 
   // Grading mode: Beninese formula applies to French-section collège courses.
-  const isBenineseMode = !!(
-    course?.language_group === 'FRENCH' && course?.class_school_level === 'college'
-  )
+  const isBenineseMode = course?.grading_system
+    ? course.grading_system === 'BENINESE'
+    : !!(course?.language_group === 'FRENCH' && course?.class_school_level === 'college')
 
   // Term-scoped: results are calculated from the course's current term only,
   // so the entry matrix, the one-Devoir/one-Composition rule, and the weight

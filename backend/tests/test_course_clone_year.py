@@ -190,6 +190,65 @@ class CloneYearTests(unittest.TestCase):
             1,
         )
 
+    def test_clone_always_starts_courses_in_first_trimester(self):
+        self.course_math.term = "3\u00e8me Trimestre"
+        self.db.commit()
+
+        response = self._clone()
+
+        self.assertEqual(response.status_code, 201, response.text)
+        clone = self.db.scalar(
+            select(Course).where(Course.code == f"MATH6-{TARGET_YEAR}")
+        )
+        self.assertEqual(clone.term, "1er Trimestre")
+
+    def test_clone_preserves_all_course_configuration_fields(self):
+        self.assertIn("grading_system", Course.__table__.columns)
+        self.course_math.term = "3\u00e8me Trimestre"
+        self.course_math.grading_system = "BENINESE"
+        self.course_math.coefficient = 4
+        self.db.commit()
+
+        response = self._clone()
+
+        self.assertEqual(response.status_code, 201, response.text)
+        clone = self.db.scalar(
+            select(Course).where(Course.code == f"MATH6-{TARGET_YEAR}")
+        )
+        self.assertEqual(clone.name, self.course_math.name)
+        self.assertEqual(clone.teacher_id, self.course_math.teacher_id)
+        self.assertEqual(clone.language_group, self.course_math.language_group)
+        self.assertEqual(clone.subject_id, self.course_math.subject_id)
+        self.assertEqual(clone.coefficient, self.course_math.coefficient)
+        self.assertEqual(clone.grading_system, self.course_math.grading_system)
+        self.assertEqual(clone.class_id, self.target_sixieme.id)
+        self.assertEqual(clone.school_year, TARGET_YEAR)
+        self.assertEqual(clone.term, "1er Trimestre")
+        self.assertEqual(clone.code, f"{self.course_math.code}-{TARGET_YEAR}")
+
+    def test_every_course_column_is_classified_by_clone_contract(self):
+        copied = {
+            "name",
+            "teacher_id",
+            "language_group",
+            "subject_id",
+            "coefficient",
+            "grading_system",
+        }
+        transformed = {"code", "term", "school_year", "class_id"}
+        intentionally_excluded = {
+            "id",
+            "deleted_at",
+            "deleted_batch_id",
+            "created_at",
+            "updated_at",
+        }
+
+        self.assertEqual(
+            set(Course.__table__.columns.keys()),
+            copied | transformed | intentionally_excluded,
+        )
+
     def test_clone_refuses_non_empty_target_year(self):
         self.db.add(
             Course(

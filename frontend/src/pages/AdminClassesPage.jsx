@@ -14,6 +14,7 @@ import { GGFK_CLASS_NAMES, normalizeClassName } from '../constants/ggfkClasses.j
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
+import { canOpenClassEnrollmentDialog } from '../utils/classEnrollment.js'
 
 const DEFAULT_SCHOOL_YEAR = '2026-2027'
 const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
@@ -363,7 +364,11 @@ export default function AdminClassesPage() {
                               type="button"
                               className="link-action"
                               onClick={() => openEnrollDialog(cls)}
-                              disabled={pending || cls.student_count === 0 || cls.course_count === 0}
+                              disabled={!canOpenClassEnrollmentDialog({
+                                pending,
+                                studentCount: cls.student_count,
+                                courseCount: cls.course_count,
+                              })}
                               title={
                                 cls.student_count === 0
                                   ? t('classes.enrollNoStudents')

@@ -38,6 +38,11 @@ class LanguageGroup(str, Enum):
     ENGLISH = "ENGLISH"
 
 
+class GradingSystem(str, Enum):
+    BENINESE = "BENINESE"
+    WEIGHTED = "WEIGHTED"
+
+
 class TrimesterTerm(str, Enum):
     # Canonical GGFK trimester values (A1.7c). Single source of truth for the
     # term dropdowns; mirrors constants.TRIMESTER_TERMS (list position ==
@@ -464,6 +469,7 @@ class CourseResponse(BaseModel):
     class_school_level: str | None = None
     subject_id: UUID | None = None
     coefficient: int = 1
+    grading_system: GradingSystem | None = None
     student_count: int = 0
     grade_item_count: int = 0
     filled_score_count: int = 0

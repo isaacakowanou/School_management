@@ -7,6 +7,7 @@ import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
 import { useAcademicContext } from '../academic/AcademicContext.jsx'
+import { passageOutcomeCounts } from '../utils/passageOutcome.js'
 
 function nextSchoolYear(year) {
   const match = /^(\d{4})-(\d{4})$/.exec(year || '')
@@ -38,6 +39,7 @@ export default function AdminPassagesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -106,7 +108,7 @@ export default function AdminPassagesPage() {
     }))
   }
 
-  async function handleConfirm() {
+  function handleConfirm() {
     if (!preview) return
     const rows = preview.students.map((row) => decisions[row.student_id]).filter(Boolean)
     const unresolved = rows.filter((row) => !row.finalDecision)
@@ -114,7 +116,13 @@ export default function AdminPassagesPage() {
       setError(t('passages.resolveAll'))
       return
     }
-    if (!window.confirm(t('passages.confirmApply'))) return
+    setShowConfirmModal(true)
+  }
+
+  async function applyConfirmedPassage() {
+    if (!preview) return
+    const rows = preview.students.map((row) => decisions[row.student_id]).filter(Boolean)
+    setShowConfirmModal(false)
     setSaving(true)
     setError(null)
     setMessage(null)
@@ -125,8 +133,8 @@ export default function AdminPassagesPage() {
         classId: preview.class_id,
         decisions: rows,
       })
-      setMessage(t('passages.applied', { count: result.applied_count }))
       await loadPreview()
+      setMessage(t('passages.outcome', passageOutcomeCounts(result.decisions)))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -271,6 +279,33 @@ export default function AdminPassagesPage() {
             <button type="button" className="btn btn-primary" onClick={handleConfirm} disabled={saving || !preview.target_classes_ready}>
               {saving ? t('common.saving') : t('passages.apply')}
             </button>
+          </div>
+        </div>
+      )}
+
+      {showConfirmModal && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => !saving && setShowConfirmModal(false)}
+        >
+          <div
+            className="card modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="passage-confirm-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="passage-confirm-title">{t('passages.confirmTitle')}</h3>
+            <p>{t('passages.confirmApply')}</p>
+            <div className="form-actions">
+              <button type="button" className="btn btn-ghost" disabled={saving} onClick={() => setShowConfirmModal(false)}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="btn btn-primary" disabled={saving} onClick={applyConfirmedPassage}>
+                {saving ? t('common.saving') : t('passages.apply')}
+              </button>
+            </div>
           </div>
         </div>
       )}

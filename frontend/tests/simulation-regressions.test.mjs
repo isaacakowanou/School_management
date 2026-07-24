@@ -101,3 +101,18 @@ test('bulk generation summary includes every skipped-report count', async () => 
     },
   )
 })
+
+
+test('passage outcome includes pass, repeat, and graduate decisions', async () => {
+  const { passageOutcomeCounts } = await import('../src/utils/passageOutcome.js')
+
+  assert.deepEqual(
+    passageOutcomeCounts([
+      { final_decision: 'pass' },
+      { final_decision: 'pass' },
+      { final_decision: 'repeat' },
+      { final_decision: 'graduate' },
+    ]),
+    { passed: 2, repeated: 1, graduated: 1 },
+  )
+})

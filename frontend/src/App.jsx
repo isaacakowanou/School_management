@@ -29,7 +29,9 @@ import AdminTeacherDetailPage from './pages/AdminTeacherDetailPage.jsx'
 import AdminCourseCreatePage from './pages/AdminCourseCreatePage.jsx'
 import AdminCourseDetailPage from './pages/AdminCourseDetailPage.jsx'
 import AdminClassesPage from './pages/AdminClassesPage.jsx'
+import AdminArchivesPage from './pages/AdminArchivesPage.jsx'
 import AdminPassagesPage from './pages/AdminPassagesPage.jsx'
+import AdminSchoolYearCreatePage from './pages/AdminSchoolYearCreatePage.jsx'
 import AdminSubjectsPage from './pages/AdminSubjectsPage.jsx'
 import AdminDangerZonePage from './pages/AdminDangerZonePage.jsx'
 import AdminTrashPage from './pages/AdminTrashPage.jsx'
@@ -95,6 +97,8 @@ export default function App() {
         <Route path="/admin/reports" element={<AdminReportsPage />} />
         <Route path="/admin/reports/class" element={<AdminClassReportsPage />} />
         <Route path="/admin/reports/:reportId" element={<AdminReportDetailPage />} />
+        <Route path="/admin/archives" element={<AdminArchivesPage />} />
+        <Route path="/admin/school-years/new" element={<AdminSchoolYearCreatePage />} />
         <Route path="/admin/students" element={<AdminStudentsPage />} />
         <Route path="/admin/students/new" element={<AdminStudentCreatePage />} />
         <Route path="/admin/students/trash" element={<AdminStudentTrashPage />} />

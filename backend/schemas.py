@@ -68,6 +68,13 @@ class TrimesterLockResponse(BaseModel):
     updated_at: datetime | None = None
 
 
+class AcademicContextResponse(BaseModel):
+    current_school_year: str | None
+    current_term: str
+    available_school_years: list[str]
+    terms: list[str]
+
+
 class SubjectLevelGroup(str, Enum):
     NURSERY = "NURSERY"
     PRIMARY = "PRIMARY"
@@ -289,6 +296,22 @@ class ClassBulkCreateResponse(BaseModel):
     # because a (normalized-name) match already existed.
     created: list[str]
     skipped: list[str]
+
+
+class SchoolYearCreateRequest(BaseModel):
+    school_year: str
+    clone_courses: bool = False
+    source_school_year: str | None = None
+
+
+class SchoolYearCreateResponse(BaseModel):
+    status: str
+    school_year: str
+    created_classes: list[str]
+    skipped_classes: list[str]
+    cloned_course_count: int = 0
+    unmatched_class_names: list[str] = []
+    source_school_year: str | None = None
 
 
 class ClassEnrollmentPreviewResponse(BaseModel):
@@ -910,6 +933,8 @@ class AdminReportListItem(BaseModel):
     student_id: UUID
     student_name: str
     student_number: str
+    student_class_id: UUID | None = None
+    student_class_name: str | None = None
     term: str
     school_year: str
     status: str

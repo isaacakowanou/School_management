@@ -52,6 +52,7 @@
     "classes": "Classes",
     "passages": "Passage",
     "subjects": "Subjects",
+    "archives": "Archives",
     "trash": "Trash",
     "dangerZone": "Cleanup",
     "auditLogs": "Audit logs"
@@ -60,6 +61,24 @@
     "management": "Management",
     "reports": "Reports",
     "system": "System"
+  },
+  "schoolYears": {
+    "title": "New school year",
+    "subtitle": "Create the GGFK class set for a new year and optionally clone prior-year course setup.",
+    "required": "School year is required.",
+    "cloneCourses": "Clone courses from the source year",
+    "sourceYear": "Source year",
+    "create": "Create year",
+    "created": "{{year}} created: {{classes}} classes, {{courses}} cloned courses.",
+    "openYear": "Open year"
+  },
+  "archives": {
+    "title": "Archives",
+    "subtitle": "Find past-year reports and courses, plus graduated students.",
+    "reports": "Reports",
+    "courses": "Courses",
+    "students": "Graduated students",
+    "empty": "No archived records to show."
   },
   "schoolLevels": {
     "maternelle": "Nursery",

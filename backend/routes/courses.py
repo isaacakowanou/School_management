@@ -36,6 +36,7 @@ from schemas import (
     TrimesterTerm,
 )
 from services.grade_calculator import is_beninese_mode
+from services.school_year_rollover import clean_school_year, clone_course_setup_for_year
 from utils import get_class_or_404, get_current_teacher, get_subject_or_404, to_course_response
 
 
@@ -72,13 +73,7 @@ def ensure_unique_course_code(db: Session, code: str, course_id: UUID | None = N
 
 
 def clean_required_text(value: str, field_name: str) -> str:
-    cleaned = value.strip()
-    if not cleaned:
-        raise HTTPException(
-            status_code=422,
-            detail=f"{field_name} cannot be empty",
-        )
-    return cleaned
+    return clean_school_year(value, field_name)
 
 
 def derived_from_subject(subject: Subject) -> tuple[str, str]:
@@ -182,6 +177,7 @@ def course_list_stats(db: Session, courses: list[Course]) -> dict[UUID, dict[str
 @router.get("", response_model=list[CourseResponse])
 def list_courses(
     school_year: str | None = None,
+    term: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CourseResponse]:
@@ -193,6 +189,10 @@ def list_courses(
     )
     if school_year is not None:
         query = query.where(Course.school_year == school_year)
+    if term is not None:
+        if term not in TRIMESTER_TERMS:
+            raise HTTPException(status_code=422, detail="term must be a canonical trimester")
+        query = query.where(Course.term == term)
 
     if current_user.role == "admin":
         courses = db.scalars(query).all()
@@ -295,81 +295,7 @@ def clone_year(
     """
     source_year = clean_required_text(payload.source_year, "source_year")
     target_year = clean_required_text(payload.target_year, "target_year")
-    if source_year == target_year:
-        raise HTTPException(status_code=422, detail="source_year and target_year must differ")
-
-    source_courses = db.scalars(
-        select(Course).options(joinedload(Course.school_class)).where(Course.school_year == source_year).order_by(Course.name, Course.code)
-        .where(Course.deleted_at.is_(None))
-    ).all()
-    if not source_courses:
-        raise HTTPException(status_code=422, detail="Source year has no courses to clone")
-
-    target_count = db.scalar(
-        select(func.count(Course.id)).where(Course.school_year == target_year, Course.deleted_at.is_(None))
-    )
-    if target_count:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "message": "Target year already has courses",
-                "course_count": target_count,
-            },
-        )
-
-    # Course codes are globally unique across years, so clones get a
-    # deterministic year suffix. Collisions are a hard stop, not a skip.
-    new_code_by_id = {course.id: f"{course.code}-{target_year}" for course in source_courses}
-    taken_codes = sorted(
-        db.scalars(select(Course.code).where(Course.code.in_(list(new_code_by_id.values())))).all()
-    )
-    if taken_codes:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "message": "Cloned course codes already exist",
-                "codes": taken_codes,
-            },
-        )
-
-    # Class rows are per-year (unique on name_fr + school_year), so class links
-    # are remapped by name into the target year; classes missing there leave
-    # the clone's class_id null and are reported back.
-    source_class_ids = {c.class_id for c in source_courses if c.class_id is not None}
-    source_name_by_class_id = {}
-    if source_class_ids:
-        source_name_by_class_id = dict(
-            db.execute(select(Class.id, Class.name_fr).where(Class.id.in_(source_class_ids))).all()
-        )
-    target_class_id_by_name = dict(
-        db.execute(select(Class.name_fr, Class.id).where(Class.school_year == target_year)).all()
-    )
-
-    unmatched_class_names = set()
-    for source_course in source_courses:
-        target_class_id = None
-        if source_course.class_id is not None:
-            class_name = source_name_by_class_id.get(source_course.class_id)
-            target_class_id = target_class_id_by_name.get(class_name)
-            if target_class_id is None:
-                unmatched_class_names.add(class_name)
-        db.add(
-            Course(
-                name=source_course.name,
-                code=new_code_by_id[source_course.id],
-                teacher_id=source_course.teacher_id,
-                term=TRIMESTER_TERMS[0],
-                school_year=target_year,
-                language_group=source_course.language_group,
-                class_id=target_class_id,
-                subject_id=source_course.subject_id,
-                coefficient=source_course.coefficient,
-                grading_system=(
-                    source_course.grading_system
-                    or ("BENINESE" if is_beninese_mode(source_course) else "WEIGHTED")
-                ),
-            )
-        )
+    created_count, unmatched_class_names = clone_course_setup_for_year(db, source_year, target_year)
     db.flush()
 
     create_audit_log(
@@ -382,16 +308,16 @@ def clone_year(
         new_value={
             "source_year": source_year,
             "target_year": target_year,
-            "created_count": len(source_courses),
-            "unmatched_class_names": sorted(unmatched_class_names),
+            "created_count": created_count,
+            "unmatched_class_names": unmatched_class_names,
         },
     )
     db.commit()
 
     return CourseCloneYearResponse(
         status="ok",
-        created_count=len(source_courses),
-        unmatched_class_names=sorted(unmatched_class_names),
+        created_count=created_count,
+        unmatched_class_names=unmatched_class_names,
     )
 
 

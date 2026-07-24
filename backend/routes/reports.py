@@ -154,13 +154,46 @@ def _validated_report_item_rows(items, allowed_keys, model_cls):
     return rows
 
 
-def _historical_class_name_for_report_card(db: Session | None, report_card: ReportCard) -> str | None:
+def _historical_class_for_report_card(db: Session | None, report_card: ReportCard) -> tuple[UUID | None, str | None]:
     for snapshot_course in report_card.courses:
         if snapshot_course.course is not None and snapshot_course.course.school_class is not None:
-            return snapshot_course.course.school_class.name_fr
+            return snapshot_course.course.school_class.id, snapshot_course.course.school_class.name_fr
     if db is not None:
-        return historical_class_name_for_student_year(db, report_card.student_id, report_card.school_year)
-    return None
+        course_class = db.execute(
+            select(Class.id, Class.name_fr)
+            .join(Course, Course.class_id == Class.id)
+            .join(ReportCardCourse, ReportCardCourse.course_id == Course.id)
+            .where(
+                ReportCardCourse.report_card_id == report_card.id,
+                ReportCardCourse.deleted_at.is_(None),
+                Course.school_year == report_card.school_year,
+                Course.deleted_at.is_(None),
+                Class.deleted_at.is_(None),
+            )
+            .order_by(Class.sort_order, Class.name_fr)
+            .limit(1)
+        ).first()
+        if course_class is not None:
+            return course_class[0], course_class[1]
+
+        decision = db.execute(
+            select(StudentPassageDecision.from_class_id, StudentPassageDecision.from_class_name)
+            .where(
+                StudentPassageDecision.student_id == report_card.student_id,
+                StudentPassageDecision.school_year == report_card.school_year,
+            )
+            .order_by(StudentPassageDecision.decided_at.desc())
+            .limit(1)
+        ).first()
+        if decision is not None and decision[1]:
+            return decision[0], decision[1]
+
+        return None, historical_class_name_for_student_year(db, report_card.student_id, report_card.school_year)
+    return None, None
+
+
+def _historical_class_name_for_report_card(db: Session | None, report_card: ReportCard) -> str | None:
+    return _historical_class_for_report_card(db, report_card)[1]
 
 
 def to_report_card_response(report_card: ReportCard, db: Session | None = None) -> ReportCardResponse:
@@ -269,13 +302,21 @@ def _latest_course_result_times_by_report_key(db: Session) -> dict[tuple[UUID, s
     }
 
 
-def to_admin_report_list_item(report_card: ReportCard, *, needs_review: bool) -> AdminReportListItem:
+def to_admin_report_list_item(
+    report_card: ReportCard,
+    *,
+    needs_review: bool,
+    db: Session | None = None,
+) -> AdminReportListItem:
     student = report_card.student
+    class_id, class_name = _historical_class_for_report_card(db, report_card)
     return AdminReportListItem(
         id=report_card.id,
         student_id=report_card.student_id,
         student_name=f"{student.first_name} {student.last_name}",
         student_number=student.student_number,
+        student_class_id=class_id,
+        student_class_name=class_name,
         term=report_card.term,
         school_year=report_card.school_year,
         status=report_card.status,
@@ -1249,13 +1290,19 @@ def get_class_pdf_job(
 
 @router.get("", response_model=list[AdminReportListItem])
 def list_reports(
+    school_year: str | None = None,
+    term: str | None = None,
+    class_id: UUID | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[AdminReportListItem]:
     report_cards = db.scalars(
         select(ReportCard)
         .join(ReportCard.student)
-        .options(joinedload(ReportCard.student))
+        .options(
+            joinedload(ReportCard.student),
+            selectinload(ReportCard.courses).joinedload(ReportCardCourse.course).joinedload(Course.school_class),
+        )
         .where(ReportCard.deleted_at.is_(None), Student.deleted_at.is_(None))
     ).all()
     latest_by_key = _latest_course_result_times_by_report_key(db)
@@ -1272,6 +1319,21 @@ def list_reports(
         )
         for report_card in report_cards
     }
+    visible_report_cards: list[ReportCard] = []
+    for report_card in report_cards:
+        needs_review = needs_review_by_report_id[report_card.id]
+        report_class_id, _ = _historical_class_for_report_card(db, report_card)
+        if class_id is not None and report_class_id != class_id:
+            continue
+        if needs_review:
+            visible_report_cards.append(report_card)
+            continue
+        if school_year is not None and report_card.school_year != school_year:
+            continue
+        if term is not None and report_card.term != term:
+            continue
+        visible_report_cards.append(report_card)
+    report_cards = visible_report_cards
     report_cards.sort(
         key=lambda report_card: (
             needs_review_by_report_id[report_card.id],
@@ -1283,6 +1345,7 @@ def list_reports(
         to_admin_report_list_item(
             report_card,
             needs_review=needs_review_by_report_id[report_card.id],
+            db=db,
         )
         for report_card in report_cards
     ]
@@ -1302,11 +1365,13 @@ def get_admin_report(
 @router.get("/student/{student_id}", response_model=list[ReportCardResponse])
 def list_student_reports(
     student_id: UUID,
+    school_year: str | None = None,
+    term: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[ReportCardResponse]:
     if current_user.role == "admin":
-        report_cards = db.scalars(
+        query = (
             select(ReportCard)
             .join(ReportCard.student)
             .options(selectinload(ReportCard.courses))
@@ -1316,11 +1381,16 @@ def list_student_reports(
                 Student.deleted_at.is_(None),
             )
             .order_by(ReportCard.created_at.desc())
-        ).all()
+        )
+        if school_year is not None:
+            query = query.where(ReportCard.school_year == school_year)
+        if term is not None:
+            query = query.where(ReportCard.term == term)
+        report_cards = db.scalars(query).all()
         return [to_report_card_response(report_card, db) for report_card in report_cards]
 
     if current_user.role == "parent" and parent_can_access_student(db, current_user, student_id):
-        report_cards = db.scalars(
+        query = (
             select(ReportCard)
             .join(ReportCard.student)
             .options(selectinload(ReportCard.courses))
@@ -1331,7 +1401,12 @@ def list_student_reports(
                 Student.deleted_at.is_(None),
             )
             .order_by(ReportCard.created_at.desc())
-        ).all()
+        )
+        if school_year is not None:
+            query = query.where(ReportCard.school_year == school_year)
+        if term is not None:
+            query = query.where(ReportCard.term == term)
+        report_cards = db.scalars(query).all()
         return [to_report_card_response(report_card, db) for report_card in report_cards]
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")

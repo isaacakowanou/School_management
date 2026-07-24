@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicQueryParams } from '../academic/AcademicContext.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { getParentStudents } from '../api/parents.js'
 import { getStudentReports } from '../api/reports.js'
@@ -17,8 +18,17 @@ export default function StudentReportsPage() {
   const [student, setStudent] = useState(null)
   const [reports, setReports] = useState(null)
   const [error, setError] = useState(null)
+  const {
+    selectedSchoolYear,
+    selectedTerm,
+    setSelectedSchoolYear,
+    setSelectedTerm,
+    availableSchoolYears,
+    terms,
+  } = useAcademicQueryParams()
 
   useEffect(() => {
+    if (!selectedSchoolYear || !selectedTerm) return undefined
     let cancelled = false
     setError(null)
     setReports(null)
@@ -26,7 +36,10 @@ export default function StudentReportsPage() {
 
     async function load() {
       try {
-        const reportList = await getStudentReports(studentId)
+        const reportList = await getStudentReports(studentId, {
+          schoolYear: selectedSchoolYear,
+          term: selectedTerm,
+        })
         if (cancelled) return
         setReports(reportList)
       } catch (err) {
@@ -47,7 +60,7 @@ export default function StudentReportsPage() {
     return () => {
       cancelled = true
     }
-  }, [studentId, parentId])
+  }, [studentId, parentId, selectedSchoolYear, selectedTerm])
 
   return (
     <section className="parent-page">
@@ -73,6 +86,25 @@ export default function StudentReportsPage() {
         </Link>
         <span className="parent-tab parent-tab-active">{t('nav.reports')}</span>
       </nav>
+
+      <div className="list-toolbar">
+        <label className="toolbar-field">
+          <span>{t('common.schoolYear')}</span>
+          <select value={selectedSchoolYear} onChange={(event) => setSelectedSchoolYear(event.target.value)}>
+            {availableSchoolYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </label>
+        <label className="toolbar-field">
+          <span>{t('common.term')}</span>
+          <select value={selectedTerm} onChange={(event) => setSelectedTerm(event.target.value)}>
+            {terms.map((term) => (
+              <option key={term} value={term}>{term}</option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {error && <ErrorBanner message={error} />}
       {!error && reports === null && <Spinner label={t('reports.loading')} />}

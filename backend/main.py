@@ -20,6 +20,8 @@ from limiter import limiter
 from error_codes import error_code_for_exception
 from routes.audit_logs import router as audit_logs_router
 from routes.admin_stats import router as admin_stats_router
+from routes.academic_context import router as academic_context_router
+from routes.archives import router as archives_router
 from routes.ai import router as ai_router
 from routes.auth import router as auth_router
 from routes.classes import router as classes_router
@@ -32,6 +34,7 @@ from routes.grades import router as grades_router
 from routes.parents import router as parents_router
 from routes.passages import router as passages_router
 from routes.reports import router as reports_router
+from routes.school_years import router as school_years_router
 from routes.students import router as students_router
 from routes.subjects import router as subjects_router
 from routes.teachers import router as teachers_router
@@ -57,6 +60,8 @@ async def localized_http_exception_handler(request: Request, exc: HTTPException)
 app.include_router(auth_router, prefix="/api/v1/auth")
 app.include_router(audit_logs_router, prefix="/api/v1")
 app.include_router(admin_stats_router, prefix="/api/v1")
+app.include_router(academic_context_router, prefix="/api/v1")
+app.include_router(archives_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1/ai")
 app.include_router(classes_router, prefix="/api/v1/classes")
 app.include_router(course_results_router, prefix="/api/v1")
@@ -68,6 +73,7 @@ app.include_router(grades_router, prefix="/api/v1")
 app.include_router(parents_router, prefix="/api/v1/parents")
 app.include_router(passages_router, prefix="/api/v1/passages")
 app.include_router(reports_router, prefix="/api/v1/reports")
+app.include_router(school_years_router, prefix="/api/v1")
 app.include_router(students_router, prefix="/api/v1/students")
 app.include_router(subjects_router, prefix="/api/v1/subjects")
 app.include_router(teachers_router, prefix="/api/v1/teachers")

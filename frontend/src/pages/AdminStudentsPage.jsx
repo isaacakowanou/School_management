@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicQueryParams } from '../academic/AcademicContext.jsx'
 import { deleteStudent, listStudents } from '../api/students.js'
 import { listClasses } from '../api/classes.js'
 import Spinner from '../components/Spinner.jsx'
@@ -20,9 +21,18 @@ export default function AdminStudentsPage() {
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(location.state?.message || null)
   const [deletingId, setDeletingId] = useState(null)
+  const {
+    selectedSchoolYear,
+    setSelectedSchoolYear,
+    availableSchoolYears,
+  } = useAcademicQueryParams({ includeTerm: false })
 
   async function refresh() {
-    const data = await listStudents({ academicStatus: statusFilter })
+    const data = await listStudents({
+      academicStatus: statusFilter,
+      schoolYear: statusFilter === 'active' ? selectedSchoolYear : undefined,
+      classId: classFilter && classFilter !== '__none__' ? classFilter : undefined,
+    })
     setStudents(data)
     return data
   }
@@ -37,6 +47,7 @@ export default function AdminStudentsPage() {
     let cancelled = false
     setError(null)
     setStudents(null)
+    if (!selectedSchoolYear && statusFilter === 'active') return undefined
     refresh()
       .then((data) => {
         if (!cancelled) setStudents(data)
@@ -47,11 +58,12 @@ export default function AdminStudentsPage() {
     return () => {
       cancelled = true
     }
-  }, [statusFilter])
+  }, [statusFilter, selectedSchoolYear, classFilter])
 
   useEffect(() => {
     let cancelled = false
-    listClasses()
+    if (!selectedSchoolYear) return undefined
+    listClasses({ schoolYear: selectedSchoolYear })
       .then((data) => {
         if (!cancelled) setClasses(data)
       })
@@ -61,7 +73,7 @@ export default function AdminStudentsPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [selectedSchoolYear])
 
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -119,6 +131,21 @@ export default function AdminStudentsPage() {
       {!error && students && students.length > 0 && (
         <div className="list-stack">
           <div className="list-toolbar">
+            <label className="toolbar-field">
+              <span>{t('common.schoolYear')}</span>
+              <select
+                value={selectedSchoolYear}
+                onChange={(event) => {
+                  setSelectedSchoolYear(event.target.value)
+                  setClassFilter('')
+                  setVisibleCount(25)
+                }}
+              >
+                {availableSchoolYears.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </label>
             <label className="toolbar-field">
               <span>{t('common.search')}</span>
               <input

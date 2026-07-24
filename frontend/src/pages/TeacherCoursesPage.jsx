@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { BookOpen, CheckCircle2, GraduationCap, Library } from 'lucide-react'
+import { useAcademicQueryParams } from '../academic/AcademicContext.jsx'
 import { getMyCourses } from '../api/courses.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -11,12 +12,21 @@ export default function TeacherCoursesPage() {
   const { t } = useTranslation()
   const [courses, setCourses] = useState(null)
   const [error, setError] = useState(null)
+  const {
+    selectedSchoolYear,
+    selectedTerm,
+    setSelectedSchoolYear,
+    setSelectedTerm,
+    availableSchoolYears,
+    terms,
+  } = useAcademicQueryParams()
 
   useEffect(() => {
+    if (!selectedSchoolYear || !selectedTerm) return undefined
     let cancelled = false
     setError(null)
     setCourses(null)
-    getMyCourses()
+    getMyCourses({ schoolYear: selectedSchoolYear, term: selectedTerm })
       .then((data) => {
         if (!cancelled) setCourses(data)
       })
@@ -26,7 +36,7 @@ export default function TeacherCoursesPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [selectedSchoolYear, selectedTerm])
 
   return (
     <section className="teacher-page">
@@ -38,6 +48,24 @@ export default function TeacherCoursesPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <div className="list-toolbar">
+        <label className="toolbar-field">
+          <span>{t('common.schoolYear')}</span>
+          <select value={selectedSchoolYear} onChange={(event) => setSelectedSchoolYear(event.target.value)}>
+            {availableSchoolYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </label>
+        <label className="toolbar-field">
+          <span>{t('common.term')}</span>
+          <select value={selectedTerm} onChange={(event) => setSelectedTerm(event.target.value)}>
+            {terms.map((term) => (
+              <option key={term} value={term}>{term}</option>
+            ))}
+          </select>
+        </label>
+      </div>
       {!error && courses === null && <Spinner label={t('courses.loading')} />}
       {!error && courses && courses.length === 0 && (
         <Empty message={t('courses.noAssigned')} />

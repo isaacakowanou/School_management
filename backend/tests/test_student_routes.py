@@ -579,6 +579,65 @@ class StudentRouteTests(unittest.TestCase):
         self.assertEqual(term_response.status_code, 200, term_response.text)
         self.assertEqual(term_response.json()[0]["course_name"], "Science")
 
+    def test_admin_student_grades_default_to_latest_student_term_with_data(self):
+        historical_class = Class(
+            name_fr="Terminale C",
+            school_level="college",
+            sort_order=18,
+            school_year="2026-2027",
+        )
+        current_class = Class(
+            name_fr="Classe actuelle",
+            school_level="college",
+            sort_order=19,
+            school_year="2027-2028",
+        )
+        student = Student(
+            first_name="ZZ-TEST",
+            last_name="Graduated Notes",
+            student_number="ZZ-TEST-GRAD-NOTES",
+            school_class=None,
+            academic_status="graduated",
+        )
+        self.db.add_all([historical_class, current_class, student])
+        self.db.flush()
+        course = Course(
+            name="Historical Literature",
+            code="ZZ-TEST-HIST-LIT",
+            teacher=self.teacher,
+            term="3ème Trimestre",
+            school_year="2026-2027",
+            school_class=historical_class,
+        )
+        self.db.add(course)
+        self.db.flush()
+        self.db.add(Enrollment(student=student, course=course))
+        grade_item = GradeItem(
+            course=course,
+            title="Composition",
+            item_type="COMPOSITION",
+            max_score=20,
+            weight=1,
+            term="3ème Trimestre",
+        )
+        self.db.add(grade_item)
+        self.db.flush()
+        self.db.add(Grade(student=student, grade_item=grade_item, score=15, submitted_by_teacher=self.teacher))
+        self.db.commit()
+
+        response = self.client.get(
+            f"/api/v1/students/{student.id}/grades",
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["school_year"], "2026-2027")
+        self.assertEqual(data[0]["term"], "3ème Trimestre")
+        self.assertEqual(data[0]["course_name"], "Historical Literature")
+        self.assertEqual(data[0]["score"], 15)
+
     def test_student_grades_admin_only_and_active_student_only(self):
         student = self._create_student("ADMIN-GRADES-AUTH")
 

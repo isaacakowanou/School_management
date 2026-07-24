@@ -31,8 +31,12 @@ export function updateTeacher(teacherId, { name, email, phone, employeeNumber })
 }
 
 // GET /api/v1/teachers/{teacher_id}/courses -> CourseResponse[]
-export function getTeacherCourses(teacherId) {
-  return apiGet(`/teachers/${teacherId}/courses`)
+export function getTeacherCourses(teacherId, { schoolYear, term } = {}) {
+  const params = new URLSearchParams()
+  if (schoolYear) params.set('school_year', schoolYear)
+  if (term) params.set('term', term)
+  const qs = params.toString()
+  return apiGet(`/teachers/${teacherId}/courses${qs ? `?${qs}` : ''}`)
 }
 
 // DELETE /api/v1/teachers/{teacher_id} (admin). Blocks when courses or submitted grades exist.

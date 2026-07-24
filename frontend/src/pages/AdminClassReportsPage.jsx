@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicQueryParams } from '../academic/AcademicContext.jsx'
 import {
   batchApproveReports,
   batchGenerateReports,
@@ -27,7 +28,6 @@ export default function AdminClassReportsPage() {
   const { t } = useTranslation()
   const [classes, setClasses] = useState([])
   const [classId, setClassId] = useState('')
-  const [term, setTerm] = useState('')
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -39,12 +39,22 @@ export default function AdminClassReportsPage() {
   const [trimesterLocks, setTrimesterLocks] = useState([])
   const [updatingLockTerm, setUpdatingLockTerm] = useState(null)
   const [lockError, setLockError] = useState(null)
+  const {
+    selectedSchoolYear,
+    selectedTerm,
+    setSelectedSchoolYear,
+    setSelectedTerm,
+    availableSchoolYears,
+  } = useAcademicQueryParams()
 
   useEffect(() => {
+    if (!selectedSchoolYear) return undefined
     let cancelled = false
-    listClasses()
+    listClasses({ schoolYear: selectedSchoolYear })
       .then((data) => {
-        if (!cancelled) setClasses(data)
+        if (cancelled) return
+        setClasses(data)
+        setClassId((current) => (data.some((item) => item.id === current) ? current : data[0]?.id || ''))
       })
       .catch((err) => {
         if (!cancelled) setError(err.message)
@@ -52,16 +62,16 @@ export default function AdminClassReportsPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [selectedSchoolYear])
 
   const selectedClass = useMemo(
     () => classes.find((item) => item.id === classId) || null,
     [classes, classId],
   )
-  const schoolYear = selectedClass?.school_year || ''
+  const schoolYear = selectedSchoolYear || selectedClass?.school_year || ''
   const batchArgs = useMemo(
-    () => ({ classId, schoolYear, term }),
-    [classId, schoolYear, term],
+    () => ({ classId, schoolYear, term: selectedTerm }),
+    [classId, schoolYear, selectedTerm],
   )
 
   useEffect(() => {
@@ -111,14 +121,14 @@ export default function AdminClassReportsPage() {
   }
 
   const loadStatus = useCallback(async () => {
-    if (!classId || !term || !schoolYear) {
+    if (!classId || !selectedTerm || !schoolYear) {
       setStatus(null)
       return
     }
     setLoading(true)
     setError(null)
     try {
-      const data = await getClassReportStatus({ classId, schoolYear, term })
+      const data = await getClassReportStatus({ classId, schoolYear, term: selectedTerm })
       setStatus(data)
     } catch (err) {
       setError(err.message)
@@ -126,7 +136,7 @@ export default function AdminClassReportsPage() {
     } finally {
       setLoading(false)
     }
-  }, [classId, term, schoolYear])
+  }, [classId, selectedTerm, schoolYear])
 
   useEffect(() => {
     setActionMessage(null)
@@ -234,12 +244,12 @@ export default function AdminClassReportsPage() {
   async function runBulkGenerate() {
     setActionMessage(null)
     setActionError(null)
-    if (!window.confirm(t('classReports.confirmBulkGenerate', { schoolYear, term }))) return
+    if (!window.confirm(t('classReports.confirmBulkGenerate', { schoolYear, term: selectedTerm }))) return
     const generatePartial = window.confirm(t('classReports.confirmBulkGeneratePartial'))
 
     setRunningAction('bulk-generate')
     try {
-      const job = await createBulkReportGenerationJob({ schoolYear, term, generatePartial })
+      const job = await createBulkReportGenerationJob({ schoolYear, term: selectedTerm, generatePartial })
       let latest = job
       for (let attempt = 0; attempt < 30 && latest.status === 'pending'; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -284,7 +294,7 @@ export default function AdminClassReportsPage() {
           const url = URL.createObjectURL(result.blob)
           const link = document.createElement('a')
           link.href = url
-          link.download = `${status.class_name}_${term}_${schoolYear}_bulletins.pdf`.replace(/\s+/g, '-')
+          link.download = `${status.class_name}_${selectedTerm}_${schoolYear}_bulletins.pdf`.replace(/\s+/g, '-')
           document.body.appendChild(link)
           link.click()
           link.remove()
@@ -343,6 +353,21 @@ export default function AdminClassReportsPage() {
 
       <div className="list-toolbar">
         <label className="toolbar-field">
+          <span>{t('common.schoolYear')}</span>
+          <select
+            value={selectedSchoolYear}
+            onChange={(event) => {
+              setSelectedSchoolYear(event.target.value)
+              setClassId('')
+            }}
+            disabled={busy}
+          >
+            {availableSchoolYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </label>
+        <label className="toolbar-field">
           <span>{t('students.class')}</span>
           <ClassSelect
             classes={classes}
@@ -354,7 +379,7 @@ export default function AdminClassReportsPage() {
         </label>
         <label className="toolbar-field">
           <span>{t('common.term')}</span>
-          <TermSelect value={term} onChange={setTerm} disabled={busy} required={false} />
+          <TermSelect value={selectedTerm} onChange={setSelectedTerm} disabled={busy} required />
         </label>
         {schoolYear && (
           <p className="muted">
@@ -431,7 +456,7 @@ export default function AdminClassReportsPage() {
               type="button"
               className="btn btn-ghost"
               onClick={runBulkGenerate}
-              disabled={busy || !schoolYear || !term}
+              disabled={busy || !schoolYear || !selectedTerm}
             >
               {runningAction === 'bulk-generate'
                 ? t('classReports.bulkGenerating')

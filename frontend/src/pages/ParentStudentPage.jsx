@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicQueryParams } from '../academic/AcademicContext.jsx'
 import { getParentStudentGrades, getParentStudents } from '../api/parents.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { TRIMESTER_TERMS } from '../constants/terms.js'
@@ -43,10 +44,17 @@ export default function ParentStudentPage() {
   const { parentId } = useAuth()
   const { t, i18n } = useTranslation()
   const [student, setStudent] = useState(null)
-  const [term, setTerm] = useState('')
   const [grades, setGrades] = useState(null)
   const [studentError, setStudentError] = useState(null)
   const [gradeError, setGradeError] = useState(null)
+  const {
+    selectedSchoolYear,
+    selectedTerm,
+    setSelectedSchoolYear,
+    setSelectedTerm,
+    availableSchoolYears,
+    terms,
+  } = useAcademicQueryParams()
 
   useEffect(() => {
     if (!parentId) return undefined
@@ -66,10 +74,11 @@ export default function ParentStudentPage() {
   }, [parentId, studentId])
 
   useEffect(() => {
+    if (!selectedSchoolYear || !selectedTerm) return undefined
     let cancelled = false
     setGrades(null)
     setGradeError(null)
-    getParentStudentGrades(studentId, { term })
+    getParentStudentGrades(studentId, { schoolYear: selectedSchoolYear, term: selectedTerm })
       .then((data) => {
         if (!cancelled) setGrades(data)
       })
@@ -79,7 +88,7 @@ export default function ParentStudentPage() {
     return () => {
       cancelled = true
     }
-  }, [studentId, term])
+  }, [studentId, selectedSchoolYear, selectedTerm])
 
   const recentGrades = useMemo(() => (grades || []).slice(0, 5), [grades])
   const courseGroups = useMemo(() => groupByCourse(grades || []), [grades])
@@ -117,10 +126,17 @@ export default function ParentStudentPage() {
           <p className="muted">{t('parentGrades.subtitle')}</p>
         </div>
         <label className="field compact-field">
+          <span>{t('common.schoolYear')}</span>
+          <select value={selectedSchoolYear} onChange={(event) => setSelectedSchoolYear(event.target.value)}>
+            {availableSchoolYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field compact-field">
           <span>{t('common.term')}</span>
-          <select value={term} onChange={(event) => setTerm(event.target.value)}>
-            <option value="">{t('parentGrades.currentTerm')}</option>
-            {TRIMESTER_TERMS.map((value) => (
+          <select value={selectedTerm} onChange={(event) => setSelectedTerm(event.target.value)}>
+            {(terms.length ? terms : TRIMESTER_TERMS).map((value) => (
               <option key={value} value={value}>{value}</option>
             ))}
           </select>

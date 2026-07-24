@@ -180,7 +180,7 @@ export default function AdminPassagesPage() {
             <button type="button" className="btn btn-primary" onClick={loadPreview} disabled={loading || !classId || !targetYear.trim()}>
               {loading ? t('common.loading') : t('passages.preview')}
             </button>
-            <Link to="/admin/classes" className="btn btn-ghost">{t('passages.createTargetClasses')}</Link>
+            <Link to="/admin/school-years/new" className="btn btn-ghost">{t('passages.createTargetClasses')}</Link>
           </div>
         </div>
       )}

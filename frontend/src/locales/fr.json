@@ -52,6 +52,7 @@
     "classes": "Classes",
     "passages": "Passage",
     "subjects": "Matières",
+    "archives": "Archives",
     "trash": "Corbeille",
     "dangerZone": "Nettoyage",
     "auditLogs": "Journaux d'audit"
@@ -60,6 +61,24 @@
     "management": "Gestion",
     "reports": "Bulletins",
     "system": "Système"
+  },
+  "schoolYears": {
+    "title": "Nouvelle année scolaire",
+    "subtitle": "Créez les classes GGFK de la nouvelle année et clonez les cours de l'année précédente si besoin.",
+    "required": "L'année scolaire est obligatoire.",
+    "cloneCourses": "Cloner les cours de l'année source",
+    "sourceYear": "Année source",
+    "create": "Créer l'année",
+    "created": "{{year}} créée : {{classes}} classes, {{courses}} cours clonés.",
+    "openYear": "Ouvrir l'année"
+  },
+  "archives": {
+    "title": "Archives",
+    "subtitle": "Retrouvez les bulletins et cours des années passées, ainsi que les élèves diplômés.",
+    "reports": "Bulletins",
+    "courses": "Cours",
+    "students": "Élèves diplômés",
+    "empty": "Aucune archive à afficher."
   },
   "schoolLevels": {
     "maternelle": "Maternelle",

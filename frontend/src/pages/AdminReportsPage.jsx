@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicQueryParams } from '../academic/AcademicContext.jsx'
 import { listReports } from '../api/reports.js'
 import { listClasses } from '../api/classes.js'
-import { listStudents } from '../api/students.js'
 import { formatReportAverage } from '../utils/format.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -50,29 +50,40 @@ export default function AdminReportsPage() {
   const [search, setSearch] = useState('')
   const [classFilter, setClassFilter] = useState('')
   const [classes, setClasses] = useState([])
-  const [studentClassById, setStudentClassById] = useState(new Map())
   const [visibleCount, setVisibleCount] = useState(25)
+  const {
+    selectedSchoolYear,
+    selectedTerm,
+    setSelectedSchoolYear,
+    setSelectedTerm,
+    availableSchoolYears,
+    terms,
+  } = useAcademicQueryParams()
 
   const refreshReports = useCallback(async () => {
+    if (!selectedSchoolYear || !selectedTerm) return
     try {
-      const data = await listReports()
+      const data = await listReports({ schoolYear: selectedSchoolYear, term: selectedTerm, classId: classFilter })
       setReports(data)
       setError(null)
     } catch (err) {
       setError(err.message)
     }
-  }, [])
+  }, [selectedSchoolYear, selectedTerm, classFilter])
 
   useEffect(() => {
+    if (!selectedSchoolYear || !selectedTerm) return undefined
     let cancelled = false
     setError(null)
     setReports(null)
-    Promise.all([listReports(), listClasses().catch(() => []), listStudents().catch(() => [])])
-      .then(([reportData, classData, studentData]) => {
+    Promise.all([
+      listReports({ schoolYear: selectedSchoolYear, term: selectedTerm, classId: classFilter || undefined }),
+      listClasses({ schoolYear: selectedSchoolYear }).catch(() => []),
+    ])
+      .then(([reportData, classData]) => {
         if (cancelled) return
         setReports(reportData)
         setClasses(classData)
-        setStudentClassById(new Map(studentData.map((student) => [student.id, student.class_id || ''])))
       })
       .catch((err) => {
         if (!cancelled) setError(err.message)
@@ -80,7 +91,7 @@ export default function AdminReportsPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [selectedSchoolYear, selectedTerm, classFilter])
 
   useEffect(() => {
     function refreshWhenVisible() {
@@ -106,10 +117,9 @@ export default function AdminReportsPage() {
       if (statusFilter === 'needs_review' && !report.needs_review) return false
       if (statusFilter !== 'all' && statusFilter !== 'needs_review' && report.status !== statusFilter) return false
       if (needsReviewOnly && !report.needs_review) return false
-      if (classFilter && studentClassById.get(report.student_id) !== classFilter) return false
       return true
     })
-  }, [reports, search, statusFilter, needsReviewOnly, classFilter, studentClassById])
+  }, [reports, search, statusFilter, needsReviewOnly])
 
   const visibleReports = filtered.slice(0, visibleCount)
 
@@ -151,6 +161,35 @@ export default function AdminReportsPage() {
       {!error && reports && (
         <>
           <div className="list-toolbar">
+            <label className="toolbar-field">
+              <span>{t('reports.schoolYear')}</span>
+              <select
+                value={selectedSchoolYear}
+                onChange={(event) => {
+                  setSelectedSchoolYear(event.target.value)
+                  setClassFilter('')
+                  setVisibleCount(25)
+                }}
+              >
+                {availableSchoolYears.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </label>
+            <label className="toolbar-field">
+              <span>{t('reports.term')}</span>
+              <select
+                value={selectedTerm}
+                onChange={(event) => {
+                  setSelectedTerm(event.target.value)
+                  setVisibleCount(25)
+                }}
+              >
+                {terms.map((term) => (
+                  <option key={term} value={term}>{term}</option>
+                ))}
+              </select>
+            </label>
             <label className="toolbar-field">
               <span>{t('common.search')}</span>
               <input

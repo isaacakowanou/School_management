@@ -165,8 +165,9 @@ export default function AdminCourseDetailPage() {
   const [subjects, setSubjects] = useState([])
 
   useEffect(() => {
+    if (!editForm.schoolYear) return undefined
     let cancelled = false
-    listClasses()
+    listClasses({ schoolYear: editForm.schoolYear })
       .then((data) => {
         if (!cancelled) setClasses(data)
       })
@@ -176,7 +177,7 @@ export default function AdminCourseDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [editForm.schoolYear])
 
   // Selecting a class in the edit form narrows the catalog to that class's
   // subjects; a subject that falls out of the narrowed list is deselected.

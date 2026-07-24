@@ -3,8 +3,12 @@ import { isCanonicalTerm } from '../constants/terms.js'
 
 // GET /api/v1/courses
 // For teachers the backend returns ONLY the courses assigned to them.
-export function getMyCourses() {
-  return apiGet('/courses')
+export function getMyCourses({ schoolYear, term } = {}) {
+  const params = new URLSearchParams()
+  if (schoolYear) params.set('school_year', schoolYear)
+  if (term) params.set('term', term)
+  const qs = params.toString()
+  return apiGet(`/courses${qs ? `?${qs}` : ''}`)
 }
 
 // GET /api/v1/courses/{course_id}
@@ -20,9 +24,10 @@ export function listCourseStudents(courseId) {
 // GET /api/v1/courses (admin -> all courses). Same endpoint as getMyCourses,
 // named for the admin context where every course is returned. Optional
 // school_year filter.
-export function listCourses({ schoolYear } = {}) {
+export function listCourses({ schoolYear, term } = {}) {
   const params = new URLSearchParams()
   if (schoolYear) params.set('school_year', schoolYear)
+  if (term) params.set('term', term)
   const qs = params.toString()
   return apiGet(`/courses${qs ? `?${qs}` : ''}`)
 }

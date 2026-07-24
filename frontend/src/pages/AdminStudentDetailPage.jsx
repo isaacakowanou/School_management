@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicContext } from '../academic/AcademicContext.jsx'
 import {
   getStudent,
   getStudentParents,
@@ -82,12 +83,14 @@ export default function AdminStudentDetailPage() {
   const { studentId } = useParams()
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
+  const { currentSchoolYear, currentTerm, availableSchoolYears, terms } = useAcademicContext()
   const [student, setStudent] = useState(null)
   const [parents, setParents] = useState([])
   const [allParents, setAllParents] = useState([])
   const [reports, setReports] = useState([])
   const [passageHistory, setPassageHistory] = useState([])
   const [grades, setGrades] = useState(null)
+  const [gradeSchoolYear, setGradeSchoolYear] = useState('')
   const [gradeTerm, setGradeTerm] = useState('')
   const [gradeError, setGradeError] = useState(null)
   const [reportPeriods, setReportPeriods] = useState([])
@@ -110,11 +113,14 @@ export default function AdminStudentDetailPage() {
   const [editError, setEditError] = useState(null)
   const [editMessage, setEditMessage] = useState(null)
   const [classes, setClasses] = useState([])
+  const [editClassSchoolYear, setEditClassSchoolYear] = useState('')
   const runLinkRequest = useRef(createSingleFlight())
 
   useEffect(() => {
+    const classYear = editClassSchoolYear || currentSchoolYear
+    if (!classYear) return undefined
     let cancelled = false
-    listClasses()
+    listClasses({ schoolYear: classYear })
       .then((data) => {
         if (!cancelled) setClasses(data)
       })
@@ -124,7 +130,7 @@ export default function AdminStudentDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [editClassSchoolYear, currentSchoolYear])
 
   useEffect(() => {
     let cancelled = false
@@ -135,6 +141,7 @@ export default function AdminStudentDetailPage() {
     setReports([])
     setPassageHistory([])
     setGrades(null)
+    setGradeSchoolYear('')
     setGradeTerm('')
     setGradeError(null)
     setReportPeriods([])
@@ -150,6 +157,7 @@ export default function AdminStudentDetailPage() {
     setUnlinkingParentId(null)
     setShowEditForm(false)
     setEditForm(studentToForm(null))
+    setEditClassSchoolYear('')
     setSavingEdit(false)
     setDeleting(false)
     setEditError(null)
@@ -161,6 +169,7 @@ export default function AdminStudentDetailPage() {
         if (cancelled) return
         setStudent(data)
         setEditForm(studentToForm(data))
+        setEditClassSchoolYear(data.class_school_year || currentSchoolYear || '')
       } catch (err) {
         if (!cancelled) setError(err.message)
         return
@@ -207,19 +216,21 @@ export default function AdminStudentDetailPage() {
       )
       setReportPeriods(periods)
       setSelectedReportPeriod(periods[0] ? reportPeriodKey(periods[0]) : '')
+      setGradeSchoolYear(periods[0]?.schoolYear || currentSchoolYear || '')
+      setGradeTerm(periods[0]?.term || currentTerm || '')
     }
 
     load()
     return () => {
       cancelled = true
     }
-  }, [studentId])
+  }, [studentId, currentSchoolYear, currentTerm])
 
   useEffect(() => {
     let cancelled = false
     setGrades(null)
     setGradeError(null)
-    getStudentGrades(studentId, { term: gradeTerm })
+    getStudentGrades(studentId, { schoolYear: gradeSchoolYear, term: gradeTerm })
       .then((data) => {
         if (!cancelled) setGrades(data)
       })
@@ -229,7 +240,7 @@ export default function AdminStudentDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [studentId, gradeTerm])
+  }, [studentId, gradeSchoolYear, gradeTerm])
 
   const linkedParentIds = useMemo(() => new Set(parents.map((parent) => parent.id)), [parents])
   const availableParents = useMemo(
@@ -513,6 +524,23 @@ export default function AdminStudentDetailPage() {
           </label>
 
           <label className="field">
+            <span>{t('common.schoolYear')}</span>
+            <select
+              className="grade-input full-width-input"
+              value={editClassSchoolYear || currentSchoolYear}
+              onChange={(event) => {
+                setEditClassSchoolYear(event.target.value)
+                updateEditField('classId', '')
+              }}
+              disabled={savingEdit}
+            >
+              {availableSchoolYears.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
             <span>{t('students.classLabel')}</span>
             <ClassSelect
               classes={classes}
@@ -554,10 +582,20 @@ export default function AdminStudentDetailPage() {
           <p className="muted">{t('parentGrades.subtitle')}</p>
         </div>
         <label className="field compact-field">
+          <span>{t('common.schoolYear')}</span>
+          <select value={gradeSchoolYear} onChange={(event) => setGradeSchoolYear(event.target.value)}>
+            {Array.from(new Set([
+              ...reportPeriods.map((period) => period.schoolYear),
+              ...availableSchoolYears,
+            ])).map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field compact-field">
           <span>{t('common.term')}</span>
           <select value={gradeTerm} onChange={(event) => setGradeTerm(event.target.value)}>
-            <option value="">{t('parentGrades.currentTerm')}</option>
-            {TRIMESTER_TERMS.map((value) => (
+            {(terms.length ? terms : TRIMESTER_TERMS).map((value) => (
               <option key={value} value={value}>{value}</option>
             ))}
           </select>

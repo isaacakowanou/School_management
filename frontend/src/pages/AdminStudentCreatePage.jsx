@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicContext } from '../academic/AcademicContext.jsx'
 import { createStudent } from '../api/students.js'
 import { listClasses } from '../api/classes.js'
 import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
@@ -19,14 +20,21 @@ const EMPTY_FORM = {
 export default function AdminStudentCreatePage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { currentSchoolYear, availableSchoolYears } = useAcademicContext()
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [classes, setClasses] = useState([])
+  const [classSchoolYear, setClassSchoolYear] = useState('')
 
   useEffect(() => {
+    setClassSchoolYear((current) => current || currentSchoolYear || '')
+  }, [currentSchoolYear])
+
+  useEffect(() => {
+    if (!classSchoolYear) return undefined
     let cancelled = false
-    listClasses()
+    listClasses({ schoolYear: classSchoolYear })
       .then((data) => {
         if (!cancelled) setClasses(data)
       })
@@ -36,7 +44,7 @@ export default function AdminStudentCreatePage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [classSchoolYear])
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -124,6 +132,24 @@ export default function AdminStudentCreatePage() {
               <option key={level.value} value={level.value}>
                 {level.label}
               </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field">
+          <span>{t('common.schoolYear')}</span>
+          <select
+            className="grade-input"
+            value={classSchoolYear}
+            onChange={(event) => {
+              setClassSchoolYear(event.target.value)
+              updateField('classId', '')
+            }}
+            disabled={saving}
+            style={{ width: '100%', textAlign: 'left' }}
+          >
+            {availableSchoolYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
             ))}
           </select>
         </label>

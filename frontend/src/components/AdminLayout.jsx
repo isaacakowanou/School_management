@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   BookOpen,
   FileText,
+  Archive,
   GraduationCap,
   LayoutDashboard,
   Library,
@@ -39,6 +40,7 @@ const NAV_GROUPS = [
     labelKey: 'navSections.reports',
     items: [
       { to: '/admin/reports', key: 'nav.reports', end: false, icon: FileText },
+      { to: '/admin/archives', key: 'nav.archives', end: false, icon: Archive },
     ],
   },
   {

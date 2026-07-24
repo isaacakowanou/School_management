@@ -2,8 +2,12 @@ import { apiGet, apiGetBlob, apiPatch, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/reports/student/{student_id}
 // For parents the backend returns ONLY approved/sent reports.
-export function getStudentReports(studentId) {
-  return apiGet(`/reports/student/${studentId}`)
+export function getStudentReports(studentId, { schoolYear, term } = {}) {
+  const params = new URLSearchParams()
+  if (schoolYear) params.set('school_year', schoolYear)
+  if (term) params.set('term', term)
+  const qs = params.toString()
+  return apiGet(`/reports/student/${studentId}${qs ? `?${qs}` : ''}`)
 }
 
 // GET /api/v1/reports/{report_id}
@@ -29,8 +33,13 @@ export function downloadReportPdf(reportId) {
 // --- Admin report management ---
 
 // GET /api/v1/reports (admin only) -> all report cards
-export function listReports() {
-  return apiGet('/reports')
+export function listReports({ schoolYear, term, classId } = {}) {
+  const params = new URLSearchParams()
+  if (schoolYear) params.set('school_year', schoolYear)
+  if (term) params.set('term', term)
+  if (classId) params.set('class_id', classId)
+  const qs = params.toString()
+  return apiGet(`/reports${qs ? `?${qs}` : ''}`)
 }
 
 // POST /api/v1/reports/generate/{student_id} -> creates an admin draft report

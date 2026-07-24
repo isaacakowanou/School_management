@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from audit import create_audit_log
 from auth import require_admin
-from constants import GGFK_CLASSES, normalize_class_name
+from constants import normalize_class_name
 from database import get_db
 from models import Class, Course, Enrollment, Student, User
 from schemas import (
@@ -30,6 +30,7 @@ from schemas import (
     SchoolLevel,
     StatusResponse,
 )
+from services.school_year_rollover import clean_school_year, create_ggfk_classes_for_year
 from utils import get_class_or_404
 
 
@@ -40,10 +41,7 @@ _SCHOOL_LEVEL_RANK = {level.value: index for index, level in enumerate(SchoolLev
 
 
 def clean_required_text(value: str, field_name: str) -> str:
-    cleaned = value.strip()
-    if not cleaned:
-        raise HTTPException(status_code=422, detail=f"{field_name} cannot be empty")
-    return cleaned
+    return clean_school_year(value, field_name)
 
 
 def _clean_optional_text(value: str | None) -> str | None:
@@ -189,30 +187,7 @@ def bulk_create_classes(
     """
     school_year = clean_required_text(payload.school_year, "school_year")
 
-    existing_keys = {
-        normalize_class_name(name)
-        for name in db.scalars(
-            select(Class.name_fr).where(Class.school_year == school_year, Class.deleted_at.is_(None))
-        ).all()
-    }
-
-    created: list[str] = []
-    skipped: list[str] = []
-    for entry in GGFK_CLASSES:
-        if normalize_class_name(entry["name_fr"]) in existing_keys:
-            skipped.append(entry["name_fr"])
-            continue
-        db.add(
-            Class(
-                name_fr=entry["name_fr"],
-                name_en=entry["name_en"],
-                school_level=entry["school_level"],
-                stream=entry["stream"],
-                sort_order=entry["sort_order"],
-                school_year=school_year,
-            )
-        )
-        created.append(entry["name_fr"])
+    created, skipped = create_ggfk_classes_for_year(db, school_year)
 
     if created:
         db.flush()

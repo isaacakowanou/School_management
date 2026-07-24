@@ -1,9 +1,11 @@
 import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/students (admin) -> [{ id, first_name, last_name, grade_level, student_number }]
-export function listStudents({ academicStatus } = {}) {
+export function listStudents({ academicStatus, schoolYear, classId } = {}) {
   const params = new URLSearchParams()
   if (academicStatus) params.set('academic_status', academicStatus)
+  if (schoolYear) params.set('school_year', schoolYear)
+  if (classId) params.set('class_id', classId)
   const qs = params.toString()
   return apiGet(`/students${qs ? `?${qs}` : ''}`)
 }
@@ -31,8 +33,9 @@ export function getStudent(studentId) {
 }
 
 // GET /api/v1/students/{student_id}/grades?term=... (admin only)
-export function getStudentGrades(studentId, { term } = {}) {
+export function getStudentGrades(studentId, { schoolYear, term } = {}) {
   const params = new URLSearchParams()
+  if (schoolYear) params.set('school_year', schoolYear)
   if (term) params.set('term', term)
   const qs = params.toString()
   return apiGet(`/students/${studentId}/grades${qs ? `?${qs}` : ''}`)

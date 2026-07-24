@@ -14,6 +14,7 @@ from main import app
 from models import (
     AuditLog,
     Base,
+    Class,
     Course,
     CourseResult,
     Parent,
@@ -444,6 +445,100 @@ class ReportListRouteTests(unittest.TestCase):
         non_review_index = [report["id"] for report in data].index(str(non_review_report.id))
         self.assertGreater(non_review_index, 0)
         self.assertFalse(data[non_review_index]["needs_review"])
+
+    def test_admin_report_class_filter_uses_bulletin_historical_class(self):
+        source_class = Class(
+            name_fr="Terminale C",
+            school_level="college",
+            sort_order=18,
+            school_year="2026-2027",
+        )
+        current_class = Class(
+            name_fr="Classe suivante",
+            school_level="college",
+            sort_order=19,
+            school_year="2027-2028",
+        )
+        student = Student(
+            first_name="ZZ-TEST",
+            last_name="Historical Class",
+            student_number="ZZ-TEST-REPORT-HIST-CLASS",
+            school_class=current_class,
+        )
+        course = Course(
+            name="Historical Math",
+            code="ZZ-TEST-HIST-MATH",
+            teacher=self.teacher,
+            term="3ème Trimestre",
+            school_year="2026-2027",
+            school_class=source_class,
+        )
+        self.db.add_all([source_class, current_class, student, course])
+        self.db.flush()
+        report_card = ReportCard(
+            student=student,
+            term="3ème Trimestre",
+            school_year="2026-2027",
+            overall_average=14,
+            scale="20",
+            status="approved",
+            approved_by_admin_id=self.admin_user.id,
+            approved_at=self.base_time + timedelta(hours=2),
+        )
+        self.db.add(report_card)
+        self.db.flush()
+        self.db.add(
+            ReportCardCourse(
+                report_card=report_card,
+                course=course,
+                course_name=course.name,
+                average=14,
+                letter_grade="B",
+            )
+        )
+        self.db.commit()
+
+        response = self.client.get(
+            "/api/v1/reports",
+            params={
+                "school_year": "2026-2027",
+                "term": "3ème Trimestre",
+                "class_id": str(source_class.id),
+            },
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        report_ids = {item["id"] for item in data}
+        self.assertIn(str(report_card.id), report_ids)
+        matching = next(item for item in data if item["id"] == str(report_card.id))
+        self.assertEqual(matching["student_class_id"], str(source_class.id))
+        self.assertEqual(matching["student_class_name"], "Terminale C")
+
+    def test_needs_review_reports_surface_outside_year_and_term_filters(self):
+        needs_review = self._create_report_with_course_result(
+            suffix="FILTER-NEEDS-REVIEW",
+            status="needs_review",
+            approved_at=None,
+            calculated_at=self.base_time,
+        )
+        needs_review.school_year = "2025-2026"
+        needs_review.term = "3ème Trimestre"
+        self.db.commit()
+
+        response = self.client.get(
+            "/api/v1/reports",
+            params={"school_year": "2026-2027", "term": "1er Trimestre"},
+            headers=self._headers(self.admin_user.email),
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        matching = next(item for item in data if item["id"] == str(needs_review.id))
+        self.assertEqual(matching["term"], "3ème Trimestre")
+        self.assertEqual(matching["school_year"], "2025-2026")
+        self.assertTrue(matching["needs_review"])
 
     def test_parent_student_reports_include_student_identity(self):
         response = self.client.get(

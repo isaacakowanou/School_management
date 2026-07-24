@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicQueryParams } from '../academic/AcademicContext.jsx'
 import { advanceTerm, cloneYearCourses, deleteCourse, listCourses, previewAdvanceTerm } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
 import { listClasses } from '../api/classes.js'
@@ -32,10 +33,15 @@ export default function AdminCoursesPage() {
   const [notice, setNotice] = useState(location.state?.message || null)
   const [search, setSearch] = useState('')
   const [classFilter, setClassFilter] = useState('')
-  const [termFilter, setTermFilter] = useState('')
-  const [yearFilter, setYearFilter] = useState('')
   const [visibleCount, setVisibleCount] = useState(25)
   const [deletingId, setDeletingId] = useState(null)
+  const {
+    selectedSchoolYear,
+    selectedTerm,
+    setSelectedSchoolYear,
+    setSelectedTerm,
+    availableSchoolYears,
+  } = useAcademicQueryParams()
 
   const [showCloneDialog, setShowCloneDialog] = useState(false)
   const [cloneSourceYear, setCloneSourceYear] = useState('')
@@ -122,11 +128,11 @@ export default function AdminCoursesPage() {
       if (query && !haystack.includes(query)) return false
       if (classFilter === '__none__') return !course.class_id
       if (classFilter && course.class_id !== classFilter) return false
-      if (termFilter && course.term !== termFilter) return false
-      if (yearFilter && course.school_year !== yearFilter) return false
+      if (selectedTerm && course.term !== selectedTerm) return false
+      if (selectedSchoolYear && course.school_year !== selectedSchoolYear) return false
       return true
     })
-  }, [courses, search, classFilter, termFilter, yearFilter, teacherNameById])
+  }, [courses, search, classFilter, selectedTerm, selectedSchoolYear, teacherNameById])
 
   const visibleCourses = filteredCourses.slice(0, visibleCount)
 
@@ -288,6 +294,9 @@ export default function AdminCoursesPage() {
           >
             {t('courses.cloneYear')}
           </button>
+          <Link to="/admin/school-years/new" className="btn btn-ghost">
+            {t('schoolYears.title')}
+          </Link>
           <Link to="/admin/courses/new" className="btn btn-primary">
             {t('courses.addCourse')}
           </Link>
@@ -323,7 +332,7 @@ export default function AdminCoursesPage() {
               >
                 <option value="">{t('common.all')}</option>
                 <option value="__none__">{t('courses.withoutClass')}</option>
-                {classes.map((cls) => (
+                {classes.filter((cls) => !selectedSchoolYear || cls.school_year === selectedSchoolYear).map((cls) => (
                   <option key={cls.id} value={cls.id}>
                     {cls.name_fr}{cls.name_en ? ` (${cls.name_en})` : ''} · {cls.school_year}
                   </option>
@@ -333,13 +342,12 @@ export default function AdminCoursesPage() {
             <label className="toolbar-field">
               <span>{t('common.term')}</span>
               <select
-                value={termFilter}
+                value={selectedTerm}
                 onChange={(event) => {
-                  setTermFilter(event.target.value)
+                  setSelectedTerm(event.target.value)
                   setVisibleCount(25)
                 }}
               >
-                <option value="">{t('common.all')}</option>
                 {TRIMESTER_TERMS.map((term) => (
                   <option key={term} value={term}>{term}</option>
                 ))}
@@ -348,14 +356,14 @@ export default function AdminCoursesPage() {
             <label className="toolbar-field">
               <span>{t('common.schoolYear')}</span>
               <select
-                value={yearFilter}
+                value={selectedSchoolYear}
                 onChange={(event) => {
-                  setYearFilter(event.target.value)
+                  setSelectedSchoolYear(event.target.value)
+                  setClassFilter('')
                   setVisibleCount(25)
                 }}
               >
-                <option value="">{t('common.all')}</option>
-                {schoolYears.map((year) => (
+                {(availableSchoolYears.length ? availableSchoolYears : schoolYears).map((year) => (
                   <option key={year} value={year}>{year}</option>
                 ))}
               </select>

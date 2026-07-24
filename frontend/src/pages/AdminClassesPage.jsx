@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   bulkCreateClasses,
@@ -315,6 +316,9 @@ export default function AdminClassesPage() {
             <button type="button" className="btn btn-primary" onClick={openAddDialog} disabled={pending}>
               {t('classes.addClass')}
             </button>
+            <Link className="btn btn-primary" to="/admin/school-years/new">
+              {t('schoolYears.title')}
+            </Link>
             <button type="button" className="btn btn-primary" onClick={openBulkDialog} disabled={pending}>
               {t('classes.createGGFK')}
             </button>

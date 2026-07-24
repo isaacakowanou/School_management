@@ -322,6 +322,8 @@ def delete_teacher(
 @router.get("/{teacher_id}/courses", response_model=list[CourseResponse])
 def list_teacher_courses(
     teacher_id: UUID,
+    school_year: str | None = None,
+    term: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CourseResponse]:
@@ -329,10 +331,16 @@ def list_teacher_courses(
     if not can_read_teacher(current_user, teacher):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
-    courses = db.scalars(
+    query = (
         select(Course)
         .options(joinedload(Course.school_class))
         .where(Course.teacher_id == teacher_id, Course.deleted_at.is_(None))
         .order_by(Course.name)
-    ).all()
+    )
+    if school_year is not None:
+        query = query.where(Course.school_year == school_year)
+    if term is not None:
+        query = query.where(Course.term == term)
+
+    courses = db.scalars(query).all()
     return [to_course_response(course) for course in courses]

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicQueryParams } from '../academic/AcademicContext.jsx'
 import { deleteTeacher, getTeacher, getTeacherCourses, resetTeacherPassword, updateTeacher } from '../api/teachers.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
@@ -31,8 +32,17 @@ export default function AdminTeacherDetailPage() {
   const [resetConfirm, setResetConfirm] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [resetResult, setResetResult] = useState(null)
+  const {
+    selectedSchoolYear,
+    selectedTerm,
+    setSelectedSchoolYear,
+    setSelectedTerm,
+    availableSchoolYears,
+    terms,
+  } = useAcademicQueryParams()
 
   useEffect(() => {
+    if (!selectedSchoolYear || !selectedTerm) return undefined
     let cancelled = false
     setError(null)
     setTeacher(null)
@@ -55,7 +65,10 @@ export default function AdminTeacherDetailPage() {
         return
       }
       try {
-        const list = await getTeacherCourses(teacherId)
+        const list = await getTeacherCourses(teacherId, {
+          schoolYear: selectedSchoolYear,
+          term: selectedTerm,
+        })
         if (!cancelled) setCourses(list)
       } catch {
         /* non-fatal */
@@ -66,7 +79,7 @@ export default function AdminTeacherDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [teacherId])
+  }, [teacherId, selectedSchoolYear, selectedTerm])
 
   function updateEditField(field, value) {
     setEditForm((current) => ({ ...current, [field]: value }))
@@ -273,6 +286,24 @@ export default function AdminTeacherDetailPage() {
 
       <div className="section-heading">
         <h3 className="section-title">{t('teachers.assignedCourses')}</h3>
+      </div>
+      <div className="list-toolbar">
+        <label className="toolbar-field">
+          <span>{t('common.schoolYear')}</span>
+          <select value={selectedSchoolYear} onChange={(event) => setSelectedSchoolYear(event.target.value)}>
+            {availableSchoolYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </label>
+        <label className="toolbar-field">
+          <span>{t('common.term')}</span>
+          <select value={selectedTerm} onChange={(event) => setSelectedTerm(event.target.value)}>
+            {terms.map((term) => (
+              <option key={term} value={term}>{term}</option>
+            ))}
+          </select>
+        </label>
       </div>
       {courses.length === 0 ? (
         <Empty message={t('teachers.noCourses')} />

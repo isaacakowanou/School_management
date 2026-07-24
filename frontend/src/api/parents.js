@@ -19,8 +19,9 @@ export function getParentStudents(parentId) {
 }
 
 // GET /api/v1/parents/me/students/{student_id}/grades?term=...
-export function getParentStudentGrades(studentId, { term } = {}) {
+export function getParentStudentGrades(studentId, { schoolYear, term } = {}) {
   const params = new URLSearchParams()
+  if (schoolYear) params.set('school_year', schoolYear)
   if (term) params.set('term', term)
   const qs = params.toString()
   return apiGet(`/parents/me/students/${studentId}/grades${qs ? `?${qs}` : ''}`)

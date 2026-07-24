@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAcademicContext } from '../academic/AcademicContext.jsx'
 import { createCourse } from '../api/courses.js'
 import { listTeachers } from '../api/teachers.js'
 import { listClasses } from '../api/classes.js'
@@ -32,6 +33,7 @@ const SCHOOL_YEAR_SUGGESTIONS = ['2026-2027', '2027-2028', '2028-2029']
 export default function AdminCourseCreatePage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { currentSchoolYear, currentTerm } = useAcademicContext()
   const [form, setForm] = useState(EMPTY_FORM)
   const [teachers, setTeachers] = useState(null)
   const [error, setError] = useState(null)
@@ -63,8 +65,17 @@ export default function AdminCourseCreatePage() {
   }, [form.classId])
 
   useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      schoolYear: current.schoolYear || currentSchoolYear || '',
+      term: current.term || currentTerm || '',
+    }))
+  }, [currentSchoolYear, currentTerm])
+
+  useEffect(() => {
+    if (!form.schoolYear) return undefined
     let cancelled = false
-    listClasses()
+    listClasses({ schoolYear: form.schoolYear })
       .then((data) => {
         if (!cancelled) setClasses(data)
       })
@@ -74,7 +85,7 @@ export default function AdminCourseCreatePage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [form.schoolYear])
 
   useEffect(() => {
     let cancelled = false

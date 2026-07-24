@@ -164,9 +164,49 @@ def current_term_for_year(db: Session, school_year: str) -> str:
     return next((term for term in reversed(TRIMESTER_TERMS) if term in terms), TRIMESTER_TERMS[0])
 
 
+def latest_grade_period_for_student(
+    db: Session,
+    student_id: UUID,
+    school_year: str | None = None,
+    term: str | None = None,
+) -> tuple[str, str] | None:
+    query = (
+        select(Course.school_year, GradeItem.term)
+        .join(GradeItem, GradeItem.course_id == Course.id)
+        .join(Grade, Grade.grade_item_id == GradeItem.id)
+        .where(
+            Grade.student_id == student_id,
+            Grade.deleted_at.is_(None),
+            GradeItem.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+        )
+        .distinct()
+    )
+    if school_year is not None:
+        query = query.where(Course.school_year == school_year)
+    if term is not None:
+        query = query.where(GradeItem.term == term)
+
+    periods = db.execute(query).all()
+    if not periods:
+        return None
+
+    def sort_key(period: tuple[str, str]) -> tuple[str, int]:
+        year, period_term = period
+        try:
+            term_index = TRIMESTER_TERMS.index(period_term)
+        except ValueError:
+            term_index = -1
+        return year, term_index
+
+    return max(periods, key=sort_key)
+
+
 @router.get("", response_model=list[StudentResponse])
 def list_students(
     academic_status: str = "active",
+    school_year: str | None = None,
+    class_id: UUID | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[StudentResponse]:
@@ -180,6 +220,11 @@ def list_students(
         if academic_status not in {"active", "graduated"}:
             raise HTTPException(status_code=422, detail="academic_status must be active, graduated, or all")
         query = query.where(Student.academic_status == academic_status)
+    if class_id is not None:
+        query = query.where(Student.class_id == class_id)
+    elif school_year is not None:
+        class_ids_for_year = select(Class.id).where(Class.school_year == school_year, Class.deleted_at.is_(None))
+        query = query.where(Student.class_id.in_(class_ids_for_year))
     students = db.scalars(query).all()
     return [to_student_response(student) for student in students]
 
@@ -400,18 +445,27 @@ def restore_student(
 def list_student_grades_admin(
     student_id: UUID,
     term: str | None = None,
+    school_year: str | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[ParentGradeResponse]:
     get_student_or_404(db, student_id)
 
-    school_year = latest_active_school_year(db)
+    if term is not None and term not in TRIMESTER_TERMS:
+        raise HTTPException(status_code=422, detail="term must be a canonical trimester")
+
+    selected_period = latest_grade_period_for_student(db, student_id, school_year, term)
+    if selected_period is not None:
+        school_year = school_year or selected_period[0]
+        selected_term = term or selected_period[1]
+    else:
+        school_year = school_year or latest_active_school_year(db)
+        selected_term = term or (current_term_for_year(db, school_year) if school_year is not None else None)
+
     if school_year is None:
         return []
-
-    selected_term = term or current_term_for_year(db, school_year)
-    if selected_term not in TRIMESTER_TERMS:
-        raise HTTPException(status_code=422, detail="term must be a canonical trimester")
+    if selected_term is None:
+        return []
 
     grades = db.scalars(
         select(Grade)

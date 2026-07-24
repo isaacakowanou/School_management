@@ -35,6 +35,7 @@ from constants import (
 from models import Course, CourseResult, ReportCard, ReportCardCourse, Student
 from schemas import LanguageGroup
 from services.class_stats import compute_class_stats
+from services.annual_averages import compute_student_annual_averages
 from services.grade_calculator import (
     calculate_gpa,
     calculate_overall_average,
@@ -339,11 +340,12 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
     # Annual = mean of the student's own track averages across the year's trims,
     # populated only in the final trimester and only where values exist.
     if current_term_num == FINAL_TRIMESTER_NUMBER:
-        for track in ("french", "english", "bilingual"):
-            values = [three_averages[track]["student"]]
-            values += [entry[track]["student"] for entry in previous_term_averages]
-            values = [value for value in values if value is not None]
-            three_averages["annual"][track] = round(sum(values) / len(values), 2) if values else None
+        annual = compute_student_annual_averages(db, student.id, report_card.school_year)
+        three_averages["annual"] = {
+            "french": annual.french,
+            "english": annual.english,
+            "bilingual": annual.bilingual,
+        }
 
     # Template convenience: per-trimester (1..3) track blocks for the averages
     # grid. Reports whose term isn't a recognized trimester simply don't appear.

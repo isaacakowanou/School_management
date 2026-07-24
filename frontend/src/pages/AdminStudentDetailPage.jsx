@@ -15,6 +15,7 @@ import { listClasses } from '../api/classes.js'
 import { getCourse } from '../api/courses.js'
 import { listStudentCourseResults } from '../api/courseResults.js'
 import { generateReport, getStudentReports } from '../api/reports.js'
+import { getStudentPassageHistory } from '../api/passages.js'
 import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
 import { TRIMESTER_TERMS } from '../constants/terms.js'
 import { formatReportAverage } from '../utils/format.js'
@@ -56,6 +57,13 @@ function itemTypeLabel(grade, t) {
   return grade.category || t('courses.gradeItem')
 }
 
+function decisionLabel(value, t) {
+  if (value === 'pass') return t('passages.pass')
+  if (value === 'repeat') return t('passages.repeat')
+  if (value === 'graduate') return t('passages.graduate')
+  return value || '—'
+}
+
 function groupGradesByCourse(grades) {
   const groups = []
   const byCourse = new Map()
@@ -78,6 +86,7 @@ export default function AdminStudentDetailPage() {
   const [parents, setParents] = useState([])
   const [allParents, setAllParents] = useState([])
   const [reports, setReports] = useState([])
+  const [passageHistory, setPassageHistory] = useState([])
   const [grades, setGrades] = useState(null)
   const [gradeTerm, setGradeTerm] = useState('')
   const [gradeError, setGradeError] = useState(null)
@@ -124,6 +133,7 @@ export default function AdminStudentDetailPage() {
     setParents([])
     setAllParents([])
     setReports([])
+    setPassageHistory([])
     setGrades(null)
     setGradeTerm('')
     setGradeError(null)
@@ -155,15 +165,17 @@ export default function AdminStudentDetailPage() {
         if (!cancelled) setError(err.message)
         return
       }
-      const [linkedParents, studentReports, parentOptions, courseResults] = await Promise.allSettled([
+      const [linkedParents, studentReports, historyResult, parentOptions, courseResults] = await Promise.allSettled([
         getStudentParents(studentId),
         getStudentReports(studentId),
+        getStudentPassageHistory(studentId),
         listParents(),
         listStudentCourseResults(studentId),
       ])
       if (cancelled) return
       if (linkedParents.status === 'fulfilled') setParents(linkedParents.value)
       if (studentReports.status === 'fulfilled') setReports(studentReports.value)
+      if (historyResult.status === 'fulfilled') setPassageHistory(historyResult.value)
       if (parentOptions.status === 'fulfilled') setAllParents(parentOptions.value)
       if (courseResults.status !== 'fulfilled') return
 
@@ -722,6 +734,47 @@ export default function AdminStudentDetailPage() {
                       {unlinkingParentId === parent.id ? t('students.unlinking') : t('students.unlink')}
                     </button>
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="section-heading">
+        <h3 className="section-title">{t('passages.history')}</h3>
+      </div>
+      {passageHistory.length === 0 ? (
+        <Empty message={t('passages.historyEmpty')} />
+      ) : (
+        <div className="table-scroll">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{t('common.schoolYear')}</th>
+                <th>{t('passages.decision')}</th>
+                <th>{t('passages.targetClass')}</th>
+                <th>{t('passages.annual')}</th>
+                <th>{t('passages.note')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {passageHistory.map((decision) => (
+                <tr key={decision.id}>
+                  <td className="nowrap">{decision.school_year}</td>
+                  <td>{decisionLabel(decision.final_decision, t)}</td>
+                  <td>
+                    {t('passages.fromTo', {
+                      from: decision.from_class_name || '—',
+                      to: decision.result_class_name || '—',
+                    })}
+                  </td>
+                  <td className="nowrap">
+                    FR {decision.annual_french_average == null ? '—' : Number(decision.annual_french_average).toFixed(2)}
+                    {' · '}
+                    EN {decision.annual_english_average == null ? '—' : Number(decision.annual_english_average).toFixed(2)}
+                  </td>
+                  <td>{decision.note || '—'}</td>
                 </tr>
               ))}
             </tbody>

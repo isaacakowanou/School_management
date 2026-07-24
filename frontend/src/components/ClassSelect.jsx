@@ -2,8 +2,8 @@ import { buildClassOptionGroups } from '../utils/classOptions.js'
 import { useTranslation } from 'react-i18next'
 
 // Class / Classe dropdown shared by the student and course forms. optgroup by
-// school level; blank option = unassigned. `value` is a class id ('' = none).
-export default function ClassSelect({ classes, value, onChange, disabled }) {
+// school level; blank option = unassigned when the caller allows it.
+export default function ClassSelect({ classes, value, onChange, disabled, includeUnassigned = true }) {
   const { t } = useTranslation()
   const groups = buildClassOptionGroups(classes || [], t)
   return (
@@ -14,7 +14,7 @@ export default function ClassSelect({ classes, value, onChange, disabled }) {
       disabled={disabled}
       style={{ width: '100%', textAlign: 'left' }}
     >
-      <option value="">{t('common.unassigned')}</option>
+      {includeUnassigned && <option value="">{t('common.unassigned')}</option>}
       {groups.map((group) => (
         <optgroup key={group.level} label={group.label}>
           {group.options.map((opt) => (

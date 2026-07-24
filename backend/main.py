@@ -30,6 +30,7 @@ from routes.enrollments import router as enrollments_router
 from routes.grade_items import router as grade_items_router
 from routes.grades import router as grades_router
 from routes.parents import router as parents_router
+from routes.passages import router as passages_router
 from routes.reports import router as reports_router
 from routes.students import router as students_router
 from routes.subjects import router as subjects_router
@@ -65,6 +66,7 @@ app.include_router(enrollments_router, prefix="/api/v1")
 app.include_router(grade_items_router, prefix="/api/v1")
 app.include_router(grades_router, prefix="/api/v1")
 app.include_router(parents_router, prefix="/api/v1/parents")
+app.include_router(passages_router, prefix="/api/v1/passages")
 app.include_router(reports_router, prefix="/api/v1/reports")
 app.include_router(students_router, prefix="/api/v1/students")
 app.include_router(subjects_router, prefix="/api/v1/subjects")

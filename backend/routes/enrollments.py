@@ -89,6 +89,17 @@ def delete_enrollment_with_audit(db: Session, current_user: User, enrollment: En
     enrollment.deleted_at = datetime.now(timezone.utc)
 
 
+def ensure_student_can_be_unenrolled(student: Student) -> None:
+    if student.academic_status == "graduated":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "graduated_student_unenroll_blocked",
+                "message": "Graduated students cannot be unenrolled from historical courses",
+            },
+        )
+
+
 @router.get("/courses/{course_id}/students", response_model=list[StudentResponse])
 def list_course_students(
     course_id: UUID,
@@ -121,7 +132,8 @@ def unenroll_student_from_course(
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     get_course_or_404(db, course_id)
-    get_student_or_404(db, student_id)
+    student = get_student_or_404(db, student_id)
+    ensure_student_can_be_unenrolled(student)
     enrollment = get_course_student_enrollment_or_404(db, course_id, student_id)
     if enrollment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
@@ -177,6 +189,8 @@ def delete_enrollment(
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
     enrollment = get_enrollment_or_404(db, enrollment_id)
+    student = get_student_or_404(db, enrollment.student_id)
+    ensure_student_can_be_unenrolled(student)
 
     delete_enrollment_with_audit(db, current_user, enrollment)
     db.commit()

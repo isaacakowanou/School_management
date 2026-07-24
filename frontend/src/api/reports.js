@@ -98,6 +98,20 @@ export function batchGenerateReports(args) {
   return apiPost('/reports/batch-generate', classBatchBody(args))
 }
 
+// POST /api/v1/reports/bulk-generate -> background job for every class in a year
+export function createBulkReportGenerationJob({ schoolYear, term, generatePartial = false }) {
+  return apiPost('/reports/bulk-generate', {
+    school_year: schoolYear,
+    term,
+    generate_partial: generatePartial,
+  })
+}
+
+// GET /api/v1/reports/bulk-generate/{job_id} -> JSON job status/result
+export function getBulkReportGenerationJob(jobId) {
+  return apiGet(`/reports/bulk-generate/${jobId}`)
+}
+
 // POST /api/v1/reports/batch-approve -> approves DRAFT reports only
 export function batchApproveReports(args) {
   return apiPost('/reports/batch-approve', classBatchBody(args))

@@ -123,6 +123,8 @@ class Student(Base):
     class_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
     )
+    academic_status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", server_default="active")
+    graduated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("deletion_batches.id"), nullable=True
@@ -138,6 +140,7 @@ class Student(Base):
     course_results: Mapped[list["CourseResult"]] = orm_relationship(back_populates="student")
     report_cards: Mapped[list["ReportCard"]] = orm_relationship(back_populates="student")
     school_class: Mapped["Class | None"] = orm_relationship(back_populates="students")
+    passage_decisions: Mapped[list["StudentPassageDecision"]] = orm_relationship(back_populates="student")
 
 
 class Parent(Base):
@@ -533,6 +536,53 @@ class AIWarning(Base):
     report_card: Mapped["ReportCard"] = orm_relationship(back_populates="ai_warnings")
 
 
+class StudentPassageDecision(Base):
+    """Year-end conseil decision for one student and one source school year.
+
+    This is academic progression history, not Trash. It snapshots class labels
+    and annual averages so a later class rename or graduation never erases what
+    the conseil decided for that year.
+    """
+
+    __tablename__ = "student_passage_decisions"
+    __table_args__ = (
+        UniqueConstraint("student_id", "school_year", name="uq_student_passage_decision_year"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("students.id"), nullable=False)
+    school_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_school_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    from_class_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
+    )
+    from_class_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    result_class_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
+    )
+    result_class_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    suggested_decision: Mapped[str] = mapped_column(String(30), nullable=False)
+    final_decision: Mapped[str] = mapped_column(String(30), nullable=False)
+    annual_french_average: Mapped[float | None] = mapped_column(Float, nullable=True)
+    annual_english_average: Mapped[float | None] = mapped_column(Float, nullable=True)
+    annual_bilingual_average: Mapped[float | None] = mapped_column(Float, nullable=True)
+    incomplete_data: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa.false())
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    student: Mapped["Student"] = orm_relationship(back_populates="passage_decisions")
+    from_class: Mapped["Class | None"] = orm_relationship(foreign_keys=[from_class_id])
+    result_class: Mapped["Class | None"] = orm_relationship(foreign_keys=[result_class_id])
+    decided_by_admin: Mapped["User | None"] = orm_relationship()
+
+
 class DeletionBatch(Base):
     __tablename__ = "deletion_batches"
 
@@ -570,6 +620,36 @@ class PdfJob(Base):
     report_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ReportGenerationJob(Base):
+    """Background all-class bulletin generation job for one trimester.
+
+    This is separate from merged-PDF jobs because it writes academic snapshots
+    rather than rendering already-published ones. The JSON result stores
+    per-class counts so one failing class can be reported without aborting the
+    rest of the school-year run.
+    """
+
+    __tablename__ = "report_generation_jobs"
+    __table_args__ = (
+        sa.Index("ix_report_generation_jobs_year_term_status", "school_year", "term", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    term: Mapped[str] = mapped_column(String(50), nullable=False)
+    # pending -> done | failed
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_by_admin: Mapped["User | None"] = orm_relationship()
 
 
 class PasswordResetToken(Base):

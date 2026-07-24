@@ -945,14 +945,16 @@ export default function AdminCourseDetailPage() {
                     <Link className="link-action" to={`/admin/students/${student.id}`}>
                       {t('common.open')}
                     </Link>
-                    <button
-                      type="button"
-                      className="link-action link-action-danger"
-                      disabled={unenrollingStudentId === student.id}
-                      onClick={() => handleUnenrollStudent(student)}
-                    >
-                      {unenrollingStudentId === student.id ? t('courses.unenrolling') : t('courses.unenroll')}
-                    </button>
+                    {student.academic_status !== 'graduated' && (
+                      <button
+                        type="button"
+                        className="link-action link-action-danger"
+                        disabled={unenrollingStudentId === student.id}
+                        onClick={() => handleUnenrollStudent(student)}
+                      >
+                        {unenrollingStudentId === student.id ? t('courses.unenrolling') : t('courses.unenroll')}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

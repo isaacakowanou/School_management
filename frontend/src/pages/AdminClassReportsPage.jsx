@@ -6,7 +6,9 @@ import {
   batchGenerateReports,
   batchSendReports,
   createClassPdfJob,
+  createBulkReportGenerationJob,
   getClassReportStatus,
+  getBulkReportGenerationJob,
   pollClassPdfJob,
   regenerateReport,
 } from '../api/reports.js'
@@ -61,6 +63,12 @@ export default function AdminClassReportsPage() {
     () => ({ classId, schoolYear, term }),
     [classId, schoolYear, term],
   )
+
+  useEffect(() => {
+    if (!classId && classes.length > 0) {
+      setClassId(classes[0].id)
+    }
+  }, [classes, classId])
 
   useEffect(() => {
     let cancelled = false
@@ -223,6 +231,44 @@ export default function AdminClassReportsPage() {
     }
   }
 
+  async function runBulkGenerate() {
+    setActionMessage(null)
+    setActionError(null)
+    if (!window.confirm(t('classReports.confirmBulkGenerate', { schoolYear, term }))) return
+    const generatePartial = window.confirm(t('classReports.confirmBulkGeneratePartial'))
+
+    setRunningAction('bulk-generate')
+    try {
+      const job = await createBulkReportGenerationJob({ schoolYear, term, generatePartial })
+      let latest = job
+      for (let attempt = 0; attempt < 30 && latest.status === 'pending'; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        latest = await getBulkReportGenerationJob(job.job_id)
+      }
+      if (latest.status === 'failed') {
+        setActionError(latest.error || t('classReports.bulkFailed'))
+        return
+      }
+      if (latest.status === 'pending') {
+        setActionError(t('classReports.bulkTimeout'))
+        return
+      }
+      const totals = latest.result?.totals || {}
+      setActionMessage(
+        t('classReports.bulkGenerated', {
+          count: totals.generated_count || 0,
+          failed: totals.failed_count || 0,
+          unassigned: latest.result?.unassigned_student_count || 0,
+        }),
+      )
+      await loadStatus()
+    } catch (err) {
+      setActionError(err.message)
+    } finally {
+      setRunningAction(null)
+    }
+  }
+
   // Enqueue the merged class PDF and poll every 2s until it is ready (the
   // render outlives a single request on the free tier). 30 tries ≈ 1 minute.
   async function handleDownloadClassPdf() {
@@ -298,7 +344,13 @@ export default function AdminClassReportsPage() {
       <div className="list-toolbar">
         <label className="toolbar-field">
           <span>{t('students.class')}</span>
-          <ClassSelect classes={classes} value={classId} onChange={setClassId} disabled={busy} />
+          <ClassSelect
+            classes={classes}
+            value={classId}
+            onChange={setClassId}
+            disabled={busy}
+            includeUnassigned={false}
+          />
         </label>
         <label className="toolbar-field">
           <span>{t('common.term')}</span>
@@ -375,6 +427,16 @@ export default function AdminClassReportsPage() {
                   ? t('classReports.generating')
                   : t('classReports.generateAll', { count: generatableCount + partialRows.length })}
               </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={runBulkGenerate}
+              disabled={busy || !schoolYear || !term}
+            >
+              {runningAction === 'bulk-generate'
+                ? t('classReports.bulkGenerating')
+                : t('classReports.bulkGenerateAllClasses')}
+            </button>
             <button
               type="button"
               className="btn btn-primary"

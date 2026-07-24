@@ -1020,6 +1020,35 @@ class ClassReportBatchGenerateResponse(BaseModel):
     report_ids: list[UUID]
 
 
+class ReportBulkGenerateRequest(BaseModel):
+    school_year: str
+    term: TrimesterTerm
+    generate_partial: bool = False
+
+
+class ReportGenerationClassResult(BaseModel):
+    class_id: UUID
+    class_name: str
+    generated_count: int
+    skipped_existing_count: int
+    skipped_no_results_count: int
+    skipped_partial_count: int = 0
+    failed: bool = False
+    error: str | None = None
+    report_ids: list[UUID] = []
+
+
+class ReportGenerationJobResponse(BaseModel):
+    job_id: UUID
+    school_year: str
+    term: str
+    status: str
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    created_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
 class ClassReportBatchApproveResponse(BaseModel):
     status: str
     approved_count: int

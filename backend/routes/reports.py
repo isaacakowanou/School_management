@@ -40,6 +40,7 @@ from models import (
     ReportCard,
     ReportCardCourse,
     ReportConductItem,
+    ReportGenerationJob,
     ReportWorkHabitItem,
     Student,
     StudentParent,
@@ -57,6 +58,7 @@ from schemas import (
     ClassReportStatusResponse,
     ClassReportStatusRow,
     PartialReportStudent,
+    ReportBulkGenerateRequest,
     ReportApproveRequest,
     ReportCardCourseResponse,
     ReportCardResponse,
@@ -64,6 +66,7 @@ from schemas import (
     ReportDetailsUpdate,
     ReportGenerateRequest,
     ReportItemResponse,
+    ReportGenerationJobResponse,
     ReportReviewUpdate,
     ReportSendRequest,
     ReportSendResponse,
@@ -724,21 +727,20 @@ def class_report_status(
     )
 
 
-@router.post("/batch-generate", response_model=ClassReportBatchGenerateResponse)
-def batch_generate_reports(
-    payload: ClassReportBatchRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> ClassReportBatchGenerateResponse:
-    """Generate draft report cards for every student of the class who has
-    course results for the term and no report card yet. One transaction —
-    a class generates atomically or not at all because Conseil de classe should
-    not leave an ambiguous half-generated class after a database failure."""
-    get_class_or_404(db, payload.class_id)
-    term = payload.term.value
-    students = _class_students(db, payload.class_id, payload.school_year)
+def _generate_reports_for_class(
+    db: Session,
+    *,
+    school_class: Class,
+    term: str,
+    school_year: str,
+    generate_partial: bool,
+    current_user: User,
+) -> dict:
+    """Generate missing draft bulletins for one class without touching
+    existing approved/sent snapshots."""
+    students = _class_students(db, school_class.id, school_year)
     student_ids = [student.id for student in students]
-    existing = _reports_by_student(db, [s.id for s in students], term, payload.school_year)
+    existing = _reports_by_student(db, student_ids, term, school_year)
     results_by_student: dict[UUID, int] = {}
     if student_ids:
         results_by_student = dict(
@@ -748,7 +750,7 @@ def batch_generate_reports(
                 .where(
                     CourseResult.student_id.in_(student_ids),
                     CourseResult.term == term,
-                    Course.school_year == payload.school_year,
+                    Course.school_year == school_year,
                     CourseResult.deleted_at.is_(None),
                     Course.deleted_at.is_(None),
                 )
@@ -756,7 +758,7 @@ def batch_generate_reports(
             ).all()
         )
 
-    generated_ids = []
+    generated_ids: list[UUID] = []
     skipped_existing = 0
     skipped_no_results = 0
     partial_students: list[PartialReportStudent] = []
@@ -764,18 +766,16 @@ def batch_generate_reports(
         if student.id in existing:
             skipped_existing += 1
             continue
-        partial = _partial_report_student(db, student, term, payload.school_year)
-        if partial.missing_course_names and not payload.generate_partial:
+        partial = _partial_report_student(db, student, term, school_year)
+        if partial.missing_course_names and not generate_partial:
             partial_students.append(partial)
             continue
         if results_by_student.get(student.id, 0) == 0:
             skipped_no_results += 1
             continue
         try:
-            report_card = _create_report_card(db, student.id, term, payload.school_year)
+            report_card = _create_report_card(db, student.id, term, school_year)
         except ValueError:
-            # "Student has no course results for the requested term and school
-            # year" — the only ValueError reachable for an existing student.
             skipped_no_results += 1
             continue
         generated_ids.append(report_card.id)
@@ -786,11 +786,11 @@ def batch_generate_reports(
             actor_user_id=current_user.id,
             action="reports_batch_generated",
             entity_type="report_batch",
-            entity_id=payload.class_id,
+            entity_id=school_class.id,
             old_value=None,
             new_value={
-                "class_id": payload.class_id,
-                "school_year": payload.school_year,
+                "class_id": str(school_class.id),
+                "school_year": school_year,
                 "term": term,
                 "generated_count": len(generated_ids),
                 "skipped_existing_count": skipped_existing,
@@ -798,17 +798,199 @@ def batch_generate_reports(
                 "skipped_partial_count": len(partial_students),
             },
         )
+
+    return {
+        "class_id": str(school_class.id),
+        "class_name": school_class.name_fr,
+        "generated_count": len(generated_ids),
+        "skipped_existing_count": skipped_existing,
+        "skipped_no_results_count": skipped_no_results,
+        "skipped_partial_count": len(partial_students),
+        "partial_students": partial_students,
+        "failed": False,
+        "error": None,
+        "report_ids": [str(report_id) for report_id in generated_ids],
+    }
+
+
+def _job_result_totals(class_rows: list[dict]) -> dict:
+    return {
+        "generated_count": sum(row.get("generated_count", 0) for row in class_rows),
+        "skipped_existing_count": sum(row.get("skipped_existing_count", 0) for row in class_rows),
+        "skipped_no_results_count": sum(row.get("skipped_no_results_count", 0) for row in class_rows),
+        "skipped_partial_count": sum(row.get("skipped_partial_count", 0) for row in class_rows),
+        "failed_count": sum(1 for row in class_rows if row.get("failed")),
+    }
+
+
+def _unassigned_student_count(db: Session, school_year: str) -> int:
+    return db.scalar(
+        select(func.count(Student.id)).where(
+            Student.class_id.is_(None),
+            Student.academic_status == "active",
+            Student.deleted_at.is_(None),
+        )
+    ) or 0
+
+
+@router.post("/batch-generate", response_model=ClassReportBatchGenerateResponse)
+def batch_generate_reports(
+    payload: ClassReportBatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ClassReportBatchGenerateResponse:
+    """Generate draft report cards for every student of the class who has
+    course results for the term and no report card yet. One transaction —
+    a class generates atomically or not at all because Conseil de classe should
+    not leave an ambiguous half-generated class after a database failure."""
+    school_class = get_class_or_404(db, payload.class_id)
+    term = payload.term.value
+    result = _generate_reports_for_class(
+        db,
+        school_class=school_class,
+        term=term,
+        school_year=payload.school_year,
+        generate_partial=payload.generate_partial,
+        current_user=current_user,
+    )
     db.commit()
 
     return ClassReportBatchGenerateResponse(
         status="ok",
-        generated_count=len(generated_ids),
-        skipped_existing_count=skipped_existing,
-        skipped_no_results_count=skipped_no_results,
-        skipped_partial_count=len(partial_students),
-        partial_students=partial_students,
-        report_ids=generated_ids,
+        generated_count=result["generated_count"],
+        skipped_existing_count=result["skipped_existing_count"],
+        skipped_no_results_count=result["skipped_no_results_count"],
+        skipped_partial_count=result["skipped_partial_count"],
+        partial_students=result["partial_students"],
+        report_ids=result["report_ids"],
     )
+
+
+def _to_report_generation_job_response(job: ReportGenerationJob) -> ReportGenerationJobResponse:
+    return ReportGenerationJobResponse(
+        job_id=job.id,
+        school_year=job.school_year,
+        term=job.term,
+        status=job.status,
+        result=job.result_json if job.status != "pending" else None,
+        error=job.error,
+        created_at=job.created_at,
+        completed_at=job.completed_at,
+    )
+
+
+def _run_report_generation_job(job_id: UUID, db: Session) -> None:
+    """Background task for all-class bulletin generation."""
+    job = db.get(ReportGenerationJob, job_id)
+    if job is None:
+        return
+    class_rows: list[dict] = []
+    try:
+        admin = db.get(User, job.created_by_admin_id) if job.created_by_admin_id else None
+        if admin is None:
+            raise ValueError("Job admin user not found")
+        generate_partial = bool((job.result_json or {}).get("generate_partial", False))
+        classes = db.scalars(
+            select(Class)
+            .where(Class.school_year == job.school_year, Class.deleted_at.is_(None))
+            .order_by(Class.sort_order, Class.name_fr)
+        ).all()
+        for school_class in classes:
+            try:
+                row = _generate_reports_for_class(
+                    db,
+                    school_class=school_class,
+                    term=job.term,
+                    school_year=job.school_year,
+                    generate_partial=generate_partial,
+                    current_user=admin,
+                )
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                row = {
+                    "class_id": str(school_class.id),
+                    "class_name": school_class.name_fr,
+                    "generated_count": 0,
+                    "skipped_existing_count": 0,
+                    "skipped_no_results_count": 0,
+                    "skipped_partial_count": 0,
+                    "failed": True,
+                    "error": str(exc)[:500] or exc.__class__.__name__,
+                    "report_ids": [],
+                }
+            class_rows.append(row)
+
+        job = db.get(ReportGenerationJob, job_id)
+        if job is None:
+            return
+        job.result_json = {
+            "classes": class_rows,
+            "totals": _job_result_totals(class_rows),
+            "unassigned_student_count": _unassigned_student_count(db, job.school_year),
+        }
+        job.status = "done"
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        job = db.get(ReportGenerationJob, job_id)
+        if job is not None:
+            job.status = "failed"
+            job.error = str(exc)[:500] or exc.__class__.__name__
+            job.result_json = {
+                "classes": class_rows,
+                "totals": _job_result_totals(class_rows),
+                "unassigned_student_count": _unassigned_student_count(db, job.school_year),
+            }
+            job.completed_at = datetime.now(timezone.utc)
+            db.commit()
+
+
+@router.post("/bulk-generate", response_model=ReportGenerationJobResponse)
+def create_report_generation_job(
+    payload: ReportBulkGenerateRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> ReportGenerationJobResponse:
+    term = payload.term.value
+    existing_job = db.scalar(
+        select(ReportGenerationJob)
+        .where(
+            ReportGenerationJob.school_year == payload.school_year,
+            ReportGenerationJob.term == term,
+            ReportGenerationJob.status == "pending",
+        )
+        .order_by(ReportGenerationJob.created_at.desc())
+    )
+    if existing_job is not None:
+        return _to_report_generation_job_response(existing_job)
+
+    job = ReportGenerationJob(
+        school_year=payload.school_year,
+        term=term,
+        status="pending",
+        result_json={"generate_partial": payload.generate_partial},
+        created_by_admin_id=current_user.id,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    background_tasks.add_task(_run_report_generation_job, job.id, db)
+    return _to_report_generation_job_response(job)
+
+
+@router.get("/bulk-generate/{job_id}", response_model=ReportGenerationJobResponse)
+def get_report_generation_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ReportGenerationJobResponse:
+    job = db.get(ReportGenerationJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report generation job not found")
+    return _to_report_generation_job_response(job)
 
 
 @router.post("/batch-approve", response_model=ClassReportBatchApproveResponse)

@@ -239,6 +239,155 @@ class ReportBatchTests(unittest.TestCase):
         response = self.client.post("/api/v1/reports/batch-generate", json=payload, headers=self._admin())
         self.assertEqual(response.status_code, 404)
 
+    # --- all-class background generate ---
+
+    def _bulk_payload(self) -> dict:
+        return {"school_year": YEAR, "term": TERM}
+
+    def _start_bulk(self, payload=None, headers=None):
+        return self.client.post(
+            "/api/v1/reports/bulk-generate",
+            json=payload or self._bulk_payload(),
+            headers=headers or self._admin(),
+        )
+
+    def test_bulk_generate_creates_background_job_and_reports_per_class(self):
+        response = self._start_bulk()
+        self.assertEqual(response.status_code, 200, response.text)
+        job = response.json()
+        self.assertIn(job["status"], {"pending", "done"})
+
+        poll = self.client.get(f"/api/v1/reports/bulk-generate/{job['job_id']}", headers=self._admin())
+        self.assertEqual(poll.status_code, 200, poll.text)
+        body = poll.json()
+        self.assertEqual(body["status"], "done")
+        self.assertEqual(body["school_year"], YEAR)
+        self.assertEqual(body["term"], TERM)
+        self.assertEqual(body["result"]["totals"]["generated_count"], 3)
+        class_rows = {row["class_id"]: row for row in body["result"]["classes"]}
+        self.assertIn(str(self.terminale.id), class_rows)
+        self.assertEqual(class_rows[str(self.terminale.id)]["generated_count"], 2)
+
+    def test_bulk_generate_failure_in_one_class_does_not_abort_other_classes(self):
+        failing_class = Class(name_fr="5ème", school_level="college", sort_order=2, school_year=YEAR)
+        self.db.add(failing_class)
+        self.db.commit()
+
+        def fake_generate(db, *, school_class, term, school_year, generate_partial, current_user):
+            if school_class.id == failing_class.id:
+                raise RuntimeError("ZZ-TEST class failure")
+            return {
+                "class_id": str(school_class.id),
+                "class_name": school_class.name_fr,
+                "generated_count": 1,
+                "skipped_existing_count": 0,
+                "skipped_no_results_count": 0,
+                "skipped_partial_count": 0,
+                "failed": False,
+                "error": None,
+                "report_ids": ["00000000-0000-0000-0000-000000000001"],
+            }
+
+        with patch("routes.reports._generate_reports_for_class", side_effect=fake_generate):
+            response = self._start_bulk()
+        self.assertEqual(response.status_code, 200, response.text)
+        poll = self.client.get(f"/api/v1/reports/bulk-generate/{response.json()['job_id']}", headers=self._admin())
+        rows = poll.json()["result"]["classes"]
+        self.assertTrue(any(row["failed"] for row in rows))
+        self.assertTrue(any(not row["failed"] for row in rows))
+
+    def test_bulk_generate_never_overwrites_approved_or_sent_reports(self):
+        approved = ReportCard(
+            student_id=self.student_a.id,
+            term=TERM,
+            school_year=YEAR,
+            overall_average=17.0,
+            gpa=4.0,
+            scale="20",
+            status="approved",
+        )
+        sent = ReportCard(
+            student_id=self.student_b.id,
+            term=TERM,
+            school_year=YEAR,
+            overall_average=12.0,
+            gpa=3.0,
+            scale="20",
+            status="sent",
+        )
+        self.db.add_all([approved, sent])
+        self.db.commit()
+
+        response = self._start_bulk()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.db.expire_all()
+        self.assertEqual(self.db.get(ReportCard, approved.id).status, "approved")
+        self.assertEqual(self.db.get(ReportCard, sent.id).status, "sent")
+        student_reports = self.db.scalars(
+            select(ReportCard).where(ReportCard.student_id.in_([self.student_a.id, self.student_b.id]))
+        ).all()
+        self.assertEqual(len(student_reports), 2)
+
+    def test_bulk_generate_requires_admin_for_create_and_poll(self):
+        response = self._start_bulk(headers=self._login("teacher-batch@example.test"))
+        self.assertEqual(response.status_code, 403)
+
+        admin_response = self._start_bulk()
+        self.assertEqual(admin_response.status_code, 200, admin_response.text)
+        poll = self.client.get(
+            f"/api/v1/reports/bulk-generate/{admin_response.json()['job_id']}",
+            headers=self._login("teacher-batch@example.test"),
+        )
+        self.assertEqual(poll.status_code, 403)
+
+    def test_bulk_generate_duplicate_pending_job_returns_existing_job(self):
+        with patch("routes.reports._run_report_generation_job", return_value=None):
+            first = self._start_bulk()
+            self.assertEqual(first.status_code, 200, first.text)
+            first_id = first.json()["job_id"]
+            second = self._start_bulk()
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["job_id"], first_id)
+
+    def test_bulk_generate_counts_unassigned_students_separately(self):
+        self.db.add(
+            Student(
+                first_name="No",
+                last_name="Class",
+                student_number="B-NOCLASS",
+                class_id=None,
+            )
+        )
+        self.db.commit()
+
+        response = self._start_bulk()
+        self.assertEqual(response.status_code, 200, response.text)
+        poll = self.client.get(f"/api/v1/reports/bulk-generate/{response.json()['job_id']}", headers=self._admin())
+        self.assertEqual(poll.json()["result"]["unassigned_student_count"], 1)
+
+    def test_bulk_generate_job_completes_after_response(self):
+        response = self._start_bulk()
+        self.assertEqual(response.status_code, 200, response.text)
+        job_id = response.json()["job_id"]
+
+        # Simulates the requester disappearing: the job is persisted and can be
+        # observed by a later request with a fresh token/client path.
+        poll = self.client.get(f"/api/v1/reports/bulk-generate/{job_id}", headers=self._admin())
+        self.assertEqual(poll.status_code, 200, poll.text)
+        self.assertEqual(poll.json()["status"], "done")
+
+    def test_admin_cannot_unenroll_graduated_student_from_course(self):
+        self.student_a.academic_status = "graduated"
+        self.student_a.class_id = None
+        self.db.commit()
+
+        response = self.client.delete(
+            f"/api/v1/courses/{self.course.id}/students/{self.student_a.id}",
+            headers=self._admin(),
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["code"], "graduated_student_unenroll_blocked")
+
     def test_single_generate_blocks_partial_results_and_override_allows(self):
         self._mark_main_course_gradeable()
         self._add_gradeable_course_for_student(self.student_a, name="Physique")

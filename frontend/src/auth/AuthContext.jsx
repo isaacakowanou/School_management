@@ -24,8 +24,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   // Loads the signed-in account: verifies role via /auth/me, and for parents
-  // also loads the Parent row (needed for parent_id). Returns { me, parentProfile }.
-  // Throws on any problem; callers decide messaging.
+  // also loads the Parent row (needed for parent_id). Forced-change sessions
+  // must stop after /auth/me because every role endpoint is intentionally blocked.
   const loadSession = useCallback(async () => {
     const me = await authApi.getMe()
     if (!ALLOWED_ROLES.includes(me.role)) {
@@ -33,9 +33,21 @@ export function AuthProvider({ children }) {
       err.code = 'role_not_allowed'
       throw err
     }
+    if (me.must_change_password) {
+      return { me, parentProfile: null }
+    }
+
     let parentProfile = null
     if (me.role === 'parent') {
-      parentProfile = await parentsApi.getCurrentParent()
+      try {
+        parentProfile = await parentsApi.getCurrentParent()
+      } catch (err) {
+        // Covers a password-reset race between /auth/me and the role-profile request.
+        if (err?.code === 'password_change_required') {
+          return { me: { ...me, must_change_password: true }, parentProfile: null }
+        }
+        throw err
+      }
     }
     return { me, parentProfile }
   }, [])
@@ -119,10 +131,12 @@ export function AuthProvider({ children }) {
   )
 
   const refreshUser = useCallback(async () => {
-    const me = await authApi.getMe()
+    const { me, parentProfile } = await loadSession()
     setUser(me)
+    setParent(parentProfile)
+    setIsAuthenticated(true)
     return me
-  }, [])
+  }, [loadSession])
 
   const role = user?.role ?? null
   const value = {

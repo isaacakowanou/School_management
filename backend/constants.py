@@ -133,6 +133,29 @@ GRADING_KEY_LEGEND = (
 TRIMESTER_TERMS = ["1er Trimestre", "2ème Trimestre", "3ème Trimestre"]
 FINAL_TRIMESTER_NUMBER = len(TRIMESTER_TERMS)  # 3
 
+PASSAGE_PASS_THRESHOLD = 10.0
+PASSAGE_REPEAT_THRESHOLD = 9.0
+
+PASSAGE_LADDER = {
+    "Pré-maternelle": ["Maternelle 1"],
+    "Maternelle 1": ["Maternelle 2"],
+    "Maternelle 2": ["CI"],
+    "CI": ["CP"],
+    "CP": ["CE1"],
+    "CE1": ["CE2"],
+    "CE2": ["CM1"],
+    "CM1": ["CM2"],
+    "CM2": ["6ème"],
+    "6ème": ["5ème"],
+    "5ème": ["4ème"],
+    "4ème": ["3ème"],
+    "3ème": ["2nde"],
+    "2nde": ["1ère C", "1ère D"],
+    "1ère C": ["Terminale C"],
+    "1ère D": ["Terminale D"],
+}
+TERMINALE_CLASSES = {"Terminale C", "Terminale D"}
+
 # A1.7c: legacy free-text term variants -> canonical trimester. Covers only
 # forms the old UI suggestions (Fall / Spring / Summer / Trimester N) and
 # French typing habits could have produced; anything else is deliberately NOT

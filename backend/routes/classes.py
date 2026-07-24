@@ -71,6 +71,7 @@ def _counts_for_classes(db: Session, class_ids: list[UUID]) -> tuple[dict, dict]
         .where(
             Student.class_id.in_(class_ids),
             Student.deleted_at.is_(None),
+            Student.academic_status == "active",
         )
         .group_by(Student.class_id)
     ).all()
@@ -247,6 +248,7 @@ def _compute_class_enrollment_plan(db: Session, school_class: Class) -> dict:
             select(Student.id).where(
                 Student.class_id == school_class.id,
                 Student.deleted_at.is_(None),
+                Student.academic_status == "active",
             )
         ).all()
     )

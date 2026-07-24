@@ -445,7 +445,7 @@ class ReportListRouteTests(unittest.TestCase):
         self.assertGreater(non_review_index, 0)
         self.assertFalse(data[non_review_index]["needs_review"])
 
-    def test_parent_student_reports_keep_existing_shape(self):
+    def test_parent_student_reports_include_student_identity(self):
         response = self.client.get(
             f"/api/v1/reports/student/{self.student.id}",
             headers=self._headers(self.parent_user.email),
@@ -457,11 +457,12 @@ class ReportListRouteTests(unittest.TestCase):
         report = data[0]
         self.assertEqual(report["student_id"], str(self.student.id))
         self.assertIn("courses", report)
-        self.assertNotIn("student_name", report)
-        self.assertNotIn("student_number", report)
+        self.assertEqual(report["student_name"], "Ada Lovelace")
+        self.assertEqual(report["student_number"], "LIST001")
+        self.assertEqual(report["academic_status"], "active")
         self.assertNotIn("needs_review", report)
 
-    def test_parent_report_detail_keeps_existing_shape(self):
+    def test_parent_report_detail_includes_student_identity(self):
         response = self.client.get(
             f"/api/v1/reports/{self.report_card.id}",
             headers=self._headers(self.parent_user.email),
@@ -471,8 +472,9 @@ class ReportListRouteTests(unittest.TestCase):
         report = response.json()
         self.assertEqual(report["student_id"], str(self.student.id))
         self.assertIn("courses", report)
-        self.assertNotIn("student_name", report)
-        self.assertNotIn("student_number", report)
+        self.assertEqual(report["student_name"], "Ada Lovelace")
+        self.assertEqual(report["student_number"], "LIST001")
+        self.assertEqual(report["academic_status"], "active")
         self.assertNotIn("needs_review", report)
 
     def test_admin_can_edit_summary_on_approved_report_without_changing_snapshot(self):

@@ -35,16 +35,23 @@ from services.grade_calculator import (
     get_letter_grade,
     is_beninese_mode,
 )
-from utils import get_current_teacher
+from utils import get_current_teacher, historical_class_name_for_course
 
 
 router = APIRouter(tags=["course results"])
 
 
 def to_course_result_response(course_result: CourseResult) -> CourseResultResponse:
+    student = course_result.student
+    course = course_result.course
     return CourseResultResponse(
         id=course_result.id,
         student_id=course_result.student_id,
+        student_name=f"{student.first_name} {student.last_name}" if student else None,
+        student_number=student.student_number if student else None,
+        academic_status=student.academic_status if student else None,
+        historical_class_name=historical_class_name_for_course(course),
+        historical_school_year=course.school_year if course else None,
         course_id=course_result.course_id,
         term=course_result.term,
         average=course_result.average,

@@ -20,7 +20,7 @@ from audit import create_audit_log
 from auth import get_current_user, hash_password, invalidate_user_sessions, require_admin, require_parent
 from constants import TRIMESTER_TERMS
 from database import get_db
-from models import Class, Course, CourseResult, Grade, GradeItem, Parent, ReportCard, Student, StudentParent, User
+from models import Class, Course, CourseResult, Enrollment, Grade, GradeItem, Parent, ReportCard, Student, StudentParent, User
 from schemas import (
     ParentCreate,
     ParentCreateResponse,
@@ -114,6 +114,18 @@ def latest_active_school_year(db: Session) -> str | None:
         .where(ReportCard.deleted_at.is_(None), Student.deleted_at.is_(None)),
     ).subquery()
     return db.scalar(select(func.max(year_rows.c.school_year)).select_from(year_rows))
+
+
+def latest_enrollment_school_year_for_student(db: Session, student_id: UUID) -> str | None:
+    return db.scalar(
+        select(func.max(Course.school_year))
+        .join(Enrollment, Enrollment.course_id == Course.id)
+        .where(
+            Enrollment.student_id == student_id,
+            Enrollment.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+        )
+    )
 
 
 def current_term_for_year(db: Session, school_year: str) -> str:
@@ -278,19 +290,20 @@ def update_current_parent_profile(
 def list_current_parent_student_grades(
     student_id: UUID,
     term: str | None = None,
+    school_year: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_parent),
 ) -> list[ParentGradeResponse]:
     parent = get_current_parent_or_404(db, current_user)
     ensure_parent_linked_to_active_student(db, parent, student_id)
 
-    school_year = latest_active_school_year(db)
+    if term is not None and term not in TRIMESTER_TERMS:
+        raise HTTPException(status_code=422, detail="term must be a canonical trimester")
+    school_year = school_year or latest_enrollment_school_year_for_student(db, student_id) or latest_active_school_year(db)
     if school_year is None:
         return []
 
     selected_term = term or current_term_for_year(db, school_year)
-    if selected_term not in TRIMESTER_TERMS:
-        raise HTTPException(status_code=422, detail="term must be a canonical trimester")
 
     # Parent mid-trimester access intentionally exposes atomic scores only.
     # Do not join CourseResult or add aggregates here: running averages and

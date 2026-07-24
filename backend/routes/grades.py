@@ -36,7 +36,7 @@ from services.trimester_locks import (
     audit_locked_trimester_override,
     ensure_trimester_write_allowed,
 )
-from utils import get_current_teacher
+from utils import get_current_teacher, historical_class_name_for_course
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +45,17 @@ router = APIRouter(tags=["grades"])
 
 
 def to_grade_response(grade: Grade) -> GradeResponse:
+    student = grade.student
+    course = grade.grade_item.course
     return GradeResponse(
         id=grade.id,
         student_id=grade.student_id,
+        student_name=f"{student.first_name} {student.last_name}" if student else None,
+        student_number=student.student_number if student else None,
+        academic_status=student.academic_status if student else None,
+        historical_class_name=historical_class_name_for_course(course),
         grade_item_id=grade.grade_item_id,
-        course_id=grade.grade_item.course_id,
+        course_id=course.id,
         score=grade.score,
         submitted_by_teacher_id=grade.submitted_by_teacher_id,
     )

@@ -15,13 +15,14 @@ export default function AdminStudentsPage() {
   const [classes, setClasses] = useState([])
   const [search, setSearch] = useState('')
   const [classFilter, setClassFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('active')
   const [visibleCount, setVisibleCount] = useState(25)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(location.state?.message || null)
   const [deletingId, setDeletingId] = useState(null)
 
   async function refresh() {
-    const data = await listStudents()
+    const data = await listStudents({ academicStatus: statusFilter })
     setStudents(data)
     return data
   }
@@ -46,7 +47,7 @@ export default function AdminStudentsPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [statusFilter])
 
   useEffect(() => {
     let cancelled = false
@@ -145,6 +146,20 @@ export default function AdminStudentsPage() {
                     {cls.name_fr}{cls.name_en ? ` (${cls.name_en})` : ''} · {cls.school_year}
                   </option>
                 ))}
+              </select>
+            </label>
+            <label className="toolbar-field">
+              <span>Statut</span>
+              <select
+                value={statusFilter}
+                onChange={(event) => {
+                  setStatusFilter(event.target.value)
+                  setVisibleCount(25)
+                }}
+              >
+                <option value="active">Actifs</option>
+                <option value="graduated">Diplômés</option>
+                <option value="all">{t('common.all')}</option>
               </select>
             </label>
           </div>

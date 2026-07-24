@@ -314,6 +314,93 @@ class ClassBulkEnrollResponse(BaseModel):
     enrollments_skipped: int
 
 
+class PassageDecisionValue(str, Enum):
+    PASS = "pass"
+    REPEAT = "repeat"
+    GRADUATE = "graduate"
+
+
+class PassageStudentRow(BaseModel):
+    student_id: UUID
+    student_name: str
+    student_number: str
+    current_class_id: UUID | None = None
+    current_class_name: str | None = None
+    annual_french_average: float | None = None
+    annual_english_average: float | None = None
+    annual_bilingual_average: float | None = None
+    incomplete_data: bool
+    missing_terms: list[str] = []
+    suggested_decision: str
+    suggested_reason: str
+    requires_decision: bool
+    existing_decision_id: UUID | None = None
+    final_decision: str | None = None
+    target_class_id: UUID | None = None
+    target_class_name: str | None = None
+    target_options: list[str] = []
+    target_class_missing: bool = False
+    note: str | None = None
+
+
+class PassageClassPreviewResponse(BaseModel):
+    class_id: UUID
+    class_name: str
+    school_year: str
+    target_school_year: str
+    target_classes_ready: bool
+    missing_target_class_names: list[str] = []
+    target_class_guidance: str | None = None
+    students: list[PassageStudentRow]
+
+
+class PassageConfirmEntry(BaseModel):
+    student_id: UUID
+    final_decision: PassageDecisionValue
+    target_class_name: str | None = None
+    note: str | None = None
+
+
+class PassageConfirmRequest(BaseModel):
+    school_year: str
+    target_school_year: str
+    class_id: UUID | None = None
+    decisions: list[PassageConfirmEntry]
+
+
+class PassageDecisionResponse(BaseModel):
+    id: UUID
+    student_id: UUID
+    school_year: str
+    target_school_year: str
+    from_class_id: UUID | None = None
+    from_class_name: str | None = None
+    result_class_id: UUID | None = None
+    result_class_name: str | None = None
+    suggested_decision: str
+    final_decision: str
+    annual_french_average: float | None = None
+    annual_english_average: float | None = None
+    annual_bilingual_average: float | None = None
+    incomplete_data: bool
+    note: str | None = None
+    decided_by_admin_id: UUID | None = None
+    decided_at: datetime
+
+
+class ParentPassageDecisionResponse(BaseModel):
+    school_year: str
+    from_class_name: str | None = None
+    decision: str
+    result_class_name: str | None = None
+
+
+class PassageConfirmResponse(BaseModel):
+    status: str
+    applied_count: int
+    decisions: list[PassageDecisionResponse]
+
+
 class SubjectCreate(BaseModel):
     name_fr: str
     name_en: str
@@ -372,6 +459,8 @@ class StudentResponse(BaseModel):
     educmaster_number: str | None = None
     class_id: UUID | None = None
     class_name: str | None = None
+    academic_status: str = "active"
+    historical_class_name: str | None = None
 
 
 class DeletedStudentResponse(StudentResponse):
@@ -650,6 +739,10 @@ class GradeBatchSaveRequest(BaseModel):
 class GradeResponse(BaseModel):
     id: UUID
     student_id: UUID
+    student_name: str | None = None
+    student_number: str | None = None
+    academic_status: str | None = None
+    historical_class_name: str | None = None
     grade_item_id: UUID
     course_id: UUID
     score: float
@@ -683,6 +776,11 @@ class GradeNotificationResponse(BaseModel):
 class CourseResultResponse(BaseModel):
     id: UUID
     student_id: UUID
+    student_name: str | None = None
+    student_number: str | None = None
+    academic_status: str | None = None
+    historical_class_name: str | None = None
+    historical_school_year: str | None = None
     course_id: UUID
     term: str
     average: float
@@ -767,6 +865,10 @@ class ReportItemUpdate(BaseModel):
 class ReportCardResponse(BaseModel):
     id: UUID
     student_id: UUID
+    student_name: str | None = None
+    student_number: str | None = None
+    academic_status: str | None = None
+    student_class_name: str | None = None
     term: str
     school_year: str
     overall_average: float

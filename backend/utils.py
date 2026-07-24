@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from models import Class, Course, ReportCard, Student, Subject, Teacher, User
+from models import Class, Course, Enrollment, ReportCard, Student, StudentPassageDecision, Subject, Teacher, User
 from schemas import CourseResponse, StudentResponse
 
 
@@ -39,7 +39,50 @@ def get_current_teacher(db: Session, current_user: User) -> Teacher | None:
     return db.scalar(select(Teacher).where(Teacher.user_id == current_user.id, Teacher.deleted_at.is_(None)))
 
 
+def student_display_class_name(student: Student) -> str | None:
+    if student.school_class is not None:
+        return student.school_class.name_fr
+    if student.academic_status == "graduated":
+        return "Diplômé"
+    return None
+
+
+def historical_class_name_for_student_year(db: Session, student_id, school_year: str) -> str | None:
+    course = db.scalar(
+        select(Course)
+        .join(Enrollment, Enrollment.course_id == Course.id)
+        .where(
+            Enrollment.student_id == student_id,
+            Course.school_year == school_year,
+            Enrollment.deleted_at.is_(None),
+        )
+        .order_by(Course.name, Course.code)
+    )
+    if course is not None and course.school_class is not None:
+        return course.school_class.name_fr
+
+    decision = db.scalar(
+        select(StudentPassageDecision)
+        .where(
+            StudentPassageDecision.student_id == student_id,
+            StudentPassageDecision.school_year == school_year,
+        )
+        .order_by(StudentPassageDecision.decided_at.desc())
+    )
+    if decision is not None and decision.from_class_name:
+        return decision.from_class_name
+
+    return None
+
+
+def historical_class_name_for_course(course: Course | None) -> str | None:
+    if course is not None and course.school_class is not None:
+        return course.school_class.name_fr
+    return None
+
+
 def to_student_response(student: Student) -> StudentResponse:
+    class_name = student_display_class_name(student)
     return StudentResponse(
         id=student.id,
         first_name=student.first_name,
@@ -48,7 +91,9 @@ def to_student_response(student: Student) -> StudentResponse:
         student_number=student.student_number,
         educmaster_number=student.educmaster_number,
         class_id=student.class_id,
-        class_name=student.school_class.name_fr if student.school_class else None,
+        class_name=class_name,
+        academic_status=student.academic_status,
+        historical_class_name=class_name,
     )
 
 

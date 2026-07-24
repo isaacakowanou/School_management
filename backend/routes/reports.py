@@ -43,6 +43,7 @@ from models import (
     ReportWorkHabitItem,
     Student,
     StudentParent,
+    StudentPassageDecision,
     User,
 )
 from schemas import (
@@ -80,7 +81,7 @@ from services.report_builder import (
     build_report_card_data_from_report_card,
     get_report_card_staleness,
 )
-from utils import get_class_or_404, get_report_card_or_404
+from utils import get_class_or_404, get_report_card_or_404, historical_class_name_for_student_year
 
 
 router = APIRouter(tags=["reports"])
@@ -150,10 +151,24 @@ def _validated_report_item_rows(items, allowed_keys, model_cls):
     return rows
 
 
-def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
+def _historical_class_name_for_report_card(db: Session | None, report_card: ReportCard) -> str | None:
+    for snapshot_course in report_card.courses:
+        if snapshot_course.course is not None and snapshot_course.course.school_class is not None:
+            return snapshot_course.course.school_class.name_fr
+    if db is not None:
+        return historical_class_name_for_student_year(db, report_card.student_id, report_card.school_year)
+    return None
+
+
+def to_report_card_response(report_card: ReportCard, db: Session | None = None) -> ReportCardResponse:
+    student = report_card.student
     return ReportCardResponse(
         id=report_card.id,
         student_id=report_card.student_id,
+        student_name=f"{student.first_name} {student.last_name}" if student else None,
+        student_number=student.student_number if student else None,
+        academic_status=student.academic_status if student else None,
+        student_class_name=_historical_class_name_for_report_card(db, report_card),
         term=report_card.term,
         school_year=report_card.school_year,
         overall_average=report_card.overall_average,
@@ -190,10 +205,13 @@ def to_report_card_response(report_card: ReportCard) -> ReportCardResponse:
     )
 
 
-def to_admin_report_card_response(report_card: ReportCard) -> AdminReportCardResponse:
+def to_admin_report_card_response(report_card: ReportCard, db: Session | None = None) -> AdminReportCardResponse:
     student = report_card.student
+    base = to_report_card_response(report_card, db).model_dump()
+    base.pop("student_name", None)
+    base.pop("student_number", None)
     return AdminReportCardResponse(
-        **to_report_card_response(report_card).model_dump(),
+        **base,
         student_name=f"{student.first_name} {student.last_name}",
         student_number=student.student_number,
     )
@@ -564,7 +582,7 @@ def generate_report_card(
 
     db.commit()
     db.refresh(report_card)
-    return to_report_card_response(report_card)
+    return to_report_card_response(report_card, db)
 
 
 # --- Conseil de classe: class-scoped status + batch actions -----------------
@@ -575,14 +593,29 @@ def generate_report_card(
 # routes further down, or FastAPI tries to parse them as report UUIDs.
 
 
-def _class_students(db: Session, class_id: UUID) -> list[Student]:
-    return list(
+def _class_students(db: Session, class_id: UUID, school_year: str | None = None) -> list[Student]:
+    students = list(
         db.scalars(
             select(Student)
-            .where(Student.class_id == class_id, Student.deleted_at.is_(None))
+            .where(Student.class_id == class_id, Student.deleted_at.is_(None), Student.academic_status == "active")
             .order_by(Student.last_name, Student.first_name)
         ).all()
     )
+    by_id = {student.id: student for student in students}
+    if school_year is not None:
+        historical_students = db.scalars(
+            select(Student)
+            .join(StudentPassageDecision, StudentPassageDecision.student_id == Student.id)
+            .where(
+                StudentPassageDecision.from_class_id == class_id,
+                StudentPassageDecision.school_year == school_year,
+                Student.deleted_at.is_(None),
+            )
+            .order_by(Student.last_name, Student.first_name)
+        ).all()
+        for student in historical_students:
+            by_id.setdefault(student.id, student)
+    return sorted(by_id.values(), key=lambda student: (student.last_name, student.first_name))
 
 
 def _reports_by_student(
@@ -616,7 +649,7 @@ def class_report_status(
     _: User = Depends(require_admin),
 ) -> ClassReportStatusResponse:
     school_class = get_class_or_404(db, class_id)
-    students = _class_students(db, class_id)
+    students = _class_students(db, class_id, school_year)
     student_ids = [student.id for student in students]
 
     results_by_student: dict[UUID, int] = {}
@@ -703,7 +736,7 @@ def batch_generate_reports(
     not leave an ambiguous half-generated class after a database failure."""
     get_class_or_404(db, payload.class_id)
     term = payload.term.value
-    students = _class_students(db, payload.class_id)
+    students = _class_students(db, payload.class_id, payload.school_year)
     student_ids = [student.id for student in students]
     existing = _reports_by_student(db, [s.id for s in students], term, payload.school_year)
     results_by_student: dict[UUID, int] = {}
@@ -791,7 +824,7 @@ def batch_approve_reports(
     never silently re-blesses stale numbers."""
     get_class_or_404(db, payload.class_id)
     term = payload.term.value
-    students = _class_students(db, payload.class_id)
+    students = _class_students(db, payload.class_id, payload.school_year)
     reports = _reports_by_student(db, [s.id for s in students], term, payload.school_year)
 
     approved_at = datetime.now(timezone.utc)
@@ -850,7 +883,7 @@ def batch_send_reports(
     abort the batch — they are counted and reported."""
     get_class_or_404(db, payload.class_id)
     term = payload.term.value
-    students = _class_students(db, payload.class_id)
+    students = _class_students(db, payload.class_id, payload.school_year)
     reports = _reports_by_student(db, [s.id for s in students], term, payload.school_year)
 
     sent_count = 0
@@ -921,12 +954,15 @@ def batch_send_reports(
 def _class_pdf_reports(db: Session, class_id: UUID, term: str, school_year: str) -> list[ReportCard]:
     """Approved/sent reports for the class print run, ordered like the paper
     class list (student last name, first name)."""
+    student_ids = [student.id for student in _class_students(db, class_id, school_year)]
+    if not student_ids:
+        return []
     return list(
         db.scalars(
             select(ReportCard)
             .join(Student, ReportCard.student_id == Student.id)
             .where(
-                Student.class_id == class_id,
+                ReportCard.student_id.in_(student_ids),
                 Student.deleted_at.is_(None),
                 ReportCard.term == term,
                 ReportCard.school_year == school_year,
@@ -1078,7 +1114,7 @@ def get_admin_report(
 ) -> AdminReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
-    return to_admin_report_card_response(report_card)
+    return to_admin_report_card_response(report_card, db)
 
 
 @router.get("/student/{student_id}", response_model=list[ReportCardResponse])
@@ -1099,7 +1135,7 @@ def list_student_reports(
             )
             .order_by(ReportCard.created_at.desc())
         ).all()
-        return [to_report_card_response(report_card) for report_card in report_cards]
+        return [to_report_card_response(report_card, db) for report_card in report_cards]
 
     if current_user.role == "parent" and parent_can_access_student(db, current_user, student_id):
         report_cards = db.scalars(
@@ -1114,7 +1150,7 @@ def list_student_reports(
             )
             .order_by(ReportCard.created_at.desc())
         ).all()
-        return [to_report_card_response(report_card) for report_card in report_cards]
+        return [to_report_card_response(report_card, db) for report_card in report_cards]
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
@@ -1134,7 +1170,7 @@ def review_report_card(
 
     db.commit()
     db.refresh(report_card)
-    return to_report_card_response(report_card)
+    return to_report_card_response(report_card, db)
 
 
 @router.put("/{report_id}/summary", response_model=ReportCardResponse)
@@ -1151,7 +1187,7 @@ def update_report_summary_route(
 
     db.commit()
     db.refresh(report_card)
-    return to_report_card_response(report_card)
+    return to_report_card_response(report_card, db)
 
 
 @router.post("/{report_id}/approve", response_model=ReportCardResponse)
@@ -1186,7 +1222,7 @@ def approve_report_card(
 
     db.commit()
     db.refresh(report_card)
-    return to_report_card_response(report_card)
+    return to_report_card_response(report_card, db)
 
 
 @router.post("/{report_id}/send", response_model=ReportSendResponse)
@@ -1400,7 +1436,7 @@ def regenerate_report_card(
     db.commit()
     db.refresh(report_card)
     db.expire(report_card, ["courses"])
-    return to_report_card_response(report_card)
+    return to_report_card_response(report_card, db)
 
 
 @router.patch("/{report_id}", response_model=ReportCardResponse)
@@ -1462,7 +1498,7 @@ def update_report_details(
 
     db.commit()
     db.refresh(report_card)
-    return to_report_card_response(report_card)
+    return to_report_card_response(report_card, db)
 
 
 @router.get("/{report_id}/pdf")
@@ -1496,4 +1532,4 @@ def get_report(
 ) -> ReportCardResponse:
     report_card = get_report_card_or_404(db, report_id)
     ensure_can_view_report(db, current_user, report_card)
-    return to_report_card_response(report_card)
+    return to_report_card_response(report_card, db)

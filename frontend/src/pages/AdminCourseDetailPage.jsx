@@ -294,14 +294,6 @@ export default function AdminCourseDetailPage() {
     }
   }, [refreshCourseResults])
 
-  const studentNameById = useMemo(() => {
-    const map = new Map()
-    for (const student of students) {
-      map.set(student.id, `${student.first_name} ${student.last_name}`)
-    }
-    return map
-  }, [students])
-
   const enrolledStudentIds = useMemo(() => new Set(students.map((student) => student.id)), [students])
   const availableStudents = useMemo(
     () => allStudents.filter((student) => !enrolledStudentIds.has(student.id)),
@@ -1359,7 +1351,7 @@ export default function AdminCourseDetailPage() {
               {selectedTermResults.map((result) => (
                 <tr key={result.id}>
                   <td>
-                    {studentNameById.get(result.student_id) || (
+                    {result.student_name || (
                       <span className="audit-id" title={result.student_id}>
                         {result.student_id}
                       </span>

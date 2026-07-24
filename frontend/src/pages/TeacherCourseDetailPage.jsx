@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { getCourse, listCourseStudents } from '../api/courses.js'
@@ -331,14 +331,6 @@ export default function TeacherCourseDetailPage() {
       setCalculating(false)
     }
   }
-
-  const studentNameById = useMemo(() => {
-    const map = {}
-    for (const s of students || []) {
-      map[s.id] = `${s.last_name}, ${s.first_name}`
-    }
-    return map
-  }, [students])
 
   const gradeItemList = gradeItems || []
 
@@ -841,7 +833,7 @@ export default function TeacherCourseDetailPage() {
                   {selectedTermResults.map((result) => (
                     <tr key={result.id}>
                       <td className="nowrap">
-                        {studentNameById[result.student_id] || result.student_id}
+                        {result.student_name || result.student_id}
                       </td>
                       <td>{result.term}</td>
                       <td className="num">{formatReportAverage(result.average, result.scale)}</td>

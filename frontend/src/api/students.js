@@ -1,8 +1,11 @@
 import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/students (admin) -> [{ id, first_name, last_name, grade_level, student_number }]
-export function listStudents() {
-  return apiGet('/students')
+export function listStudents({ academicStatus } = {}) {
+  const params = new URLSearchParams()
+  if (academicStatus) params.set('academic_status', academicStatus)
+  const qs = params.toString()
+  return apiGet(`/students${qs ? `?${qs}` : ''}`)
 }
 
 // GET /api/v1/students/trash (admin) -> soft-deleted students

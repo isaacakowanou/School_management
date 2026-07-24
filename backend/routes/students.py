@@ -166,15 +166,21 @@ def current_term_for_year(db: Session, school_year: str) -> str:
 
 @router.get("", response_model=list[StudentResponse])
 def list_students(
+    academic_status: str = "active",
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[StudentResponse]:
-    students = db.scalars(
+    query = (
         select(Student)
         .options(joinedload(Student.school_class))
         .where(Student.deleted_at.is_(None))
         .order_by(Student.last_name, Student.first_name)
-    ).all()
+    )
+    if academic_status != "all":
+        if academic_status not in {"active", "graduated"}:
+            raise HTTPException(status_code=422, detail="academic_status must be active, graduated, or all")
+        query = query.where(Student.academic_status == academic_status)
+    students = db.scalars(query).all()
     return [to_student_response(student) for student in students]
 
 

@@ -1,6 +1,7 @@
-"""Year-end class passage triage and application rules.
+"""Year-end class passage triage and year-scoped assignment rules.
 
-Passage de classe moves a student's current class assignment or marks Terminale
+Passage de classe records source/target assignments by school year and also
+updates the temporary live ``Student.class_id`` pointer or marks Terminale
 students as graduated. It does not create courses, enrollments, or Trash rows.
 Target-year Class rows are ordinary per-year records; admins create them today
 with Classes -> Create GGFK classes for the target school year before applying
@@ -23,8 +24,9 @@ from constants import (
     TERMINALE_CLASSES,
     normalize_class_name,
 )
-from models import AuditLog, Class, Student, StudentPassageDecision, User
+from models import AuditLog, Class, Student, StudentClassAssignment, StudentPassageDecision, User
 from services.annual_averages import AnnualAverages, compute_student_annual_averages
+from services.student_assignments import assignment_for_student_year, set_student_assignment
 
 
 PASSAGE_DECISION_PASS = "pass"
@@ -99,17 +101,25 @@ def _active_student_query():
 
 
 def students_for_passage_class(db: Session, class_id: UUID, school_year: str) -> list[Student]:
+    assigned_student_ids = db.scalars(
+        select(StudentClassAssignment.student_id).where(
+            StudentClassAssignment.class_id == class_id,
+            StudentClassAssignment.school_year == school_year,
+        )
+    ).all()
     existing_decision_student_ids = db.scalars(
         select(StudentPassageDecision.student_id).where(
             StudentPassageDecision.from_class_id == class_id,
             StudentPassageDecision.school_year == school_year,
         )
     ).all()
-    conditions = [Student.class_id == class_id]
+    conditions = [Student.id.in_(assigned_student_ids)] if assigned_student_ids else []
     if existing_decision_student_ids:
         conditions.append(Student.id.in_(existing_decision_student_ids))
     from sqlalchemy import or_
 
+    if not conditions:
+        return []
     return list(
         db.scalars(
             _active_student_query()
@@ -120,13 +130,11 @@ def students_for_passage_class(db: Session, class_id: UUID, school_year: str) ->
 
 
 def all_students_for_passage_year(db: Session, school_year: str) -> list[Student]:
-    class_ids = db.scalars(select(Class.id).where(Class.school_year == school_year, Class.deleted_at.is_(None))).all()
-    if not class_ids:
-        return []
     return list(
         db.scalars(
             _active_student_query()
-            .where(Student.class_id.in_(class_ids))
+            .join(StudentClassAssignment, StudentClassAssignment.student_id == Student.id)
+            .where(StudentClassAssignment.school_year == school_year)
             .order_by(Student.last_name, Student.first_name, Student.student_number)
         ).all()
     )
@@ -211,8 +219,11 @@ def apply_passage_decision(
     if existing is not None:
         assert_existing_decision_can_be_edited(db, existing)
 
+    source_assignment = assignment_for_student_year(db, student.id, school_year)
     existing_source_class_name = existing.from_class_name if existing is not None else None
-    source_class_name = existing_source_class_name or (student.school_class.name_fr if student.school_class else None)
+    source_class_name = existing_source_class_name or (
+        source_assignment.class_name_snapshot if source_assignment is not None else None
+    )
     _, required_target_name = target_class_requirement(
         student,
         final_decision,
@@ -238,7 +249,11 @@ def apply_passage_decision(
         decision = StudentPassageDecision(student=student, school_year=school_year, target_school_year=target_school_year)
         db.add(decision)
 
-    source_class = existing.from_class if existing is not None and existing.from_class is not None else student.school_class
+    source_class = (
+        existing.from_class
+        if existing is not None and existing.from_class is not None
+        else source_assignment.school_class if source_assignment is not None else None
+    )
     decision.from_class = source_class
     decision.from_class_name = source_class.name_fr if source_class else None
     decision.result_class = target_class
@@ -255,14 +270,20 @@ def apply_passage_decision(
 
     if final_decision == PASSAGE_DECISION_REPEAT:
         student.class_id = target_class.id if target_class else None
+        if target_class is not None:
+            set_student_assignment(db, student, target_class)
         student.academic_status = "active"
         student.graduated_at = None
     elif final_decision == PASSAGE_DECISION_GRADUATE:
+        if source_class is not None:
+            set_student_assignment(db, student, source_class)
         student.class_id = None
         student.academic_status = "graduated"
         student.graduated_at = now
     else:
         student.class_id = target_class.id if target_class else None
+        if target_class is not None:
+            set_student_assignment(db, student, target_class)
         student.academic_status = "active"
         student.graduated_at = None
 

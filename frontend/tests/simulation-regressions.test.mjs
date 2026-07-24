@@ -75,3 +75,29 @@ test('grading-system change warns only when existing grade items could mismatch'
     currentSystem: 'WEIGHTED', nextSystem: 'BENINESE', gradeItemCount: 0,
   }), false)
 })
+
+
+test('bulk generation summary includes every skipped-report count', async () => {
+  const { bulkGenerationSummaryValues } = await import('../src/utils/reportGeneration.js')
+
+  assert.deepEqual(
+    bulkGenerationSummaryValues({
+      totals: {
+        generated_count: 7,
+        skipped_existing_count: 40,
+        skipped_no_results_count: 3,
+        skipped_partial_count: 2,
+        failed_count: 1,
+      },
+      unassigned_student_count: 4,
+    }),
+    {
+      count: 7,
+      existing: 40,
+      noResults: 3,
+      partial: 2,
+      failed: 1,
+      unassigned: 4,
+    },
+  )
+})

@@ -41,6 +41,7 @@ export default function AdminCoursesPage() {
     setSelectedSchoolYear,
     setSelectedTerm,
     availableSchoolYears,
+    currentSchoolYear,
   } = useAcademicQueryParams()
 
   const [showCloneDialog, setShowCloneDialog] = useState(false)
@@ -115,11 +116,6 @@ export default function AdminCoursesPage() {
     return map
   }, [courses])
 
-  const schoolYears = useMemo(
-    () => Array.from(courseCountByYear.keys()).sort().reverse(),
-    [courseCountByYear],
-  )
-
   const filteredCourses = useMemo(() => {
     const query = search.trim().toLowerCase()
     return (courses || []).filter((course) => {
@@ -140,14 +136,14 @@ export default function AdminCoursesPage() {
   const cloneTargetCount = courseCountByYear.get(cloneTargetYear.trim()) || 0
 
   function openCloneDialog() {
-    setCloneSourceYear(schoolYears[0] || '')
+    setCloneSourceYear(selectedSchoolYear || currentSchoolYear || availableSchoolYears[0] || '')
     setCloneTargetYear('')
     setCloneError(null)
     setShowCloneDialog(true)
   }
 
   function openAdvanceDialog() {
-    setAdvanceYear(schoolYears[0] || '')
+    setAdvanceYear(selectedSchoolYear || currentSchoolYear || availableSchoolYears[0] || '')
     setAdvanceTargetTerm('')
     setAdvancePreview(null)
     setAdvanceError(null)
@@ -220,6 +216,9 @@ export default function AdminCoursesPage() {
       setCourses(refreshed)
       setShowCloneDialog(false)
       let text = t('courses.cloned', { count: result.created_count, year: cloneTargetYear.trim() })
+      if (result.skipped_count) {
+        text += ' ' + t('courses.clonedSkipped', { count: result.skipped_count })
+      }
       if (result.unmatched_class_names.length) {
         text += ' ' + t('courses.clonedUnmatched', { year: cloneTargetYear.trim(), names: result.unmatched_class_names.join(', ') })
       }
@@ -306,8 +305,7 @@ export default function AdminCoursesPage() {
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
       {!error && courses === null && <Spinner label={t('courses.loading')} />}
-      {!error && courses && courses.length === 0 && <Empty message={t('courses.empty')} />}
-      {!error && courses && courses.length > 0 && (
+      {!error && courses && (
         <div className="list-stack">
           <div className="list-toolbar list-toolbar-wide">
             <label className="toolbar-field">
@@ -363,7 +361,7 @@ export default function AdminCoursesPage() {
                   setVisibleCount(25)
                 }}
               >
-                {(availableSchoolYears.length ? availableSchoolYears : schoolYears).map((year) => (
+                {availableSchoolYears.map((year) => (
                   <option key={year} value={year}>{year}</option>
                 ))}
               </select>
@@ -461,7 +459,7 @@ export default function AdminCoursesPage() {
                   disabled={cloning}
                   style={{ width: '100%', textAlign: 'left' }}
                 >
-                  {schoolYears.map((year) => (
+                  {availableSchoolYears.map((year) => (
                     <option key={year} value={year}>
                       {t('courses.yearOption', { year, count: courseCountByYear.get(year) })}
                     </option>
@@ -486,9 +484,7 @@ export default function AdminCoursesPage() {
               </datalist>
 
               {cloneTargetYear.trim() && cloneTargetCount > 0 && (
-                <ErrorBanner
-                  message={t('courses.cloneTargetNotEmpty', { year: cloneTargetYear.trim(), count: cloneTargetCount })}
-                />
+                <p className="muted">{t('courses.cloneTargetNotEmpty', { year: cloneTargetYear.trim(), count: cloneTargetCount })}</p>
               )}
 
               <div className="grade-actions">
@@ -499,8 +495,7 @@ export default function AdminCoursesPage() {
                     cloning ||
                     !cloneSourceYear ||
                     !cloneTargetYear.trim() ||
-                    cloneTargetYear.trim() === cloneSourceYear ||
-                    cloneTargetCount > 0
+                    cloneTargetYear.trim() === cloneSourceYear
                   }
                 >
                   {cloning ? t('courses.cloning') : t('courses.cloneBtn', { count: cloneSourceCount })}
@@ -551,7 +546,7 @@ export default function AdminCoursesPage() {
                   disabled={advancing || advancePreviewLoading}
                   style={{ width: '100%', textAlign: 'left' }}
                 >
-                  {schoolYears.map((year) => (
+                  {availableSchoolYears.map((year) => (
                     <option key={year} value={year}>
                       {t('courses.yearOption', { year, count: courseCountByYear.get(year) })}
                     </option>

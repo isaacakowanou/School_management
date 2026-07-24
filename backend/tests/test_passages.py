@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Class, Parent, ReportCard, Student, StudentParent, StudentPassageDecision, User
+from models import AuditLog, Base, Class, Parent, ReportCard, Student, StudentClassAssignment, StudentParent, StudentPassageDecision, User
 from services.annual_averages import compute_student_annual_averages
 from services.passages import suggest_passage_decision
 
@@ -87,6 +87,12 @@ class PassageRouteTests(unittest.TestCase):
         )
         self.db.add(student)
         self.db.flush()
+        self.db.add(StudentClassAssignment(
+            student_id=student.id,
+            school_year=school_class.school_year,
+            class_id=school_class.id,
+            class_name_snapshot=school_class.name_fr,
+        ))
         return student
 
     def _reports(self, student, year, values):

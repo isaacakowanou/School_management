@@ -60,7 +60,7 @@ def latest_course_school_year_before(db: Session, target_year: str) -> str | Non
     )
 
 
-def clone_course_setup_for_year(db: Session, source_year: str, target_year: str) -> tuple[int, list[str]]:
+def clone_course_setup_for_year(db: Session, source_year: str, target_year: str) -> tuple[int, int, list[str]]:
     if source_year == target_year:
         raise HTTPException(status_code=422, detail="source_year and target_year must differ")
 
@@ -73,23 +73,31 @@ def clone_course_setup_for_year(db: Session, source_year: str, target_year: str)
     if not source_courses:
         raise HTTPException(status_code=422, detail="Source year has no courses to clone")
 
-    target_count = db.scalar(
-        select(func.count(Course.id)).where(Course.school_year == target_year, Course.deleted_at.is_(None))
-    )
-    if target_count:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"message": "Target year already has courses", "course_count": target_count},
-        )
-
     new_code_by_id = {course.id: f"{course.code}-{target_year}" for course in source_courses}
-    taken_codes = sorted(
-        db.scalars(select(Course.code).where(Course.code.in_(list(new_code_by_id.values())))).all()
+    active_target_codes = set(
+        db.scalars(
+            select(Course.code).where(
+                Course.school_year == target_year,
+                Course.deleted_at.is_(None),
+                Course.code.in_(list(new_code_by_id.values())),
+            )
+        ).all()
     )
-    if taken_codes:
+    missing_code_by_id = {
+        course_id: code for course_id, code in new_code_by_id.items() if code not in active_target_codes
+    }
+    blocking_codes = sorted(
+        db.scalars(
+            select(Course.code).where(
+                Course.code.in_(list(missing_code_by_id.values())),
+                (Course.school_year != target_year) | (Course.deleted_at.is_not(None)),
+            )
+        ).all()
+    )
+    if blocking_codes:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"message": "Cloned course codes already exist", "codes": taken_codes},
+            detail={"message": "Cloned course codes already exist", "codes": blocking_codes},
         )
 
     source_class_ids = {course.class_id for course in source_courses if course.class_id is not None}
@@ -103,7 +111,14 @@ def clone_course_setup_for_year(db: Session, source_year: str, target_year: str)
     )
 
     unmatched_class_names = set()
+    created_count = 0
+    skipped_count = 0
     for source_course in source_courses:
+        target_code = new_code_by_id[source_course.id]
+        if target_code in active_target_codes:
+            skipped_count += 1
+            continue
+
         target_class_id = None
         if source_course.class_id is not None:
             class_name = source_name_by_class_id.get(source_course.class_id)
@@ -127,7 +142,8 @@ def clone_course_setup_for_year(db: Session, source_year: str, target_year: str)
                 ),
             )
         )
-    return len(source_courses), sorted(name for name in unmatched_class_names if name)
+        created_count += 1
+    return created_count, skipped_count, sorted(name for name in unmatched_class_names if name)
 
 
 def audit_rollover(
@@ -139,7 +155,9 @@ def audit_rollover(
     skipped_classes: list[str],
     source_school_year: str | None,
     cloned_course_count: int,
+    skipped_course_count: int,
     unmatched_class_names: list[str],
+    nothing_to_do: bool,
 ) -> None:
     create_audit_log(
         db=db,
@@ -154,6 +172,8 @@ def audit_rollover(
             "skipped_classes": skipped_classes,
             "source_school_year": source_school_year,
             "cloned_course_count": cloned_course_count,
+            "skipped_course_count": skipped_course_count,
             "unmatched_class_names": unmatched_class_names,
+            "nothing_to_do": nothing_to_do,
         },
     )

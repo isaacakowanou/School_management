@@ -10,7 +10,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from models import Class, Course, Enrollment, ReportCard, Student, StudentPassageDecision, Subject, Teacher, User
+from models import (
+    Class,
+    Course,
+    Enrollment,
+    ReportCard,
+    Student,
+    StudentClassAssignment,
+    StudentPassageDecision,
+    Subject,
+    Teacher,
+    User,
+)
 from schemas import CourseResponse, StudentResponse
 
 
@@ -81,8 +92,18 @@ def historical_class_name_for_course(course: Course | None) -> str | None:
     return None
 
 
-def to_student_response(student: Student) -> StudentResponse:
-    class_name = student_display_class_name(student)
+def to_student_response(
+    student: Student,
+    *,
+    assignment: StudentClassAssignment | None = None,
+    assignment_school_year: str | None = None,
+) -> StudentResponse:
+    if assignment_school_year is not None:
+        class_id = assignment.class_id if assignment is not None else None
+        class_name = assignment.class_name_snapshot if assignment is not None else None
+    else:
+        class_id = student.class_id
+        class_name = student_display_class_name(student)
     return StudentResponse(
         id=student.id,
         first_name=student.first_name,
@@ -90,10 +111,12 @@ def to_student_response(student: Student) -> StudentResponse:
         school_level=student.school_level,
         student_number=student.student_number,
         educmaster_number=student.educmaster_number,
-        class_id=student.class_id,
+        class_id=class_id,
         class_name=class_name,
         academic_status=student.academic_status,
         historical_class_name=class_name,
+        assignment_school_year=assignment_school_year,
+        is_unassigned_for_year=assignment_school_year is not None and assignment is None,
     )
 
 

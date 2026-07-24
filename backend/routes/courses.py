@@ -1,4 +1,7 @@
-"""Manage courses, yearly setup cloning, and school-wide trimester advancement.
+"""Manage year-scoped courses, setup cloning, and trimester advancement.
+
+Every Course belongs to one school year and term. Teacher/subject identity is
+permanent, while grades, results, and bulletin snapshots are historical data.
 
 Catalog-linked courses derive their display name and language track from the
 subject so bulletin grouping cannot drift from the catalog. Year cloning copies
@@ -295,7 +298,8 @@ def clone_year(
     """
     source_year = clean_required_text(payload.source_year, "source_year")
     target_year = clean_required_text(payload.target_year, "target_year")
-    created_count, unmatched_class_names = clone_course_setup_for_year(db, source_year, target_year)
+    created_count, skipped_count, unmatched_class_names = clone_course_setup_for_year(db, source_year, target_year)
+    nothing_to_do = created_count == 0
     db.flush()
 
     create_audit_log(
@@ -309,7 +313,9 @@ def clone_year(
             "source_year": source_year,
             "target_year": target_year,
             "created_count": created_count,
+            "skipped_count": skipped_count,
             "unmatched_class_names": unmatched_class_names,
+            "nothing_to_do": nothing_to_do,
         },
     )
     db.commit()
@@ -317,6 +323,8 @@ def clone_year(
     return CourseCloneYearResponse(
         status="ok",
         created_count=created_count,
+        skipped_count=skipped_count,
+        nothing_to_do=nothing_to_do,
         unmatched_class_names=unmatched_class_names,
     )
 

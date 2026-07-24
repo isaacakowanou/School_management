@@ -515,7 +515,7 @@ class CurrentParentRouteTests(unittest.TestCase):
 
     # --- Parent grade view ---
 
-    def test_parent_can_list_own_student_grades_for_current_term(self):
+    def test_parent_can_list_own_student_grades_for_shared_current_term(self):
         seeded = self._seed_parent_grade_data()
 
         response = self.client.get(
@@ -527,11 +527,11 @@ class CurrentParentRouteTests(unittest.TestCase):
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["course_name"], "Mathématique")
-        self.assertEqual(data[0]["item_title"], "Devoir 1")
-        self.assertEqual(data[0]["item_type"], "DEVOIR")
-        self.assertEqual(data[0]["score"], 17)
+        self.assertEqual(data[0]["item_title"], "Interro 1")
+        self.assertEqual(data[0]["item_type"], "INTERRO")
+        self.assertEqual(data[0]["score"], 15)
         self.assertEqual(data[0]["max_score"], 20)
-        self.assertEqual(data[0]["term"], "2ème Trimestre")
+        self.assertEqual(data[0]["term"], "1er Trimestre")
         self.assertEqual(data[0]["school_year"], "2026-2027")
         self.assertNotIn("average", data[0])
         self.assertNotIn("moy", data[0])

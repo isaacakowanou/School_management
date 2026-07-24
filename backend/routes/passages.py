@@ -38,6 +38,7 @@ from services.passages import (
     students_for_passage_class,
     target_classes_by_name,
 )
+from services.student_assignments import assignment_for_student_year
 
 
 router = APIRouter(tags=["passages"])
@@ -94,7 +95,8 @@ def _parent_can_read_student(db: Session, current_user: User, student_id: UUID) 
 def _row_for_student(db: Session, student: Student, school_year: str, target_school_year: str) -> PassageStudentRow:
     annual, suggested = annual_for_student(db, student, school_year)
     existing = decision_for_student_year(db, student.id, school_year)
-    current_class_name = student.school_class.name_fr if student.school_class else None
+    assignment = assignment_for_student_year(db, student.id, school_year)
+    current_class_name = assignment.class_name_snapshot if assignment is not None else None
     target_options = ["Diplômé"] if is_terminale(current_class_name) else next_class_names(current_class_name)
     targets = target_classes_by_name(db, target_school_year)
     final_decision = existing.final_decision if existing else (
@@ -119,7 +121,7 @@ def _row_for_student(db: Session, student: Student, school_year: str, target_sch
         student_id=student.id,
         student_name=f"{student.first_name} {student.last_name}",
         student_number=student.student_number,
-        current_class_id=student.class_id,
+        current_class_id=assignment.class_id if assignment is not None else None,
         current_class_name=current_class_name,
         annual_french_average=annual.french,
         annual_english_average=annual.english,
@@ -205,7 +207,10 @@ def confirm_passage(
         annual, suggested = annual_for_student(db, student, payload.school_year)
         final_decision = entry.final_decision.value
         existing = decision_for_student_year(db, student.id, payload.school_year)
-        class_name = existing.from_class_name if existing is not None else (student.school_class.name_fr if student.school_class else None)
+        assignment = assignment_for_student_year(db, student.id, payload.school_year)
+        class_name = existing.from_class_name if existing is not None else (
+            assignment.class_name_snapshot if assignment is not None else None
+        )
         if suggested.requires_decision and final_decision not in (PASSAGE_DECISION_PASS, PASSAGE_DECISION_REPEAT, PASSAGE_DECISION_GRADUATE):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"code": "passage_decision_required", "message": "Deliberation rows require an explicit decision"})
         target_name = entry.target_class_name

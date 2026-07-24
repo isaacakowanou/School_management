@@ -20,6 +20,7 @@ from models import (
     GradeItem,
     ReportCard,
     Student,
+    StudentClassAssignment,
     Teacher,
     User,
 )
@@ -99,6 +100,20 @@ class ReportBatchTests(unittest.TestCase):
         )
         self.db.add_all([self.student_a, self.student_b, self.student_c, self.student_other])
         self.db.flush()
+        self.db.add_all([
+            StudentClassAssignment(
+                student_id=student.id,
+                school_year=YEAR,
+                class_id=school_class.id,
+                class_name_snapshot=school_class.name_fr,
+            )
+            for student, school_class in (
+                (self.student_a, self.terminale),
+                (self.student_b, self.terminale),
+                (self.student_c, self.terminale),
+                (self.student_other, self.other_class),
+            )
+        ])
 
         for student, average in ((self.student_a, 14.0), (self.student_b, 11.5), (self.student_other, 13.0)):
             self.db.add(Enrollment(student_id=student.id, course_id=self.course.id))

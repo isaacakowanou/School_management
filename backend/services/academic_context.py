@@ -1,25 +1,42 @@
 """Shared academic year and trimester selection helpers.
 
-Academic views default to the latest school year that has classes and the first
-unlocked trimester for that year. Historical data remains reachable by passing
-explicit year/term filters; these helpers only choose defaults.
+``available_school_years`` is the broad selector source: any year with classes,
+courses, report cards, enrollments, or student assignments must remain
+reachable. ``current_school_year``
+is intentionally narrower: only a year with classes can become current, so a
+course-only partial setup does not move the live app into that year.
 """
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from constants import TRIMESTER_TERMS
-from models import Class, TrimesterLock
+from models import Class, Course, Enrollment, ReportCard, Student, StudentClassAssignment, TrimesterLock
 
 
 def available_school_years(db: Session) -> list[str]:
-    years = db.scalars(
-        select(Class.school_year)
-        .where(Class.deleted_at.is_(None))
-        .distinct()
-        .order_by(Class.school_year.desc())
-    ).all()
-    return list(years)
+    years = set(
+        db.scalars(select(Class.school_year).where(Class.deleted_at.is_(None))).all()
+    )
+    years.update(
+        db.scalars(select(Course.school_year).where(Course.deleted_at.is_(None))).all()
+    )
+    years.update(db.scalars(select(StudentClassAssignment.school_year)).all())
+    years.update(
+        db.scalars(
+            select(ReportCard.school_year)
+            .join(Student, ReportCard.student_id == Student.id)
+            .where(ReportCard.deleted_at.is_(None), Student.deleted_at.is_(None))
+        ).all()
+    )
+    years.update(
+        db.scalars(
+            select(Course.school_year)
+            .join(Enrollment, Enrollment.course_id == Course.id)
+            .where(Enrollment.deleted_at.is_(None))
+        ).all()
+    )
+    return sorted((year for year in years if year), reverse=True)
 
 
 def current_school_year(db: Session) -> str | None:

@@ -90,8 +90,7 @@ export default function AdminParentsPage() {
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
       {!error && parents === null && <Spinner label={t('parents.loading')} />}
-      {!error && parents && parents.length === 0 && <Empty message={t('parents.empty')} />}
-      {!error && parents && parents.length > 0 && (
+      {!error && parents && (
         <div className="list-stack">
           <div className="list-toolbar">
             <label className="toolbar-field">

@@ -35,12 +35,17 @@ def create_school_year(
 
     source_year = clean_school_year(payload.source_school_year, "source_school_year") if payload.source_school_year else None
     cloned_course_count = 0
+    skipped_course_count = 0
     unmatched_class_names: list[str] = []
     if payload.clone_courses:
         source_year = source_year or latest_course_school_year_before(db, school_year)
         if source_year is None:
             raise HTTPException(status_code=422, detail="No previous school year with courses was found")
-        cloned_course_count, unmatched_class_names = clone_course_setup_for_year(db, source_year, school_year)
+        cloned_course_count, skipped_course_count, unmatched_class_names = clone_course_setup_for_year(
+            db, source_year, school_year
+        )
+
+    nothing_to_do = not created_classes and cloned_course_count == 0
 
     db.flush()
     audit_rollover(
@@ -51,7 +56,9 @@ def create_school_year(
         skipped_classes=skipped_classes,
         source_school_year=source_year,
         cloned_course_count=cloned_course_count,
+        skipped_course_count=skipped_course_count,
         unmatched_class_names=unmatched_class_names,
+        nothing_to_do=nothing_to_do,
     )
     db.commit()
 
@@ -61,6 +68,8 @@ def create_school_year(
         created_classes=created_classes,
         skipped_classes=skipped_classes,
         cloned_course_count=cloned_course_count,
+        skipped_course_count=skipped_course_count,
         unmatched_class_names=unmatched_class_names,
         source_school_year=source_year,
+        nothing_to_do=nothing_to_do,
     )

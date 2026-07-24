@@ -6,6 +6,7 @@ import { confirmPassage, previewClassPassage } from '../api/passages.js'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
+import { useAcademicContext } from '../academic/AcademicContext.jsx'
 
 function nextSchoolYear(year) {
   const match = /^(\d{4})-(\d{4})$/.exec(year || '')
@@ -26,6 +27,7 @@ function decisionLabel(value, t) {
 
 export default function AdminPassagesPage() {
   const { t } = useTranslation()
+  const { currentSchoolYear, availableSchoolYears } = useAcademicContext()
   const [classes, setClasses] = useState(null)
   const [sourceYear, setSourceYear] = useState('')
   const [targetYear, setTargetYear] = useState('')
@@ -43,7 +45,7 @@ export default function AdminPassagesPage() {
       .then((data) => {
         if (cancelled) return
         setClasses(data)
-        const latestYear = Array.from(new Set(data.map((row) => row.school_year))).sort().at(-1) || ''
+        const latestYear = currentSchoolYear || availableSchoolYears[0] || ''
         setSourceYear(latestYear)
         setTargetYear(nextSchoolYear(latestYear))
       })
@@ -53,7 +55,7 @@ export default function AdminPassagesPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [availableSchoolYears, currentSchoolYear])
 
   const sourceClasses = useMemo(
     () => (classes || []).filter((row) => row.school_year === sourceYear),
@@ -155,7 +157,7 @@ export default function AdminPassagesPage() {
                 setTargetYear(nextSchoolYear(event.target.value))
                 setPreview(null)
               }}>
-                {Array.from(new Set(classes.map((row) => row.school_year))).sort().map((year) => (
+                {availableSchoolYears.map((year) => (
                   <option key={year} value={year}>{year}</option>
                 ))}
               </select>

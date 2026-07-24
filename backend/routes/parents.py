@@ -1,4 +1,7 @@
-"""Manage parent profiles, active student links, and score-only parent access.
+"""Manage permanent parent profiles, family links, and historical score access.
+
+Parent and linked-student identity belongs to the school and is never filtered
+by school year. Grade/report children remain explicitly period-scoped.
 
 Every parent-facing student lookup requires an active profile, active link, and
 active student. Mid-trimester grades expose individual scored items for any
@@ -13,14 +16,14 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select, union_all
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from audit import create_audit_log
 from auth import get_current_user, hash_password, invalidate_user_sessions, require_admin, require_parent
 from constants import TRIMESTER_TERMS
 from database import get_db
-from models import Class, Course, CourseResult, Enrollment, Grade, GradeItem, Parent, ReportCard, Student, StudentParent, User
+from models import Course, Enrollment, Grade, GradeItem, Parent, Student, StudentParent, User
 from schemas import (
     ParentCreate,
     ParentCreateResponse,
@@ -33,6 +36,7 @@ from schemas import (
     AdminPasswordResetResponse,
 )
 from services.account_security import reset_profile_password
+from services.academic_context import current_school_year, current_term_for_year
 from services.email_service import send_account_created_email
 from services.sms_service import send_account_created_sms
 from utils import to_student_response
@@ -101,21 +105,6 @@ def ensure_parent_linked_to_active_student(db: Session, parent: Parent, student_
     return link.student
 
 
-def latest_active_school_year(db: Session) -> str | None:
-    year_rows = union_all(
-        select(Class.school_year.label("school_year")).where(Class.deleted_at.is_(None)),
-        select(Course.school_year.label("school_year")).where(Course.deleted_at.is_(None)),
-        select(Course.school_year.label("school_year"))
-        .join(CourseResult, CourseResult.course_id == Course.id)
-        .join(Student, CourseResult.student_id == Student.id)
-        .where(CourseResult.deleted_at.is_(None), Course.deleted_at.is_(None), Student.deleted_at.is_(None)),
-        select(ReportCard.school_year.label("school_year"))
-        .join(Student, ReportCard.student_id == Student.id)
-        .where(ReportCard.deleted_at.is_(None), Student.deleted_at.is_(None)),
-    ).subquery()
-    return db.scalar(select(func.max(year_rows.c.school_year)).select_from(year_rows))
-
-
 def latest_enrollment_school_year_for_student(db: Session, student_id: UUID) -> str | None:
     return db.scalar(
         select(func.max(Course.school_year))
@@ -126,40 +115,6 @@ def latest_enrollment_school_year_for_student(db: Session, student_id: UUID) -> 
             Course.deleted_at.is_(None),
         )
     )
-
-
-def current_term_for_year(db: Session, school_year: str) -> str:
-    activity_terms = union_all(
-        select(GradeItem.term.label("term"))
-        .join(Course, GradeItem.course_id == Course.id)
-        .join(Grade, Grade.grade_item_id == GradeItem.id)
-        .join(Student, Grade.student_id == Student.id)
-        .where(
-            Course.school_year == school_year,
-            GradeItem.deleted_at.is_(None),
-            Course.deleted_at.is_(None),
-            Grade.deleted_at.is_(None),
-            Student.deleted_at.is_(None),
-        ),
-        select(ReportCard.term.label("term"))
-        .join(Student, ReportCard.student_id == Student.id)
-        .where(
-            ReportCard.school_year == school_year,
-            ReportCard.deleted_at.is_(None),
-            Student.deleted_at.is_(None),
-        ),
-        select(CourseResult.term.label("term"))
-        .join(Course, CourseResult.course_id == Course.id)
-        .join(Student, CourseResult.student_id == Student.id)
-        .where(
-            Course.school_year == school_year,
-            CourseResult.deleted_at.is_(None),
-            Course.deleted_at.is_(None),
-            Student.deleted_at.is_(None),
-        ),
-    ).subquery()
-    terms = set(db.scalars(select(activity_terms.c.term).distinct()).all())
-    return next((term for term in reversed(TRIMESTER_TERMS) if term in terms), TRIMESTER_TERMS[0])
 
 
 @router.get("", response_model=list[ParentResponse])
@@ -299,7 +254,7 @@ def list_current_parent_student_grades(
 
     if term is not None and term not in TRIMESTER_TERMS:
         raise HTTPException(status_code=422, detail="term must be a canonical trimester")
-    school_year = school_year or latest_enrollment_school_year_for_student(db, student_id) or latest_active_school_year(db)
+    school_year = school_year or latest_enrollment_school_year_for_student(db, student_id) or current_school_year(db)
     if school_year is None:
         return []
 

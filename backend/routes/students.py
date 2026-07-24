@@ -1,4 +1,9 @@
-"""Manage student identity, family links, recoverable deletion, and admin grade views.
+"""Manage permanent student identity and year-scoped academic context.
+
+Students belong to the school and list membership is never filtered by school
+year. Class assignments belong to one year and only decorate/filter the list
+when a year is selected. Grades and bulletin-related reads are historical and
+must not fall back to the student's current live class pointer.
 
 Normal lookups reject trashed students, while the separate "any student" lookup
 exists only for restore semantics. Student deletion preserves parent links and
@@ -11,7 +16,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select, union_all
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -19,7 +24,7 @@ from audit import create_audit_log
 from auth import get_current_user, require_admin
 from constants import TRIMESTER_TERMS
 from database import get_db
-from models import Class, Course, CourseResult, Enrollment, Grade, GradeItem, Parent, ReportCard, Student, StudentParent, Teacher, User
+from models import Course, Enrollment, Grade, GradeItem, Parent, Student, StudentClassAssignment, StudentParent, Teacher, User
 from schemas import (
     DeletedStudentResponse,
     LinkedParentResponse,
@@ -29,6 +34,12 @@ from schemas import (
     StudentParentLinkCreate,
     StudentResponse,
     StudentUpdate,
+)
+from services.academic_context import current_school_year, current_term_for_year
+from services.student_assignments import (
+    assignments_for_students,
+    clear_student_assignment,
+    set_student_assignment,
 )
 from utils import get_class_or_404, to_student_response
 
@@ -115,55 +126,6 @@ def generate_student_number(db: Session, year: int) -> str:
         n += 1
 
 
-def latest_active_school_year(db: Session) -> str | None:
-    year_rows = union_all(
-        select(Class.school_year.label("school_year")).where(Class.deleted_at.is_(None)),
-        select(Course.school_year.label("school_year")).where(Course.deleted_at.is_(None)),
-        select(Course.school_year.label("school_year"))
-        .join(CourseResult, CourseResult.course_id == Course.id)
-        .join(Student, CourseResult.student_id == Student.id)
-        .where(CourseResult.deleted_at.is_(None), Course.deleted_at.is_(None), Student.deleted_at.is_(None)),
-        select(ReportCard.school_year.label("school_year"))
-        .join(Student, ReportCard.student_id == Student.id)
-        .where(ReportCard.deleted_at.is_(None), Student.deleted_at.is_(None)),
-    ).subquery()
-    return db.scalar(select(func.max(year_rows.c.school_year)).select_from(year_rows))
-
-
-def current_term_for_year(db: Session, school_year: str) -> str:
-    activity_terms = union_all(
-        select(GradeItem.term.label("term"))
-        .join(Course, GradeItem.course_id == Course.id)
-        .join(Grade, Grade.grade_item_id == GradeItem.id)
-        .join(Student, Grade.student_id == Student.id)
-        .where(
-            Course.school_year == school_year,
-            GradeItem.deleted_at.is_(None),
-            Course.deleted_at.is_(None),
-            Grade.deleted_at.is_(None),
-            Student.deleted_at.is_(None),
-        ),
-        select(ReportCard.term.label("term"))
-        .join(Student, ReportCard.student_id == Student.id)
-        .where(
-            ReportCard.school_year == school_year,
-            ReportCard.deleted_at.is_(None),
-            Student.deleted_at.is_(None),
-        ),
-        select(CourseResult.term.label("term"))
-        .join(Course, CourseResult.course_id == Course.id)
-        .join(Student, CourseResult.student_id == Student.id)
-        .where(
-            Course.school_year == school_year,
-            CourseResult.deleted_at.is_(None),
-            Course.deleted_at.is_(None),
-            Student.deleted_at.is_(None),
-        ),
-    ).subquery()
-    terms = set(db.scalars(select(activity_terms.c.term).distinct()).all())
-    return next((term for term in reversed(TRIMESTER_TERMS) if term in terms), TRIMESTER_TERMS[0])
-
-
 def latest_grade_period_for_student(
     db: Session,
     student_id: UUID,
@@ -207,9 +169,20 @@ def list_students(
     academic_status: str = "active",
     school_year: str | None = None,
     class_id: UUID | None = None,
+    unassigned: bool = False,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[StudentResponse]:
+    if class_id is not None and unassigned:
+        raise HTTPException(status_code=422, detail="class_id and unassigned cannot be combined")
+    if class_id is not None:
+        selected_class = get_class_or_404(db, class_id)
+        if school_year is not None and selected_class.school_year != school_year:
+            raise HTTPException(status_code=422, detail="class_id does not belong to school_year")
+        school_year = school_year or selected_class.school_year
+    if unassigned and school_year is None:
+        raise HTTPException(status_code=422, detail="school_year is required for unassigned filtering")
+
     query = (
         select(Student)
         .options(joinedload(Student.school_class))
@@ -220,13 +193,30 @@ def list_students(
         if academic_status not in {"active", "graduated"}:
             raise HTTPException(status_code=422, detail="academic_status must be active, graduated, or all")
         query = query.where(Student.academic_status == academic_status)
-    if class_id is not None:
-        query = query.where(Student.class_id == class_id)
-    elif school_year is not None:
-        class_ids_for_year = select(Class.id).where(Class.school_year == school_year, Class.deleted_at.is_(None))
-        query = query.where(Student.class_id.in_(class_ids_for_year))
+    if school_year is not None and (class_id is not None or unassigned):
+        query = query.outerjoin(
+            StudentClassAssignment,
+            (StudentClassAssignment.student_id == Student.id)
+            & (StudentClassAssignment.school_year == school_year),
+        )
+        if class_id is not None:
+            query = query.where(StudentClassAssignment.class_id == class_id)
+        else:
+            query = query.where(StudentClassAssignment.id.is_(None))
     students = db.scalars(query).all()
-    return [to_student_response(student) for student in students]
+    assignment_by_student = (
+        assignments_for_students(db, [student.id for student in students], school_year)
+        if school_year is not None
+        else {}
+    )
+    return [
+        to_student_response(
+            student,
+            assignment=assignment_by_student.get(student.id),
+            assignment_school_year=school_year,
+        )
+        for student in students
+    ]
 
 
 @router.get("/trash", response_model=list[DeletedStudentResponse])
@@ -271,8 +261,7 @@ def create_student(
 
     educmaster_number = (payload.educmaster_number or "").strip() or None
 
-    if payload.class_id is not None:
-        get_class_or_404(db, payload.class_id)
+    school_class = get_class_or_404(db, payload.class_id) if payload.class_id is not None else None
 
     student = Student(
         first_name=first_name,
@@ -284,6 +273,8 @@ def create_student(
     )
     db.add(student)
     db.flush()
+    if school_class is not None:
+        set_student_assignment(db, student, school_class)
     create_audit_log(
         db=db,
         actor_user_id=current_user.id,
@@ -357,9 +348,19 @@ def update_student(
     if "educmaster_number" in payload.model_fields_set:
         student.educmaster_number = (payload.educmaster_number or "").strip() or None
     if "class_id" in payload.model_fields_set:
+        previous_class = student.school_class
         if payload.class_id is not None:
-            get_class_or_404(db, payload.class_id)
+            school_class = get_class_or_404(db, payload.class_id)
+            set_student_assignment(db, student, school_class)
+        else:
+            assignment_year = (payload.class_school_year or "").strip() or (
+                previous_class.school_year if previous_class is not None else None
+            )
+            if assignment_year is not None:
+                clear_student_assignment(db, student.id, assignment_year)
         student.class_id = payload.class_id
+    elif payload.class_school_year is not None:
+        raise HTTPException(status_code=422, detail="class_school_year requires class_id")
 
     new_value = {
         "first_name": student.first_name,
@@ -459,7 +460,7 @@ def list_student_grades_admin(
         school_year = school_year or selected_period[0]
         selected_term = term or selected_period[1]
     else:
-        school_year = school_year or latest_active_school_year(db)
+        school_year = school_year or current_school_year(db)
         selected_term = term or (current_term_for_year(db, school_year) if school_year is not None else None)
 
     if school_year is None:

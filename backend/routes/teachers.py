@@ -1,4 +1,7 @@
-"""Manage teacher profiles, generated credentials, and assigned-course visibility.
+"""Manage permanent teacher profiles and year-scoped course visibility.
+
+Teacher identity belongs to the school and is never filtered by school year;
+only the teacher's assigned Course rows are year/trimester scoped.
 
 Teacher creation uses a temporary forced-change credential and reports delivery
 outcomes to the admin. Self-read access is limited to the matching profile;

@@ -1,4 +1,7 @@
-"""Manage the bilingual subject catalog that constrains course setup.
+"""Manage the permanent bilingual subject catalog that constrains yearly courses.
+
+Subjects and taxonomy names belong to the school, never to a school year;
+optional class filtering checks applicability and must not redefine ownership.
 
 ``applicable_classes=null`` deliberately means every class in a level group;
 an empty list is rejected because it would be ambiguous. Class-name matching is

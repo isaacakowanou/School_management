@@ -1,4 +1,9 @@
-"""Manage GGFK classes and class-wide setup operations.
+"""Manage year-scoped GGFK class instances and class-wide setup operations.
+
+Class taxonomy names are permanent catalog data, while each ``Class`` row and
+student assignment belongs to one school year. Class rosters and counts resolve
+through ``StudentClassAssignment``; they never infer a year from the student's
+temporary live ``class_id`` pointer.
 
 Bulk creation is anchored to the locked bilingual taxonomy, while bulk
 enrollment previews the exact missing links before creating them idempotently.
@@ -18,7 +23,7 @@ from audit import create_audit_log
 from auth import require_admin
 from constants import normalize_class_name
 from database import get_db
-from models import Class, Course, Enrollment, Student, User
+from models import Class, Course, Enrollment, Student, StudentClassAssignment, User
 from schemas import (
     ClassBulkCreateRequest,
     ClassBulkCreateResponse,
@@ -31,6 +36,7 @@ from schemas import (
     StatusResponse,
 )
 from services.school_year_rollover import clean_school_year, create_ggfk_classes_for_year
+from services.student_assignments import sync_class_assignment_snapshots
 from utils import get_class_or_404
 
 
@@ -65,13 +71,14 @@ def _counts_for_classes(db: Session, class_ids: list[UUID]) -> tuple[dict, dict]
     if not class_ids:
         return {}, {}
     student_rows = db.execute(
-        select(Student.class_id, func.count(Student.id))
+        select(StudentClassAssignment.class_id, func.count(Student.id))
+        .join(Student, StudentClassAssignment.student_id == Student.id)
         .where(
-            Student.class_id.in_(class_ids),
+            StudentClassAssignment.class_id.in_(class_ids),
             Student.deleted_at.is_(None),
             Student.academic_status == "active",
         )
-        .group_by(Student.class_id)
+        .group_by(StudentClassAssignment.class_id)
     ).all()
     course_rows = db.execute(
         select(Course.class_id, func.count(Course.id))
@@ -220,8 +227,11 @@ def _compute_class_enrollment_plan(db: Session, school_class: Class) -> dict:
     """
     student_ids = list(
         db.scalars(
-            select(Student.id).where(
-                Student.class_id == school_class.id,
+            select(Student.id)
+            .join(StudentClassAssignment, StudentClassAssignment.student_id == Student.id)
+            .where(
+                StudentClassAssignment.class_id == school_class.id,
+                StudentClassAssignment.school_year == school_class.school_year,
                 Student.deleted_at.is_(None),
                 Student.academic_status == "active",
             )
@@ -288,7 +298,7 @@ def bulk_enroll_class_students(
 ) -> ClassBulkEnrollResponse:
     """Enroll every student in the class into every course in the class (A1.11).
 
-    Scope: students with student.class_id == class_id, courses with
+    Scope: students assigned to the class for its school year, courses with
     course.class_id == class_id AND course.school_year == class.school_year.
     Idempotent — existing (student_id, course_id) pairs are skipped, no
     duplicate rows, no 409. Empty class (0 students or 0 courses) returns 200
@@ -388,7 +398,11 @@ def update_class(
 
     new_value = _class_snapshot(school_class)
     try:
+        sync_class_assignment_snapshots(db, school_class)
         db.flush()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL) from exc
@@ -416,7 +430,9 @@ def delete_class(
 ) -> StatusResponse:
     school_class = get_class_or_404(db, class_id)
     student_count = db.scalar(
-        select(func.count(Student.id)).where(Student.class_id == class_id, Student.deleted_at.is_(None))
+        select(func.count(StudentClassAssignment.id))
+        .join(Student, StudentClassAssignment.student_id == Student.id)
+        .where(StudentClassAssignment.class_id == class_id, Student.deleted_at.is_(None))
     )
     course_count = db.scalar(
         select(func.count(Course.id)).where(Course.class_id == class_id, Course.deleted_at.is_(None))

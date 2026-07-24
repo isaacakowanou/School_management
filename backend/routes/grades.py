@@ -1,4 +1,8 @@
-"""Persist teacher-entered scores and trigger privacy-safe availability notices.
+"""Persist historical teacher-entered scores and availability notices.
+
+Grades remain attached to the year-scoped course/item context in which they
+were recorded; year selectors never reinterpret them through a student's live
+class assignment.
 
 Only the assigned teacher (or an admin acting through that course) may write
 scores for enrolled students. In batch entry, ``score=null`` means an audited

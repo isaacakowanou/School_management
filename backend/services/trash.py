@@ -51,6 +51,7 @@ from models import (
     ReportConductItem,
     ReportWorkHabitItem,
     Student,
+    StudentClassAssignment,
     StudentParent,
     StudentPassageDecision,
     Subject,
@@ -83,7 +84,11 @@ RECOVERABLE_MODELS = {
 
 # Hard-purge-only children do not appear independently in Corbeille and cannot
 # be restored, but their non-nullable ownership FKs must participate in purge.
-PURGE_ONLY_MODELS = {"pdf_jobs": PdfJob, "student_passage_decisions": StudentPassageDecision}
+PURGE_ONLY_MODELS = {
+    "pdf_jobs": PdfJob,
+    "student_class_assignments": StudentClassAssignment,
+    "student_passage_decisions": StudentPassageDecision,
+}
 PURGE_MODELS = {**RECOVERABLE_MODELS, **PURGE_ONLY_MODELS}
 
 PURGE_ORDER = [
@@ -97,6 +102,7 @@ PURGE_ORDER = [
     "grade_items",
     "enrollments",
     "student_parents",
+    "student_class_assignments",
     "student_passage_decisions",
     "courses",
     "students",
@@ -514,6 +520,15 @@ def _expand_purge_plan_dependencies(db: Session, plan: dict[str, set[UUID]]) -> 
         )
         _add_ids(
             plan,
+            "student_class_assignments",
+            db.scalars(
+                select(StudentClassAssignment.id).where(
+                    StudentClassAssignment.student_id.in_(student_ids)
+                )
+            ).all(),
+        )
+        _add_ids(
+            plan,
             "student_passage_decisions",
             db.scalars(select(StudentPassageDecision.id).where(StudentPassageDecision.student_id.in_(student_ids))).all(),
         )
@@ -640,6 +655,11 @@ def _null_external_references(db: Session, plan: dict[str, set[UUID]]) -> None:
         if plan["courses"]:
             course_update = course_update.where(Course.id.not_in(plan["courses"]))
         db.execute(course_update.values(class_id=None))
+        db.execute(
+            update(StudentClassAssignment)
+            .where(StudentClassAssignment.class_id.in_(class_ids))
+            .values(class_id=None)
+        )
         db.execute(
             update(StudentPassageDecision)
             .where(StudentPassageDecision.from_class_id.in_(class_ids))

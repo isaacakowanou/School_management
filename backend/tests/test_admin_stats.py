@@ -73,7 +73,7 @@ class AdminStatsTests(unittest.TestCase):
             403,
         )
 
-    def test_counts_exclude_deleted_and_current_term_uses_latest_activity(self):
+    def test_counts_exclude_deleted_and_current_term_uses_shared_context(self):
         deleted_at = datetime.now(timezone.utc)
         school_class = Class(
             name_fr="6ème", name_en="JSS1", school_level="college", sort_order=1, school_year="2026-2027"
@@ -172,8 +172,8 @@ class AdminStatsTests(unittest.TestCase):
         self.assertEqual(data["teachers"], 1)
         self.assertEqual(data["parents"], 1)
         self.assertEqual(data["classes"], 1)
-        self.assertEqual(data["current_term"], {"name": "2ème Trimestre", "trimester": 2})
-        self.assertEqual(data["bulletins"], {"generated": 2, "approved": 0, "sent": 1})
+        self.assertEqual(data["current_term"], {"name": "1er Trimestre", "trimester": 1})
+        self.assertEqual(data["bulletins"], {"generated": 1, "approved": 1, "sent": 0})
 
     def test_no_active_school_year_returns_null_current_term(self):
         response = self.client.get("/api/v1/admin/stats", headers=self._admin())

@@ -1,11 +1,12 @@
 import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
 
 // GET /api/v1/students (admin) -> [{ id, first_name, last_name, grade_level, student_number }]
-export function listStudents({ academicStatus, schoolYear, classId } = {}) {
+export function listStudents({ academicStatus, schoolYear, classId, unassigned } = {}) {
   const params = new URLSearchParams()
   if (academicStatus) params.set('academic_status', academicStatus)
   if (schoolYear) params.set('school_year', schoolYear)
   if (classId) params.set('class_id', classId)
+  if (unassigned) params.set('unassigned', 'true')
   const qs = params.toString()
   return apiGet(`/students${qs ? `?${qs}` : ''}`)
 }
@@ -52,13 +53,14 @@ export function restoreStudent(studentId) {
 }
 
 // PUT /api/v1/students/{student_id} (admin)
-export function updateStudent(studentId, { firstName, lastName, studentNumber, schoolLevel, classId, educmasterNumber }) {
+export function updateStudent(studentId, { firstName, lastName, studentNumber, schoolLevel, classId, classSchoolYear, educmasterNumber }) {
   return apiPut(`/students/${studentId}`, {
     first_name: firstName.trim(),
     last_name: lastName.trim(),
     student_number: studentNumber.trim(),
     school_level: schoolLevel || null,
     class_id: classId || null,
+    class_school_year: classSchoolYear || null,
     educmaster_number: (educmasterNumber || '').trim() || null,
   })
 }

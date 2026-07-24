@@ -22,6 +22,7 @@ from models import (
     ReportCard,
     ReportCardCourse,
     Student,
+    StudentClassAssignment,
     StudentParent,
     StudentPassageDecision,
     Teacher,
@@ -123,6 +124,12 @@ def _seed_graduated_student(db):
     )
     db.add(student)
     db.flush()
+    db.add(StudentClassAssignment(
+        student_id=student.id,
+        school_year=SOURCE_YEAR,
+        class_id=source_class.id,
+        class_name_snapshot=source_class.name_fr,
+    ))
     db.add(StudentParent(student=student, parent=parent, relationship="Guardian"))
 
     course = Course(

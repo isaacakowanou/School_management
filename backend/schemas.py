@@ -310,8 +310,10 @@ class SchoolYearCreateResponse(BaseModel):
     created_classes: list[str]
     skipped_classes: list[str]
     cloned_course_count: int = 0
+    skipped_course_count: int = 0
     unmatched_class_names: list[str] = []
     source_school_year: str | None = None
+    nothing_to_do: bool = False
 
 
 class ClassEnrollmentPreviewResponse(BaseModel):
@@ -471,6 +473,7 @@ class StudentUpdate(BaseModel):
     student_number: str | None = None
     educmaster_number: str | None = None
     class_id: UUID | None = None
+    class_school_year: str | None = None
 
 
 class StudentResponse(BaseModel):
@@ -484,6 +487,8 @@ class StudentResponse(BaseModel):
     class_name: str | None = None
     academic_status: str = "active"
     historical_class_name: str | None = None
+    assignment_school_year: str | None = None
+    is_unassigned_for_year: bool = False
 
 
 class DeletedStudentResponse(StudentResponse):
@@ -644,6 +649,8 @@ class CourseCloneYearRequest(BaseModel):
 class CourseCloneYearResponse(BaseModel):
     status: str
     created_count: int
+    skipped_count: int = 0
+    nothing_to_do: bool = False
     # Source class names that had no same-named class in the target year; the
     # cloned courses were created with class_id null.
     unmatched_class_names: list[str]

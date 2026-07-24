@@ -32,6 +32,7 @@ export default function AdminStudentsPage() {
       academicStatus: statusFilter,
       schoolYear: statusFilter === 'active' ? selectedSchoolYear : undefined,
       classId: classFilter && classFilter !== '__none__' ? classFilter : undefined,
+      unassigned: statusFilter === 'active' && classFilter === '__none__',
     })
     setStudents(data)
     return data
@@ -80,8 +81,6 @@ export default function AdminStudentsPage() {
     return (students || []).filter((student) => {
       const haystack = `${student.first_name} ${student.last_name} ${student.student_number || ''}`.toLowerCase()
       if (query && !haystack.includes(query)) return false
-      if (classFilter === '__none__') return !student.class_id
-      if (classFilter && student.class_id !== classFilter) return false
       return true
     })
   }, [students, search, classFilter])
@@ -127,8 +126,7 @@ export default function AdminStudentsPage() {
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
       {!error && students === null && <Spinner label={t('students.loading')} />}
-      {!error && students && students.length === 0 && <Empty message={t('students.empty')} />}
-      {!error && students && students.length > 0 && (
+      {!error && students && (
         <div className="list-stack">
           <div className="list-toolbar">
             <label className="toolbar-field">
@@ -167,7 +165,7 @@ export default function AdminStudentsPage() {
                 }}
               >
                 <option value="">{t('common.all')}</option>
-                <option value="__none__">{t('common.unassigned')}</option>
+                <option value="__none__">{t('students.unassignedForYearFilter')}</option>
                 {classes.map((cls) => (
                   <option key={cls.id} value={cls.id}>
                     {cls.name_fr}{cls.name_en ? ` (${cls.name_en})` : ''} · {cls.school_year}
@@ -181,6 +179,7 @@ export default function AdminStudentsPage() {
                 value={statusFilter}
                 onChange={(event) => {
                   setStatusFilter(event.target.value)
+                  setClassFilter('')
                   setVisibleCount(25)
                 }}
               >
@@ -211,7 +210,9 @@ export default function AdminStudentsPage() {
                         {student.first_name} {student.last_name}
                       </td>
                       <td className="nowrap">{student.student_number}</td>
-                      <td className="nowrap">{student.class_name || '—'}</td>
+                      <td className="nowrap">
+                        {student.class_name || t('students.unassignedForYear', { year: selectedSchoolYear })}
+                      </td>
                       <td className="nowrap row-actions">
                         <Link className="link-action" to={`/admin/students/${student.id}`}>
                           {t('common.open')}

@@ -154,6 +154,8 @@ class SchoolYearRolloverArchiveTests(unittest.TestCase):
         self.assertEqual(body["school_year"], TARGET_YEAR)
         self.assertEqual(len(body["created_classes"]), 18)
         self.assertEqual(body["cloned_course_count"], 1)
+        self.assertEqual(body["skipped_course_count"], 0)
+        self.assertFalse(body["nothing_to_do"])
 
         clone = self.db.scalar(select(Course).where(Course.code == f"{self.source_course.code}-{TARGET_YEAR}"))
         self.assertIsNotNone(clone)
@@ -167,6 +169,68 @@ class SchoolYearRolloverArchiveTests(unittest.TestCase):
         self.assertEqual(context.status_code, 200, context.text)
         self.assertEqual(context.json()["current_school_year"], TARGET_YEAR)
         self.assertIn(TARGET_YEAR, context.json()["available_school_years"])
+
+    def test_complete_partial_course_only_year_fills_missing_setup_without_409(self):
+        self.db.add(
+            Course(
+                name="Existing partial course",
+                code="ZZ-TEST-PARTIAL-EXISTING",
+                teacher_id=self.teacher.id,
+                term="1er Trimestre",
+                school_year=TARGET_YEAR,
+            )
+        )
+        self.db.commit()
+
+        response = self.client.post(
+            "/api/v1/school-years",
+            json={
+                "school_year": TARGET_YEAR,
+                "clone_courses": True,
+                "source_school_year": SOURCE_YEAR,
+            },
+            headers=self._headers(),
+        )
+
+        self.assertEqual(response.status_code, 201, response.text)
+        body = response.json()
+        self.assertEqual(len(body["created_classes"]), 18)
+        self.assertEqual(body["cloned_course_count"], 1)
+        self.assertEqual(body["skipped_course_count"], 0)
+        self.assertFalse(body["nothing_to_do"])
+        self.assertIsNotNone(
+            self.db.scalar(select(Course).where(Course.code == f"{self.source_course.code}-{TARGET_YEAR}"))
+        )
+
+    def test_complete_school_year_twice_is_idempotent(self):
+        first = self.client.post(
+            "/api/v1/school-years",
+            json={
+                "school_year": TARGET_YEAR,
+                "clone_courses": True,
+                "source_school_year": SOURCE_YEAR,
+            },
+            headers=self._headers(),
+        )
+        self.assertEqual(first.status_code, 201, first.text)
+
+        second = self.client.post(
+            "/api/v1/school-years",
+            json={
+                "school_year": TARGET_YEAR,
+                "clone_courses": True,
+                "source_school_year": SOURCE_YEAR,
+            },
+            headers=self._headers(),
+        )
+
+        self.assertEqual(second.status_code, 201, second.text)
+        body = second.json()
+        self.assertEqual(body["created_classes"], [])
+        self.assertEqual(len(body["skipped_classes"]), 18)
+        self.assertEqual(body["cloned_course_count"], 0)
+        self.assertEqual(body["skipped_course_count"], 1)
+        self.assertTrue(body["nothing_to_do"])
 
     def test_archives_return_past_records_and_regenerate_uses_existing_lifecycle(self):
         self.client.post(

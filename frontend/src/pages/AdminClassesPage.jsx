@@ -12,6 +12,7 @@ import {
 } from '../api/classes.js'
 import { SCHOOL_LEVELS } from '../constants/schoolLevels.js'
 import { GGFK_CLASS_NAMES, normalizeClassName } from '../constants/ggfkClasses.js'
+import { useAcademicContext } from '../academic/AcademicContext.jsx'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
@@ -26,6 +27,7 @@ function emptyQuickAdd() {
 
 export default function AdminClassesPage() {
   const { t } = useTranslation()
+  const { currentSchoolYear, availableSchoolYears, refreshAcademicContext } = useAcademicContext()
   const [classes, setClasses] = useState(null)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
@@ -65,8 +67,7 @@ export default function AdminClassesPage() {
       .then((data) => {
         if (cancelled) return
         setClasses(data)
-        const years = Array.from(new Set(data.map((c) => c.school_year))).sort().reverse()
-        setSelectedYear(years[0] || DEFAULT_SCHOOL_YEAR)
+        setSelectedYear(currentSchoolYear || availableSchoolYears[0] || DEFAULT_SCHOOL_YEAR)
       })
       .catch((err) => {
         if (!cancelled) setError(err.message)
@@ -74,13 +75,13 @@ export default function AdminClassesPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [availableSchoolYears, currentSchoolYear])
 
   const years = useMemo(() => {
-    const set = new Set((classes || []).map((c) => c.school_year))
+    const set = new Set(availableSchoolYears)
     if (selectedYear) set.add(selectedYear)
     return Array.from(set).sort().reverse()
-  }, [classes, selectedYear])
+  }, [availableSchoolYears, selectedYear])
 
   const classesByLevel = useMemo(() => {
     const map = {}
@@ -218,6 +219,7 @@ export default function AdminClassesPage() {
     try {
       const result = await bulkCreateClasses({ schoolYear: bulkYear })
       await refresh()
+      await refreshAcademicContext()
       setShowBulkDialog(false)
       setSelectedYear(bulkYear.trim())
       let text = t('classes.bulkCreated', { count: result.created.length, year: bulkYear.trim() })
@@ -491,7 +493,7 @@ export default function AdminClassesPage() {
                 />
               </label>
               <datalist id="bulk-school-year-options">
-                {SCHOOL_YEAR_SUGGESTIONS.map((year) => (
+                {Array.from(new Set([...availableSchoolYears, ...SCHOOL_YEAR_SUGGESTIONS])).map((year) => (
                   <option key={year} value={year} />
                 ))}
               </datalist>

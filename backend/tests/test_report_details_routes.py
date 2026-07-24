@@ -21,6 +21,7 @@ from models import (
     ReportConductItem,
     ReportWorkHabitItem,
     Student,
+    StudentClassAssignment,
     StudentParent,
     Teacher,
     User,
@@ -81,7 +82,17 @@ class ReportDetailsRouteTests(unittest.TestCase):
         )
         self.db.add_all([self.parent, self.teacher, self.school_class, self.student])
         self.db.flush()
-        self.db.add(StudentParent(student=self.student, parent=self.parent, relationship="Guardian"))
+        self.db.add_all(
+            [
+                StudentParent(student=self.student, parent=self.parent, relationship="Guardian"),
+                StudentClassAssignment(
+                    student=self.student,
+                    school_year=self.school_class.school_year,
+                    school_class=self.school_class,
+                    class_name_snapshot=self.school_class.name_fr,
+                ),
+            ]
+        )
 
         self.course = Course(
             name="Mathematics", code="MATH-DET", teacher=self.teacher,

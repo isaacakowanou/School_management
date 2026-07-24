@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from auth import hash_password
 from database import get_db
 from main import app
-from models import AuditLog, Base, Class, Course, Enrollment, Student, Teacher, User
+from models import AuditLog, Base, Class, Course, Enrollment, Student, StudentClassAssignment, Teacher, User
 
 SCHOOL_YEAR = "2026-2027"
 OTHER_YEAR = "2027-2028"
@@ -78,6 +78,18 @@ class BulkEnrollClassStudentsTests(unittest.TestCase):
             first_name="Solo", last_name="X", student_number="S6-NC",
         )
         self.db.add_all(self.students + [self.unassigned])
+        self.db.flush()
+        self.db.add_all(
+            [
+                StudentClassAssignment(
+                    student_id=student.id,
+                    school_year=SCHOOL_YEAR,
+                    class_id=self.sixieme.id,
+                    class_name_snapshot=self.sixieme.name_fr,
+                )
+                for student in self.students
+            ]
+        )
 
         # 2 courses tagged with 6ème for this year.
         self.courses = [
@@ -180,10 +192,16 @@ class BulkEnrollClassStudentsTests(unittest.TestCase):
 
     def test_class_with_students_but_no_courses_returns_empty(self):
         # Give 5ème students but no courses.
-        self.db.add(
-            Student(first_name="Solo", last_name="Y",
-                    student_number="S5-1", class_id=self.cinquieme.id)
-        )
+        student = Student(first_name="Solo", last_name="Y",
+                          student_number="S5-1", class_id=self.cinquieme.id)
+        self.db.add(student)
+        self.db.flush()
+        self.db.add(StudentClassAssignment(
+            student_id=student.id,
+            school_year=SCHOOL_YEAR,
+            class_id=self.cinquieme.id,
+            class_name_snapshot=self.cinquieme.name_fr,
+        ))
         self.db.commit()
         body = self._post(class_id=self.cinquieme.id).json()
         self.assertEqual(body["status"], "empty")

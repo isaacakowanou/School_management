@@ -90,8 +90,7 @@ export default function AdminTeachersPage() {
       {notice && <p className="grade-summary">{notice}</p>}
       {error && <ErrorBanner message={error} />}
       {!error && teachers === null && <Spinner label={t('teachers.loading')} />}
-      {!error && teachers && teachers.length === 0 && <Empty message={t('teachers.empty')} />}
-      {!error && teachers && teachers.length > 0 && (
+      {!error && teachers && (
         <div className="list-stack">
           <div className="list-toolbar">
             <label className="toolbar-field">

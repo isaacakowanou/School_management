@@ -1,5 +1,11 @@
 """Relational persistence model for school records, snapshots, security, and Trash.
 
+Data scope is an invariant: users, people, subjects, and taxonomy identities are
+permanent school data; classes, courses, enrollments, assignments, grade items,
+and trimester locks belong to one school year; grades, results, bulletins,
+passage decisions, and audit entries are historical records. A year selector may
+change a permanent person's contextual assignment, never their list membership.
+
 Academic/setup entities use ``deleted_at`` and optional ``deleted_batch_id`` so
 normal queries can hide recoverable data while Nettoyage restores dependency
 bundles. Bulletin courses and assessment rows are snapshots: they preserve the
@@ -108,6 +114,7 @@ class Class(Base):
     )
 
     students: Mapped[list["Student"]] = orm_relationship(back_populates="school_class")
+    student_assignments: Mapped[list["StudentClassAssignment"]] = orm_relationship(back_populates="school_class")
     courses: Mapped[list["Course"]] = orm_relationship(back_populates="school_class")
 
 
@@ -140,6 +147,7 @@ class Student(Base):
     course_results: Mapped[list["CourseResult"]] = orm_relationship(back_populates="student")
     report_cards: Mapped[list["ReportCard"]] = orm_relationship(back_populates="student")
     school_class: Mapped["Class | None"] = orm_relationship(back_populates="students")
+    class_assignments: Mapped[list["StudentClassAssignment"]] = orm_relationship(back_populates="student")
     passage_decisions: Mapped[list["StudentPassageDecision"]] = orm_relationship(back_populates="student")
 
 
@@ -314,6 +322,36 @@ class Enrollment(Base):
 
     student: Mapped["Student"] = orm_relationship(back_populates="enrollments")
     course: Mapped["Course"] = orm_relationship(back_populates="enrollments")
+
+
+class StudentClassAssignment(Base):
+    """Authoritative class assignment for one student and one school year.
+
+    ``Student.class_id`` remains a temporary live pointer for compatibility.
+    Year-specific reads use this table. The class FK is nullable so a historical
+    assignment label survives a later class purge through ``class_name_snapshot``.
+    """
+
+    __tablename__ = "student_class_assignments"
+    __table_args__ = (
+        UniqueConstraint("student_id", "school_year", name="uq_student_class_assignment_year"),
+        sa.Index("ix_student_class_assignments_year_class", "school_year", "class_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("students.id"), nullable=False)
+    school_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    class_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True
+    )
+    class_name_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    student: Mapped["Student"] = orm_relationship(back_populates="class_assignments")
+    school_class: Mapped["Class | None"] = orm_relationship(back_populates="student_assignments")
 
 
 class GradeItem(Base):

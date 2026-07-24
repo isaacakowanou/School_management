@@ -43,6 +43,7 @@ from models import (
     ReportGenerationJob,
     ReportWorkHabitItem,
     Student,
+    StudentClassAssignment,
     StudentParent,
     StudentPassageDecision,
     User,
@@ -638,12 +639,19 @@ def generate_report_card(
 
 
 def _class_students(db: Session, class_id: UUID, school_year: str | None = None) -> list[Student]:
+    assignment_query = (
+        select(Student)
+        .join(StudentClassAssignment, StudentClassAssignment.student_id == Student.id)
+        .where(
+            StudentClassAssignment.class_id == class_id,
+            Student.deleted_at.is_(None),
+            Student.academic_status == "active",
+        )
+    )
+    if school_year is not None:
+        assignment_query = assignment_query.where(StudentClassAssignment.school_year == school_year)
     students = list(
-        db.scalars(
-            select(Student)
-            .where(Student.class_id == class_id, Student.deleted_at.is_(None), Student.academic_status == "active")
-            .order_by(Student.last_name, Student.first_name)
-        ).all()
+        db.scalars(assignment_query.order_by(Student.last_name, Student.first_name)).all()
     )
     by_id = {student.id: student for student in students}
     if school_year is not None:
@@ -866,8 +874,14 @@ def _job_result_totals(class_rows: list[dict]) -> dict:
 
 def _unassigned_student_count(db: Session, school_year: str) -> int:
     return db.scalar(
-        select(func.count(Student.id)).where(
-            Student.class_id.is_(None),
+        select(func.count(Student.id))
+        .outerjoin(
+            StudentClassAssignment,
+            (StudentClassAssignment.student_id == Student.id)
+            & (StudentClassAssignment.school_year == school_year),
+        )
+        .where(
+            StudentClassAssignment.id.is_(None),
             Student.academic_status == "active",
             Student.deleted_at.is_(None),
         )

@@ -23,6 +23,7 @@ import StatusBadge from '../components/StatusBadge.jsx'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Empty from '../components/Empty.jsx'
+import { bulkGenerationSummaryValues } from '../utils/reportGeneration.js'
 
 export default function AdminClassReportsPage() {
   const { t } = useTranslation()
@@ -39,6 +40,7 @@ export default function AdminClassReportsPage() {
   const [trimesterLocks, setTrimesterLocks] = useState([])
   const [updatingLockTerm, setUpdatingLockTerm] = useState(null)
   const [lockError, setLockError] = useState(null)
+  const [partialGenerationPrompt, setPartialGenerationPrompt] = useState(null)
   const {
     selectedSchoolYear,
     selectedTerm,
@@ -173,13 +175,15 @@ export default function AdminClassReportsPage() {
           : t('classReports.confirmSend', { count: status.approved_count })
     if (!window.confirm(confirmText)) return
 
-    let generatePartial = false
     if (kind === 'generate' && partialRows.length > 0) {
-      generatePartial = window.confirm(
-        t('classReports.confirmGeneratePartial', { count: partialRows.length }),
-      )
+      setPartialGenerationPrompt({ scope: 'class', count: partialRows.length })
+      return
     }
 
+    await executeBatch(kind, false)
+  }
+
+  async function executeBatch(kind, generatePartial) {
     setRunningAction(kind)
     try {
       if (kind === 'generate') {
@@ -245,8 +249,10 @@ export default function AdminClassReportsPage() {
     setActionMessage(null)
     setActionError(null)
     if (!window.confirm(t('classReports.confirmBulkGenerate', { schoolYear, term: selectedTerm }))) return
-    const generatePartial = window.confirm(t('classReports.confirmBulkGeneratePartial'))
+    setPartialGenerationPrompt({ scope: 'bulk' })
+  }
 
+  async function executeBulkGenerate(generatePartial) {
     setRunningAction('bulk-generate')
     try {
       const job = await createBulkReportGenerationJob({ schoolYear, term: selectedTerm, generatePartial })
@@ -263,19 +269,24 @@ export default function AdminClassReportsPage() {
         setActionError(t('classReports.bulkTimeout'))
         return
       }
-      const totals = latest.result?.totals || {}
       setActionMessage(
-        t('classReports.bulkGenerated', {
-          count: totals.generated_count || 0,
-          failed: totals.failed_count || 0,
-          unassigned: latest.result?.unassigned_student_count || 0,
-        }),
+        t('classReports.bulkGenerated', bulkGenerationSummaryValues(latest.result)),
       )
       await loadStatus()
     } catch (err) {
       setActionError(err.message)
     } finally {
       setRunningAction(null)
+    }
+  }
+
+  function handlePartialGenerationChoice(generatePartial) {
+    const prompt = partialGenerationPrompt
+    setPartialGenerationPrompt(null)
+    if (prompt?.scope === 'class') {
+      executeBatch('generate', generatePartial)
+    } else if (prompt?.scope === 'bulk') {
+      executeBulkGenerate(generatePartial)
     }
   }
 
@@ -588,6 +599,40 @@ export default function AdminClassReportsPage() {
             </div>
           )}
         </>
+      )}
+
+      {partialGenerationPrompt && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setPartialGenerationPrompt(null)}
+        >
+          <div
+            className="card modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="partial-generation-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="partial-generation-title">{t('classReports.partialModalTitle')}</h3>
+            <p>
+              {partialGenerationPrompt.scope === 'class'
+                ? t('classReports.partialModalClassBody', { count: partialGenerationPrompt.count })
+                : t('classReports.partialModalBulkBody')}
+            </p>
+            <div className="form-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setPartialGenerationPrompt(null)}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => handlePartialGenerationChoice(false)}>
+                {t('classReports.generateWithoutPartial')}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => handlePartialGenerationChoice(true)}>
+                {t('classReports.includePartial')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   )

@@ -1,4 +1,7 @@
-"""Admin read API for the append-only audit journal.
+"""Admin read API for the permanent, append-only historical audit journal.
+
+Audit entries are never school-year scoped or reconstructed from current
+academic rows; their stored old/new payloads are the recorded event history.
 
 Operational events are the default so high-volume login activity does not bury
 school actions. Authentication and all-event views remain explicit filters;

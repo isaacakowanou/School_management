@@ -287,7 +287,10 @@ export default function AdminStudentDetailPage() {
 
     setSavingEdit(true)
     try {
-      await updateStudent(studentId, editForm)
+      await updateStudent(studentId, {
+        ...editForm,
+        classSchoolYear: editClassSchoolYear || currentSchoolYear,
+      })
       const refreshed = await getStudent(studentId)
       setStudent(refreshed)
       setEditForm(studentToForm(refreshed))

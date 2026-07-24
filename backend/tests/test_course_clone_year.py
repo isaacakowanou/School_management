@@ -249,20 +249,38 @@ class CloneYearTests(unittest.TestCase):
             copied | transformed | intentionally_excluded,
         )
 
-    def test_clone_refuses_non_empty_target_year(self):
+    def test_clone_skips_existing_target_clones_and_creates_missing_courses(self):
         self.db.add(
             Course(
-                name="Existing",
-                code="EXIST",
+                name="Existing Math Clone",
+                code=f"MATH6-{TARGET_YEAR}",
                 teacher_id=self.teacher.id,
                 term="1er Trimestre",
                 school_year=TARGET_YEAR,
             )
         )
         self.db.commit()
+
         r = self._clone()
-        self.assertEqual(r.status_code, 409)
-        self.assertEqual(r.json()["detail"]["course_count"], 1)
+
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(r.json()["created_count"], 2)
+        self.assertEqual(r.json()["skipped_count"], 1)
+        clones = self.db.scalars(select(Course).where(Course.school_year == TARGET_YEAR)).all()
+        self.assertEqual(len(clones), 3)
+
+    def test_clone_all_existing_target_clones_is_idempotent_noop(self):
+        first = self._clone()
+        self.assertEqual(first.status_code, 201, first.text)
+
+        second = self._clone()
+
+        self.assertEqual(second.status_code, 201, second.text)
+        self.assertEqual(second.json()["created_count"], 0)
+        self.assertEqual(second.json()["skipped_count"], 3)
+        self.assertTrue(second.json()["nothing_to_do"])
+        clones = self.db.scalars(select(Course).where(Course.school_year == TARGET_YEAR)).all()
+        self.assertEqual(len(clones), 3)
 
     def test_clone_refuses_same_year(self):
         r = self._clone(target_year=SOURCE_YEAR)

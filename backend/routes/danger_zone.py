@@ -5,9 +5,10 @@ typed confirmation, tags every selected row with one ``DeletionBatch``, and
 leaves restoration to the unified Corbeille. Production requires the explicit
 ``ENABLE_DANGER_ZONE`` opt-in. Student/class/parent boundaries are deliberately
 conservative so a broad setup cleanup does not silently include unrelated
-people. Trashing teacher/parent profiles invalidates their sessions through the
-token-version mechanism documented in ``auth.py``; restore never resurrects an
-old JWT.
+people. Trashing teacher/parent profiles soft-deletes their one-to-one login
+accounts and invalidates sessions through the token-version mechanism in
+``auth.py``. Restore uses unified Corbeille conflict checks and never revives
+an old JWT.
 """
 
 import os
@@ -48,6 +49,8 @@ from schemas import (
     DangerZoneSearchResult,
     StatusResponse,
 )
+from services.account_lifecycle import soft_delete_profile_account
+from services.trash import restore_batch_entry
 
 
 router = APIRouter(prefix="/admin/danger-zone", tags=["danger zone"])
@@ -513,6 +516,7 @@ def _mark_plan(db: Session, plan: dict[str, set[UUID]], *, batch_id: UUID, delet
             # See auth.py for the token-version contract. Restoring the profile
             # clears trash fields only; previously issued sessions stay dead.
             if isinstance(row, (Teacher, Parent)):
+                soft_delete_profile_account(row, deleted_at)
                 invalidate_user_sessions(row.user)
         counts[table] = len(rows)
     return counts
@@ -636,28 +640,6 @@ def restore_deletion_batch(
     batch = db.get(DeletionBatch, batch_id)
     if batch is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deletion batch not found")
-    if batch.restored_at is not None:
-        return StatusResponse(status="ok", message="Deletion batch already restored")
-
-    restored_counts = {}
-    for table, model in RECOVERABLE_MODELS.items():
-        rows = db.scalars(select(model).where(model.deleted_batch_id == batch_id)).all()
-        if not rows:
-            continue
-        for row in rows:
-            row.deleted_at = None
-            row.deleted_batch_id = None
-        restored_counts[table] = len(rows)
-    batch.restored_at = datetime.now(timezone.utc)
-    batch.restored_by_user_id = current_user.id
-    create_audit_log(
-        db=db,
-        actor_user_id=current_user.id,
-        action="danger_zone_restored",
-        entity_type=batch.entity_type,
-        entity_id=batch.entity_id,
-        old_value={"batch_id": batch.id, "target_label": batch.target_label},
-        new_value={"restored_counts": restored_counts},
-    )
+    restore_batch_entry(db, batch_id=batch_id, current_user=current_user)
     db.commit()
     return StatusResponse(status="ok", message="Deletion batch restored")

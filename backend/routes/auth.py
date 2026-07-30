@@ -1,14 +1,14 @@
 """Authentication lifecycle routes for login, profiles, and password recovery.
 
 Login supports email, teacher employee number, and parent phone while preserving
-anti-enumeration: unknown accounts, bad passwords, and missing or trashed role
-profiles receive the same generic failure. Voluntary password changes require
+anti-enumeration: unknown accounts, deleted users, bad passwords, and missing
+or trashed role profiles receive the same generic failure. Voluntary password changes require
 the current password; forced first-login changes and OTP/email resets do not
 because the temporary password, OTP, or reset token has just established
 identity. Every successful password event increments ``token_version`` so old
 JWTs stop working. Email recovery also returns the same response for known,
-unknown, missing-profile, and trashed-profile accounts; invalid role profiles
-receive no token and no email.
+unknown, deleted-user, missing-profile, and trashed-profile accounts; invalid
+role profiles receive no token and no email.
 """
 
 import logging
@@ -69,6 +69,8 @@ def _identifier_type(identifier: str) -> str:
 
 
 def _profile_is_active(user: User, db: Session) -> bool:
+    if user.deleted_at is not None:
+        return False
     if user.role == "teacher":
         profile = db.scalar(select(Teacher).where(Teacher.user_id == user.id))
         return profile is not None and profile.deleted_at is None
@@ -125,14 +127,20 @@ async def login(request: Request, db: Session = Depends(get_db)) -> LoginRespons
     identifier, password = await read_login_credentials(request)
 
     # 1. Email lookup (works for admins and emailed teachers/parents).
-    user = db.scalar(select(User).where(User.email == identifier))
+    user = db.scalar(
+        select(User).where(User.email == identifier, User.deleted_at.is_(None))
+    )
 
     # 2. Teacher employee_number lookup.
     if user is None:
         teacher = db.scalar(
             select(Teacher)
             .join(Teacher.user)
-            .where(Teacher.employee_number == identifier, Teacher.deleted_at.is_(None))
+            .where(
+                Teacher.employee_number == identifier,
+                Teacher.deleted_at.is_(None),
+                User.deleted_at.is_(None),
+            )
         )
         if teacher is not None:
             user = teacher.user
@@ -142,7 +150,11 @@ async def login(request: Request, db: Session = Depends(get_db)) -> LoginRespons
         parent = db.scalar(
             select(Parent)
             .join(Parent.user)
-            .where(Parent.phone == identifier, Parent.deleted_at.is_(None))
+            .where(
+                Parent.phone == identifier,
+                Parent.deleted_at.is_(None),
+                User.deleted_at.is_(None),
+            )
         )
         if parent is not None:
             user = parent.user
@@ -326,7 +338,11 @@ def _resolve_phone_for_identifier(identifier: str, db: Session) -> str | None:
     parent = db.scalar(
         select(Parent)
         .join(Parent.user)
-        .where(Parent.phone == clean, Parent.deleted_at.is_(None))
+        .where(
+            Parent.phone == clean,
+            Parent.deleted_at.is_(None),
+            User.deleted_at.is_(None),
+        )
     )
     if parent is not None:
         return parent.phone
@@ -335,7 +351,11 @@ def _resolve_phone_for_identifier(identifier: str, db: Session) -> str | None:
     teacher = db.scalar(
         select(Teacher)
         .join(Teacher.user)
-        .where(Teacher.employee_number == clean, Teacher.deleted_at.is_(None))
+        .where(
+            Teacher.employee_number == clean,
+            Teacher.deleted_at.is_(None),
+            User.deleted_at.is_(None),
+        )
     )
     if teacher is not None and teacher.phone:
         return teacher.phone
@@ -354,7 +374,9 @@ async def forgot_password(
     clean = payload.identifier.strip()
     identifier_type = _identifier_type(clean)
     if identifier_type == "email":
-        user = db.scalar(select(User).where(User.email == clean))
+        user = db.scalar(
+            select(User).where(User.email == clean, User.deleted_at.is_(None))
+        )
         active_user = user if user is not None and _profile_is_active(user, db) else None
         create_audit_log(
             db=db,
@@ -454,7 +476,11 @@ async def reset_password(
     parent = db.scalar(
         select(Parent)
         .join(Parent.user)
-        .where(Parent.phone == clean, Parent.deleted_at.is_(None))
+        .where(
+            Parent.phone == clean,
+            Parent.deleted_at.is_(None),
+            User.deleted_at.is_(None),
+        )
     )
     if parent is not None:
         user = parent.user
@@ -462,7 +488,11 @@ async def reset_password(
         teacher = db.scalar(
             select(Teacher)
             .join(Teacher.user)
-            .where(Teacher.employee_number == clean, Teacher.deleted_at.is_(None))
+            .where(
+                Teacher.employee_number == clean,
+                Teacher.deleted_at.is_(None),
+                User.deleted_at.is_(None),
+            )
         )
         user = teacher.user if teacher else None
 

@@ -25,7 +25,7 @@ def password_matches_dev_password(password_hash: str) -> bool:
 
 
 def get_or_create_user(db: Session, *, name: str, email: str, role: str) -> User:
-    user = db.scalar(select(User).where(User.email == email))
+    user = db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
     if user:
         if not password_matches_dev_password(user.password_hash):
             user.password_hash = hash_password(DEV_PASSWORD)
@@ -42,7 +42,12 @@ def get_or_create_user(db: Session, *, name: str, email: str, role: str) -> User
 
 
 def get_or_create_teacher(db: Session, *, user: User, employee_number: str) -> Teacher:
-    teacher = db.scalar(select(Teacher).where(Teacher.employee_number == employee_number))
+    teacher = db.scalar(
+        select(Teacher).where(
+            Teacher.employee_number == employee_number,
+            Teacher.deleted_at.is_(None),
+        )
+    )
     if teacher:
         return teacher
 

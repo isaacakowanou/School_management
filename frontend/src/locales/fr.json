@@ -162,6 +162,8 @@
     "confirmation_mismatch": "La confirmation saisie ne correspond pas.",
     "cleanup_disabled": "Le nettoyage est désactivé en production.",
     "trash_entry_not_found": "Élément de corbeille introuvable.",
+    "restore_email_conflict": "Cette adresse email est déjà utilisée par un compte actif. Supprimez le conflit avant la restauration.",
+    "restore_employee_number_conflict": "Ce numéro d'employé est déjà utilisé par un enseignant actif. Supprimez le conflit avant la restauration.",
     "report_not_draft": "Seuls les bulletins en brouillon peuvent être examinés.",
     "report_not_sendable": "Seuls les bulletins approuvés ou envoyés peuvent être transmis.",
     "invalid_otp": "Identifiant ou code invalide.",

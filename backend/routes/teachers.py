@@ -6,7 +6,8 @@ only the teacher's assigned Course rows are year/trimester scoped.
 Teacher creation uses a temporary forced-change credential and reports delivery
 outcomes to the admin. Self-read access is limited to the matching profile;
 course lists exclude trashed courses. Deletion is blocked while active courses
-or submitted academic data depend on the teacher and invalidates existing JWTs.
+or submitted academic data depend on the teacher, soft-deletes the linked login
+account, and invalidates existing JWTs.
 """
 
 import logging
@@ -24,6 +25,11 @@ from database import get_db
 from models import Course, Grade, Teacher, User
 from schemas import AdminPasswordResetResponse, CourseResponse, StatusResponse, TeacherCreate, TeacherCreateResponse, TeacherResponse, TeacherUpdate
 from services.account_security import reset_profile_password
+from services.account_lifecycle import (
+    active_teacher_by_employee_number,
+    active_user_by_email,
+    soft_delete_profile_account,
+)
 from services.email_service import send_account_created_email
 from services.sms_service import send_account_created_sms
 from utils import to_course_response
@@ -47,7 +53,7 @@ def to_teacher_response(teacher: Teacher) -> TeacherResponse:
 
 def get_teacher_or_404(db: Session, teacher_id: UUID) -> Teacher:
     teacher = db.get(Teacher, teacher_id)
-    if teacher is None or teacher.deleted_at is not None:
+    if teacher is None or teacher.deleted_at is not None or teacher.user.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
     return teacher
 
@@ -72,7 +78,7 @@ def generate_employee_number(db: Session, year: int) -> str:
     prefix = f"TCH-{year}-"
     last = db.scalar(
         select(Teacher.employee_number)
-        .where(Teacher.employee_number.like(f"{prefix}%"))
+        .where(Teacher.employee_number.like(f"{prefix}%"), Teacher.deleted_at.is_(None))
         .order_by(Teacher.employee_number.desc())
         .limit(1)
     )
@@ -82,7 +88,7 @@ def generate_employee_number(db: Session, year: int) -> str:
         n = 1
     while True:
         candidate = f"{prefix}{n:04d}"
-        if not db.scalar(select(Teacher).where(Teacher.employee_number == candidate)):
+        if active_teacher_by_employee_number(db, candidate) is None:
             return candidate
         n += 1
 
@@ -96,7 +102,7 @@ def list_teachers(
         select(Teacher)
         .join(Teacher.user)
         .options(contains_eager(Teacher.user))
-        .where(Teacher.deleted_at.is_(None))
+        .where(Teacher.deleted_at.is_(None), User.deleted_at.is_(None))
         .order_by(User.name)
     ).all()
     return [to_teacher_response(teacher) for teacher in teachers]
@@ -113,15 +119,13 @@ def create_teacher(
     phone = (payload.phone or "").strip() or None
 
     if email is not None:
-        existing_user = db.scalar(select(User).where(User.email == email))
+        existing_user = active_user_by_email(db, email)
         if existing_user is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
     raw_number = (payload.employee_number or "").strip()
     if raw_number:
-        existing_employee_number = db.scalar(
-            select(Teacher).where(Teacher.employee_number == raw_number)
-        )
+        existing_employee_number = active_teacher_by_employee_number(db, raw_number)
         if existing_employee_number is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee number already exists")
         employee_number = raw_number
@@ -222,7 +226,7 @@ def update_teacher(
     if "email" in payload.model_fields_set:
         email = (payload.email or "").strip() or None
         if email is not None:
-            existing_user = db.scalar(select(User).where(User.email == email, User.id != teacher.user_id))
+            existing_user = active_user_by_email(db, email, exclude_user_id=teacher.user_id)
             if existing_user is not None:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
         teacher.user.email = email
@@ -230,11 +234,10 @@ def update_teacher(
         teacher.phone = (payload.phone or "").strip() or None
     if payload.employee_number is not None:
         employee_number = clean_required_text(payload.employee_number, "employee_number")
-        existing_teacher = db.scalar(
-            select(Teacher).where(
-                Teacher.employee_number == employee_number,
-                Teacher.id != teacher_id,
-            )
+        existing_teacher = active_teacher_by_employee_number(
+            db,
+            employee_number,
+            exclude_teacher_id=teacher_id,
         )
         if existing_teacher is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee number already exists")
@@ -316,7 +319,7 @@ def delete_teacher(
         old_value=old_value,
         new_value=None,
     )
-    teacher.deleted_at = datetime.now(timezone.utc)
+    soft_delete_profile_account(teacher, datetime.now(timezone.utc))
     invalidate_user_sessions(user)
     db.commit()
     return StatusResponse(status="ok", message="Teacher moved to Trash")

@@ -20,6 +20,11 @@ Retention is 30 days from ``deleted_at``; restore clears that clock, and a later
 deletion starts a fresh window. Cleanup is lazy on Corbeille access because the
 app has no scheduler (FastAPI BackgroundTasks are request-bound); indexed
 ``deleted_at`` columns keep the sweep bounded.
+
+Parent/teacher restore also restores the linked login account only after its
+email (and teacher employee number) passes active-identity conflict checks.
+Restore never rewinds ``token_version``, so sessions issued before deletion
+remain invalid.
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from audit import create_audit_log
+from services.account_lifecycle import restore_profile_accounts
 from models import (
     AIWarning,
     AuditLog,
@@ -371,6 +377,8 @@ def restore_row_entry(db: Session, *, table: str, entity_id: UUID, current_user:
     if row is None or row.deleted_at is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
     validate_restore_dependencies(row)
+    if isinstance(row, (Parent, Teacher)):
+        restore_profile_accounts(db, [row])
     old_deleted_at = row.deleted_at
     row.deleted_at = None
     row.deleted_batch_id = None
@@ -393,11 +401,23 @@ def restore_batch_entry(db: Session, *, batch_id: UUID, current_user: User) -> t
     if batch.restored_at is not None:
         return batch.target_label, {}
 
-    restored_counts: dict[str, int] = {}
+    rows_by_table: dict[str, list] = {}
     for table, model in RECOVERABLE_MODELS.items():
         rows = db.scalars(select(model).where(model.deleted_batch_id == batch_id)).all()
         if not rows:
             continue
+        rows_by_table[table] = rows
+
+    profiles = [
+        row
+        for rows in rows_by_table.values()
+        for row in rows
+        if isinstance(row, (Parent, Teacher))
+    ]
+    restore_profile_accounts(db, profiles)
+
+    restored_counts: dict[str, int] = {}
+    for table, rows in rows_by_table.items():
         for row in rows:
             row.deleted_at = None
             row.deleted_batch_id = None

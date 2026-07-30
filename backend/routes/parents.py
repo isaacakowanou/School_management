@@ -6,8 +6,9 @@ by school year. Grade/report children remain explicitly period-scoped.
 Every parent-facing student lookup requires an active profile, active link, and
 active student. Mid-trimester grades expose individual scored items for any
 canonical term in the latest school year, never CourseResult averages. Profile
-deletion is blocked by active links and invalidates sessions; restoring the
-profile does not revive its old JWTs.
+deletion is blocked by active links, soft-deletes the linked login account, and
+invalidates sessions. Unlinking alone never releases the account email;
+restoring the profile restores the account but does not revive old JWTs.
 """
 
 import logging
@@ -36,6 +37,7 @@ from schemas import (
     AdminPasswordResetResponse,
 )
 from services.account_security import reset_profile_password
+from services.account_lifecycle import active_user_by_email, soft_delete_profile_account
 from services.academic_context import current_school_year, current_term_for_year
 from services.email_service import send_account_created_email
 from services.sms_service import send_account_created_sms
@@ -60,7 +62,7 @@ def to_parent_response(parent: Parent) -> ParentResponse:
 
 def get_parent_or_404(db: Session, parent_id: UUID) -> Parent:
     parent = db.get(Parent, parent_id)
-    if parent is None or parent.deleted_at is not None:
+    if parent is None or parent.deleted_at is not None or parent.user.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
     return parent
 
@@ -126,7 +128,7 @@ def list_parents(
         select(Parent)
         .join(Parent.user)
         .options(contains_eager(Parent.user))
-        .where(Parent.deleted_at.is_(None))
+        .where(Parent.deleted_at.is_(None), User.deleted_at.is_(None))
         .order_by(User.name)
     ).all()
     return [to_parent_response(parent) for parent in parents]
@@ -145,7 +147,7 @@ def create_parent(
         phone = None
 
     if email is not None:
-        existing_user = db.scalar(select(User).where(User.email == email))
+        existing_user = active_user_by_email(db, email)
         if existing_user is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
@@ -334,7 +336,7 @@ def update_parent(
     if "email" in payload.model_fields_set:
         email = (payload.email or "").strip() or None
         if email is not None:
-            existing_user = db.scalar(select(User).where(User.email == email, User.id != parent.user_id))
+            existing_user = active_user_by_email(db, email, exclude_user_id=parent.user_id)
             if existing_user is not None:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
         parent.user.email = email
@@ -426,7 +428,7 @@ def delete_parent(
     deleted_at = datetime.now(timezone.utc)
     for link in stale_links:
         link.deleted_at = deleted_at
-    parent.deleted_at = deleted_at
+    soft_delete_profile_account(parent, deleted_at)
     invalidate_user_sessions(user)
     db.commit()
     return StatusResponse(status="ok", message="Parent moved to Trash")

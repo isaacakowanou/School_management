@@ -1,10 +1,12 @@
 """Authentication primitives and the server-side session security boundary.
 
 JWTs carry the user's current ``token_version`` in a ``ver`` claim and are
-accepted only while that claim matches the database. Every password event
+accepted only while that claim matches the database. Soft-deleted accounts are
+rejected before role checks. Every password event
 increments the version, providing a global session kill without maintaining a
 token denylist. The authenticated-user dependency also enforces forced password
-changes and rejects missing or trashed teacher/parent profiles on every request;
+changes and rejects deleted users plus missing or trashed teacher/parent
+profiles on every request;
 frontend redirects and login-time checks are defense-in-depth, not the security
 boundary. Hard-deleting a user invalidates every JWT independently of
 ``token_version`` because authenticated requests require the subject row.
@@ -114,7 +116,7 @@ def get_current_user(
         ) from exc
 
     user = db.get(User, user_uuid)
-    if user is None:
+    if user is None or user.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",

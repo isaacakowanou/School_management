@@ -301,6 +301,7 @@ class DangerZoneRouteTests(unittest.TestCase):
         self.db.expire_all()
         batch = self.db.get(DeletionBatch, batch_id)
         self.assertIsNotNone(batch)
+        self.assertIsNotNone(self.db.get(User, self.teacher_user.id).deleted_at)
         for row in (
             self.db.get(Teacher, self.teacher.id),
             self.db.get(Course, self.course.id),
@@ -345,6 +346,7 @@ class DangerZoneRouteTests(unittest.TestCase):
 
         self.db.expire_all()
         self.assertIsNone(self.db.get(Teacher, self.teacher.id).deleted_at)
+        self.assertIsNone(self.db.get(User, self.teacher_user.id).deleted_at)
         self.assertIsNone(self.db.get(Course, self.course.id).deleted_at)
         self.assertIsNone(self.db.get(ReportCard, self.report.id).deleted_at)
         restored_audits = self.db.scalars(select(AuditLog).where(AuditLog.action == "danger_zone_restored")).all()

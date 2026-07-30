@@ -172,7 +172,7 @@ def padded(index: int) -> str:
 
 
 def get_or_create_user(db: Session, stats: StressStats, *, name: str, email: str, role: str) -> User:
-    user = db.scalar(select(User).where(User.email == email))
+    user = db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
     if user is None:
         user = User(name=name, email=email, password_hash=hash_password(STRESS_PASSWORD), role=role)
         db.add(user)
@@ -202,7 +202,12 @@ def get_or_create_parent(db: Session, stats: StressStats, *, user: User, index: 
 
 def get_or_create_teacher(db: Session, stats: StressStats, *, user: User, index: int) -> Teacher:
     employee_number = f"STRESS-TCH-{padded(index)}"
-    teacher = db.scalar(select(Teacher).where(Teacher.employee_number == employee_number))
+    teacher = db.scalar(
+        select(Teacher).where(
+            Teacher.employee_number == employee_number,
+            Teacher.deleted_at.is_(None),
+        )
+    )
     if teacher is None:
         teacher = Teacher(user=user, employee_number=employee_number)
         db.add(teacher)

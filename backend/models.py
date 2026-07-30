@@ -13,9 +13,11 @@ official document instead of following later live-grade edits. Relationship
 cascades are intentionally limited; permanent purge computes an explicit
 child-first plan rather than trusting broad ORM cascades around academic data.
 
-``User.token_version`` is the global JWT invalidation counter, and password
-reset tokens bind to that version. Audit actors are nullable because failed
-login and anti-enumeration recovery events occur before identity is proven.
+``User.deleted_at`` follows its parent/teacher role profile so active-only
+identity indexes can release trashed emails immediately. ``token_version`` is
+the global JWT invalidation counter, and password reset tokens bind to that
+version. Audit actors are nullable because failed login and anti-enumeration
+recovery events occur before identity is proven.
 Several enums remain validated application strings rather than database enums
 to keep SQLite and Postgres behavior aligned; corresponding schemas/constants
 own the closed vocabularies.
@@ -36,10 +38,19 @@ class Base(DeclarativeBase):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        sa.Index(
+            "uq_active_user_email",
+            "email",
+            unique=True,
+            postgresql_where=sa.text("deleted_at IS NULL"),
+            sqlite_where=sa.text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     must_change_password: Mapped[bool] = mapped_column(
@@ -48,6 +59,7 @@ class User(Base):
     token_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -200,12 +212,21 @@ class StudentParent(Base):
 
 class Teacher(Base):
     __tablename__ = "teachers"
+    __table_args__ = (
+        sa.Index(
+            "uq_active_teacher_employee_number",
+            "employee_number",
+            unique=True,
+            postgresql_where=sa.text("deleted_at IS NULL"),
+            sqlite_where=sa.text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True
     )
-    employee_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    employee_number: Mapped[str] = mapped_column(String(50), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_batch_id: Mapped[uuid.UUID | None] = mapped_column(

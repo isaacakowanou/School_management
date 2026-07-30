@@ -74,7 +74,7 @@ class DemoStats:
 
 
 def get_or_create_user(db: Session, stats: DemoStats, *, name: str, email: str, role: str) -> User:
-    user = db.scalar(select(User).where(User.email == email))
+    user = db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
     if user is None:
         user = User(
             name=name,
@@ -111,7 +111,12 @@ def get_or_create_parent(db: Session, stats: DemoStats, *, user: User) -> Parent
 
 
 def get_or_create_teacher(db: Session, stats: DemoStats, *, user: User) -> Teacher:
-    teacher = db.scalar(select(Teacher).where(Teacher.employee_number == "DEMO-TCH-001"))
+    teacher = db.scalar(
+        select(Teacher).where(
+            Teacher.employee_number == "DEMO-TCH-001",
+            Teacher.deleted_at.is_(None),
+        )
+    )
     if teacher is None:
         teacher = Teacher(user=user, employee_number="DEMO-TCH-001")
         db.add(teacher)

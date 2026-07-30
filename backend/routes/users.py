@@ -1,6 +1,6 @@
 """Admin-only low-level user account operations beneath role profile workflows.
 
-This router edits the shared ``User`` row, not teacher/parent profile lifecycle.
+This router edits active shared ``User`` rows, not teacher/parent profile lifecycle.
 Any password assignment passes the universal schema validator and increments
 ``token_version`` so existing sessions die. Deletion is a guarded hard delete:
 database relationships block removal when school/profile records still depend
@@ -18,6 +18,7 @@ from auth import hash_password, invalidate_user_sessions, require_admin
 from database import get_db
 from models import User
 from schemas import StatusResponse, UserCreate, UserResponse, UserUpdate
+from services.account_lifecycle import active_user_by_email
 
 
 router = APIRouter(tags=["users"])
@@ -44,7 +45,7 @@ def validate_role(role: str) -> None:
 
 def get_user_or_404(db: Session, user_id: UUID) -> User:
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
@@ -54,7 +55,9 @@ def list_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[UserResponse]:
-    users = db.scalars(select(User).order_by(User.created_at, User.email)).all()
+    users = db.scalars(
+        select(User).where(User.deleted_at.is_(None)).order_by(User.created_at, User.email)
+    ).all()
     return [to_user_response(user) for user in users]
 
 
@@ -66,7 +69,7 @@ def create_user(
 ) -> UserResponse:
     validate_role(payload.role)
 
-    existing_user = db.scalar(select(User).where(User.email == payload.email))
+    existing_user = active_user_by_email(db, payload.email)
     if existing_user is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
@@ -107,7 +110,7 @@ def update_user(
     if payload.name is not None:
         user.name = payload.name
     if payload.email is not None:
-        existing_user = db.scalar(select(User).where(User.email == payload.email, User.id != user_id))
+        existing_user = active_user_by_email(db, payload.email, exclude_user_id=user_id)
         if existing_user is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
         user.email = payload.email

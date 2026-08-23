@@ -13,3 +13,5 @@ weasyprint
 openai>=2,<3
 resend>=2,<3
 twilio>=9,<10
+openpyxl>=3.1,<4
+python-multipart>=0.0.9,<1

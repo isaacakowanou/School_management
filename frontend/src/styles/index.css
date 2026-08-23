@@ -649,6 +649,71 @@ a.card:active {
   max-width: 720px;
 }
 
+.import-file-input {
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.import-columns-copy {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.import-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.import-summary-grid .card {
+  display: grid;
+  gap: 0.25rem;
+  padding: var(--space-4);
+}
+
+.import-summary-grid strong {
+  font-size: 1.4rem;
+}
+
+.import-preview-table td {
+  vertical-align: top;
+}
+
+.import-preview-table td strong,
+.import-preview-table td small,
+.import-issue {
+  display: block;
+}
+
+.import-row-invalid {
+  background: var(--color-danger-bg);
+}
+
+.import-issue-error {
+  color: var(--color-danger);
+}
+
+.import-issue-warning {
+  color: var(--color-warning-text, #7a4d00);
+}
+
+.import-preview-table .text-success {
+  color: var(--approved);
+}
+
+.import-result-card {
+  display: grid;
+  gap: var(--space-3);
+}
+
+@media (max-width: 700px) {
+  .import-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ---- Summary card ---- */
 .summary-card {
   white-space: pre-wrap;
@@ -1776,6 +1841,35 @@ a.card:active {
   margin: 24px 0 16px;
   border-bottom: 1px solid var(--border, #d9e0e8);
   padding-bottom: 8px;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-apply-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.bulk-apply-bar input,
+.bulk-apply-bar select {
+  min-height: 38px;
+}
+
+.bulk-course-group {
+  margin-bottom: 16px;
 }
 
 .trimester-tab {

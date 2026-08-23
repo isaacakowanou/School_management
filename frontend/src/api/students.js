@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
+import { apiDelete, apiGet, apiPost, apiPostForm, apiPut } from './client.js'
 
 // GET /api/v1/students (admin) -> [{ id, first_name, last_name, grade_level, student_number }]
 export function listStudents({ academicStatus, schoolYear, classId, unassigned } = {}) {
@@ -40,6 +40,21 @@ export function getStudentGrades(studentId, { schoolYear, term } = {}) {
   if (term) params.set('term', term)
   const qs = params.toString()
   return apiGet(`/students/${studentId}/grades${qs ? `?${qs}` : ''}`)
+}
+
+export function previewStudentImport({ file, schoolYear }) {
+  const formData = new FormData()
+  formData.append('school_year', schoolYear)
+  formData.append('file', file)
+  return apiPostForm('/students/import/preview', formData)
+}
+
+export function commitStudentImport({ file, schoolYear, selectedRows }) {
+  const formData = new FormData()
+  formData.append('school_year', schoolYear)
+  formData.append('selected_rows', JSON.stringify(selectedRows))
+  formData.append('file', file)
+  return apiPostForm('/students/import/commit', formData)
 }
 
 // DELETE /api/v1/students/{student_id} (admin) -> moves student to Trash

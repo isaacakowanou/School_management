@@ -277,6 +277,9 @@ export default function AdminCoursesPage() {
           <p className="muted">{t('courses.count', { count: courses?.length ?? 0 })}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <Link to={`/admin/courses/setup?year=${encodeURIComponent(selectedSchoolYear || currentSchoolYear || '')}`} className="btn btn-primary">
+            {t('courses.bulkSetup')}
+          </Link>
           <button
             type="button"
             className="btn btn-ghost"
@@ -391,11 +394,11 @@ export default function AdminCoursesPage() {
                       <td>{course.name}</td>
                       <td className="nowrap">{course.code}</td>
                       <td>
-                        {teacherNameById.get(course.teacher_id) || (
+                        {teacherNameById.get(course.teacher_id) || (course.teacher_id ? (
                           <span className="audit-id" title={course.teacher_id}>
                             {course.teacher_id}
                           </span>
-                        )}
+                        ) : <span className="muted">{t('common.unassigned')}</span>)}
                       </td>
                       <td className="nowrap">{course.class_name || '—'}</td>
                       <td className="nowrap">{course.term}</td>

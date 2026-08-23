@@ -25,6 +25,10 @@ from constants import TRIMESTER_TERMS
 from database import get_db
 from models import Class, Course, CourseResult, Enrollment, Grade, GradeItem, ReportCardCourse, Student, Subject, Teacher, User
 from schemas import (
+    CourseBulkCreateRequest,
+    CourseBulkCreateResponse,
+    CourseBulkPreviewRequest,
+    CourseBulkPreviewResponse,
     CourseCloneYearRequest,
     CourseCloneYearResponse,
     CourseCreate,
@@ -39,6 +43,14 @@ from schemas import (
     TrimesterTerm,
 )
 from services.grade_calculator import is_beninese_mode
+from services.course_setup import (
+    active_course_by_setup_key,
+    applicable_subjects_for_class,
+    course_name_from_subject,
+    grading_system_for_class_subject,
+    subject_applies_to_class,
+    suggested_course_code,
+)
 from services.school_year_rollover import clean_school_year, clone_course_setup_for_year
 from utils import get_class_or_404, get_current_teacher, get_subject_or_404, to_course_response
 
@@ -95,6 +107,56 @@ def grading_system_for_setup(language_group: str | None, school_class: Class | N
     if language_group == "FRENCH" and school_class is not None and school_class.school_level == "college":
         return "BENINESE"
     return "WEIGHTED"
+
+
+def ensure_class_matches_school_year(school_class: Class | None, school_year: str) -> None:
+    if school_class is not None and school_class.school_year != school_year:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "course_class_year_mismatch",
+                "message": "Class does not belong to the requested school year",
+            },
+        )
+
+
+def ensure_subject_applies(subject: Subject | None, school_class: Class | None) -> None:
+    if subject is not None and school_class is not None and not subject_applies_to_class(subject, school_class):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "course_subject_not_applicable",
+                "message": "Subject does not apply to the selected class",
+            },
+        )
+
+
+def ensure_unique_active_course_setup(
+    db: Session,
+    *,
+    school_year: str,
+    class_id: UUID | None,
+    subject_id: UUID | None,
+    course_id: UUID | None = None,
+) -> None:
+    if class_id is None or subject_id is None:
+        return
+    query = select(Course.id).where(
+        Course.school_year == school_year,
+        Course.class_id == class_id,
+        Course.subject_id == subject_id,
+        Course.deleted_at.is_(None),
+    )
+    if course_id is not None:
+        query = query.where(Course.id != course_id)
+    if db.scalar(query) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "course_setup_already_exists",
+                "message": "An active course already exists for this class and subject in the school year",
+            },
+        )
 
 
 _SUBJECT_LANGUAGE_CONFLICT = "language_group conflicts with the subject's section; omit it or clear subject_id"
@@ -237,9 +299,18 @@ def create_course(
             raise HTTPException(status_code=422, detail="name is required when subject_id is not provided")
         name = clean_required_text(payload.name, "name")
 
-    get_teacher_or_404(db, payload.teacher_id)
+    if payload.teacher_id is not None:
+        get_teacher_or_404(db, payload.teacher_id)
     ensure_unique_course_code(db, code)
     school_class = get_class_or_404(db, payload.class_id) if payload.class_id is not None else None
+    ensure_class_matches_school_year(school_class, school_year)
+    ensure_subject_applies(subject if payload.subject_id is not None else None, school_class)
+    ensure_unique_active_course_setup(
+        db,
+        school_year=school_year,
+        class_id=payload.class_id,
+        subject_id=payload.subject_id,
+    )
 
     course = Course(
         name=name,
@@ -282,6 +353,201 @@ def create_course(
     db.commit()
     db.refresh(course)
     return to_course_response(course)
+
+
+@router.post("/bulk-setup/preview", response_model=CourseBulkPreviewResponse)
+def preview_bulk_course_setup(
+    payload: CourseBulkPreviewRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> CourseBulkPreviewResponse:
+    school_year = clean_required_text(payload.school_year, "school_year")
+    classes = []
+    for class_id in dict.fromkeys(payload.class_ids):
+        school_class = get_class_or_404(db, class_id)
+        ensure_class_matches_school_year(school_class, school_year)
+        classes.append(school_class)
+
+    existing_by_key = active_course_by_setup_key(db, school_year, [school_class.id for school_class in classes])
+    all_codes = set(db.scalars(select(Course.code)).all())
+    rows = []
+    existing_count = 0
+    for school_class in classes:
+        for subject in applicable_subjects_for_class(db, school_class):
+            existing = existing_by_key.get((school_class.id, subject.id))
+            code = suggested_course_code(school_year, school_class, subject)
+            if existing is not None:
+                existing_count += 1
+            rows.append(
+                {
+                    "class_id": school_class.id,
+                    "class_name": school_class.name_fr,
+                    "subject_id": subject.id,
+                    "subject_name": course_name_from_subject(subject),
+                    "language_group": subject.section,
+                    "sort_order": subject.sort_order,
+                    "code": existing.code if existing is not None else code,
+                    "coefficient": existing.coefficient if existing is not None else 1,
+                    "grading_system": (
+                        existing.grading_system
+                        if existing is not None and existing.grading_system is not None
+                        else grading_system_for_class_subject(school_class, subject)
+                    ),
+                    "teacher_id": existing.teacher_id if existing is not None else None,
+                    "already_exists": existing is not None,
+                    "existing_course_id": existing.id if existing is not None else None,
+                    "code_conflict": existing is None and code in all_codes,
+                }
+            )
+
+    return CourseBulkPreviewResponse(
+        school_year=school_year,
+        term=payload.term,
+        rows=rows,
+        applicable_count=len(rows),
+        missing_count=len(rows) - existing_count,
+        existing_count=existing_count,
+    )
+
+
+@router.post("/bulk-setup", response_model=CourseBulkCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_bulk_course_setup(
+    payload: CourseBulkCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> CourseBulkCreateResponse:
+    school_year = clean_required_text(payload.school_year, "school_year")
+    class_ids = list(dict.fromkeys(item.class_id for item in payload.items))
+    existing_by_key = active_course_by_setup_key(db, school_year, class_ids)
+    seen_keys = set()
+    seen_codes = set()
+    failures = []
+    prepared = []
+    skipped_existing_count = 0
+
+    for item in payload.items:
+        school_class = db.get(Class, item.class_id)
+        subject = db.get(Subject, item.subject_id)
+        key = (item.class_id, item.subject_id)
+        if key in existing_by_key:
+            skipped_existing_count += 1
+            continue
+        if key in seen_keys:
+            failures.append({
+                "class_id": item.class_id,
+                "subject_id": item.subject_id,
+                "code": "duplicate_selection",
+                "message": "The same class and subject were selected more than once",
+            })
+            continue
+        seen_keys.add(key)
+
+        if school_class is None or school_class.deleted_at is not None:
+            failures.append({"class_id": item.class_id, "subject_id": item.subject_id, "code": "class_not_found", "message": "Class not found"})
+            continue
+        if school_class.school_year != school_year:
+            failures.append({"class_id": item.class_id, "subject_id": item.subject_id, "code": "course_class_year_mismatch", "message": "Class does not belong to the requested school year"})
+            continue
+        if subject is None or subject.deleted_at is not None:
+            failures.append({"class_id": item.class_id, "subject_id": item.subject_id, "code": "subject_not_found", "message": "Subject not found"})
+            continue
+        if not subject_applies_to_class(subject, school_class):
+            failures.append({"class_id": item.class_id, "subject_id": item.subject_id, "code": "course_subject_not_applicable", "message": "Subject does not apply to the selected class"})
+            continue
+        if item.teacher_id is not None:
+            teacher = db.get(Teacher, item.teacher_id)
+            if teacher is None or teacher.deleted_at is not None:
+                failures.append({"class_id": item.class_id, "subject_id": item.subject_id, "code": "teacher_not_found", "message": "Teacher not found"})
+                continue
+
+        code = item.code.strip()
+        if not code:
+            failures.append({"class_id": item.class_id, "subject_id": item.subject_id, "code": "course_code_required", "message": "Course code cannot be empty"})
+            continue
+        if code in seen_codes or db.scalar(select(Course.id).where(Course.code == code)) is not None:
+            failures.append({"class_id": item.class_id, "subject_id": item.subject_id, "code": "course_code_conflict", "message": f"Course code already exists: {code}"})
+            continue
+        seen_codes.add(code)
+        prepared.append((item, school_class, subject, code))
+
+    if failures:
+        serializable_failures = [
+            {
+                **failure,
+                "class_id": str(failure["class_id"]) if failure.get("class_id") is not None else None,
+                "subject_id": str(failure["subject_id"]) if failure.get("subject_id") is not None else None,
+            }
+            for failure in failures
+        ]
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "bulk_course_validation_failed", "validation_failures": serializable_failures},
+        )
+
+    created_courses = []
+    for item, school_class, subject, code in prepared:
+        course = Course(
+            name=course_name_from_subject(subject),
+            code=code,
+            teacher_id=item.teacher_id,
+            term=payload.term.value,
+            school_year=school_year,
+            language_group=subject.section,
+            class_id=school_class.id,
+            subject_id=subject.id,
+            coefficient=item.coefficient,
+            grading_system=item.grading_system.value,
+        )
+        db.add(course)
+        created_courses.append(course)
+
+    db.flush()
+    for course in created_courses:
+        create_audit_log(
+            db=db,
+            actor_user_id=current_user.id,
+            action="course_created",
+            entity_type="course",
+            entity_id=course.id,
+            old_value=None,
+            new_value={
+                "name": course.name,
+                "code": course.code,
+                "teacher_id": course.teacher_id,
+                "term": course.term,
+                "school_year": course.school_year,
+                "language_group": course.language_group,
+                "class_id": course.class_id,
+                "subject_id": course.subject_id,
+                "coefficient": course.coefficient,
+                "grading_system": course.grading_system,
+                "bulk_setup": True,
+            },
+        )
+    create_audit_log(
+        db=db,
+        actor_user_id=current_user.id,
+        action="courses_bulk_created",
+        entity_type="course_setup_batch",
+        entity_id=uuid4(),
+        old_value=None,
+        new_value={
+            "school_year": school_year,
+            "term": payload.term.value,
+            "created_count": len(created_courses),
+            "skipped_existing_count": skipped_existing_count,
+            "created_course_ids": [course.id for course in created_courses],
+        },
+    )
+    db.commit()
+
+    return CourseBulkCreateResponse(
+        status="ok",
+        created_count=len(created_courses),
+        skipped_existing_count=skipped_existing_count,
+        created_course_ids=[course.id for course in created_courses],
+        validation_failures=[],
+    )
 
 
 @router.post("/clone-year", response_model=CourseCloneYearResponse, status_code=status.HTTP_201_CREATED)
@@ -529,8 +795,9 @@ def update_course(
         code = clean_required_text(payload.code, "code")
         ensure_unique_course_code(db, code, course_id=course_id)
         course.code = code
-    if payload.teacher_id is not None:
-        get_teacher_or_404(db, payload.teacher_id)
+    if "teacher_id" in payload.model_fields_set:
+        if payload.teacher_id is not None:
+            get_teacher_or_404(db, payload.teacher_id)
         course.teacher_id = payload.teacher_id
 
     if subject is not None:
@@ -564,10 +831,23 @@ def update_course(
         course.term = payload.term.value
     if payload.school_year is not None:
         course.school_year = clean_required_text(payload.school_year, "school_year")
+    effective_class = course.school_class
     if "class_id" in payload.model_fields_set:
         if payload.class_id is not None:
-            get_class_or_404(db, payload.class_id)
+            effective_class = get_class_or_404(db, payload.class_id)
+        else:
+            effective_class = None
         course.class_id = payload.class_id
+
+    ensure_class_matches_school_year(effective_class, course.school_year)
+    ensure_subject_applies(subject, effective_class)
+    ensure_unique_active_course_setup(
+        db,
+        school_year=course.school_year,
+        class_id=course.class_id,
+        subject_id=subject.id if subject is not None else None,
+        course_id=course.id,
+    )
 
     if payload.coefficient is not None:
         course.coefficient = payload.coefficient

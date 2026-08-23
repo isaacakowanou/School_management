@@ -281,11 +281,26 @@ class Subject(Base):
 
 class Course(Base):
     __tablename__ = "courses"
+    __table_args__ = (
+        sa.Index(
+            "uq_active_course_year_class_subject",
+            "school_year",
+            "class_id",
+            "subject_id",
+            unique=True,
+            postgresql_where=sa.text("deleted_at IS NULL AND class_id IS NOT NULL AND subject_id IS NOT NULL"),
+            sqlite_where=sa.text("deleted_at IS NULL AND class_id IS NOT NULL AND subject_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
-    teacher_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("teachers.id"), nullable=False)
+    # Course structure may be prepared before staffing is complete. Unassigned
+    # courses stay admin-only until a teacher is attached.
+    teacher_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teachers.id"), nullable=True
+    )
     term: Mapped[str] = mapped_column(String(50), nullable=False)
     school_year: Mapped[str] = mapped_column(String(20), nullable=False)
     # A1.5 prep for A1.6 (three averages): which language track this course
@@ -319,7 +334,7 @@ class Course(Base):
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-    teacher: Mapped["Teacher"] = orm_relationship(back_populates="courses")
+    teacher: Mapped["Teacher | None"] = orm_relationship(back_populates="courses")
     subject: Mapped["Subject | None"] = orm_relationship(back_populates="courses")
     enrollments: Mapped[list["Enrollment"]] = orm_relationship(back_populates="course")
     grade_items: Mapped[list["GradeItem"]] = orm_relationship(back_populates="course")

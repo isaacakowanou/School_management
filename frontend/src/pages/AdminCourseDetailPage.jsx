@@ -254,7 +254,7 @@ export default function AdminCourseDetailPage() {
       }
       // Related data is best-effort; each section degrades independently.
       const [teacherRes, studentsRes, gradeItemsRes, resultsRes, gradesRes, allStudentsRes, allTeachersRes, locksRes] = await Promise.allSettled([
-        getTeacher(courseData.teacher_id),
+        courseData.teacher_id ? getTeacher(courseData.teacher_id) : Promise.resolve(null),
         listCourseStudents(courseId),
         listGradeItems(courseId),
         listCourseResults(courseId),
@@ -333,7 +333,6 @@ export default function AdminCourseDetailPage() {
     if (
       (!editForm.subjectId && !editForm.name.trim()) ||
       !editForm.code.trim() ||
-      !editForm.teacherId ||
       !editForm.term.trim() ||
       !editForm.schoolYear.trim()
     ) {
@@ -364,11 +363,15 @@ export default function AdminCourseDetailPage() {
       setEditForm(courseToForm(refreshed))
       setEditMessage(t('courses.updated'))
       setShowEditForm(false)
-      try {
-        const refreshedTeacher = await getTeacher(refreshed.teacher_id)
-        setTeacher(refreshedTeacher)
-      } catch {
-        setTeacher(allTeachers.find((item) => item.id === refreshed.teacher_id) || null)
+      if (refreshed.teacher_id) {
+        try {
+          const refreshedTeacher = await getTeacher(refreshed.teacher_id)
+          setTeacher(refreshedTeacher)
+        } catch {
+          setTeacher(allTeachers.find((item) => item.id === refreshed.teacher_id) || null)
+        }
+      } else {
+        setTeacher(null)
       }
     } catch (err) {
       setEditError(err.message)
@@ -667,9 +670,11 @@ export default function AdminCourseDetailPage() {
                 {teacher.name}
               </Link>
             ) : (
-              <span className="audit-id" title={course.teacher_id}>
-                {course.teacher_id}
-              </span>
+              course.teacher_id ? (
+                <span className="audit-id" title={course.teacher_id}>{course.teacher_id}</span>
+              ) : (
+                <span className="muted">{t('common.unassigned')}</span>
+              )
             )}
           </p>
         </div>
@@ -744,11 +749,11 @@ export default function AdminCourseDetailPage() {
               value={editForm.teacherId}
               onChange={(event) => updateEditField('teacherId', event.target.value)}
               disabled={savingEdit}
-              required
               style={{ width: '100%', textAlign: 'left' }}
             >
+              <option value="">{t('common.unassigned')}</option>
               {allTeachers.length === 0 ? (
-                <option value={editForm.teacherId}>
+                editForm.teacherId && <option value={editForm.teacherId}>
                   {teacher ? `${teacher.name} — ${teacher.email}` : t('courses.currentTeacher')}
                 </option>
               ) : (

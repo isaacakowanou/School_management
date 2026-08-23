@@ -39,7 +39,7 @@ export function createCourse({ name, code, teacherId, term, schoolYear, language
   return apiPost('/courses', {
     name: subjectId ? null : name.trim(),
     code: code.trim(),
-    teacher_id: teacherId,
+    teacher_id: teacherId || null,
     term: term.trim(),
     school_year: schoolYear.trim(),
     language_group: subjectId ? null : languageGroup || null,
@@ -56,7 +56,7 @@ export function createCourse({ name, code, teacherId, term, schoolYear, language
 export function updateCourse(courseId, { name, code, teacherId, term, schoolYear, languageGroup, classId, subjectId, coefficient, gradingSystem, confirmGradingSystemChange = false }) {
   const body = {
     code: code.trim(),
-    teacher_id: teacherId,
+    teacher_id: teacherId || null,
     school_year: schoolYear.trim(),
     class_id: classId || null,
     subject_id: subjectId || null,
@@ -72,6 +72,33 @@ export function updateCourse(courseId, { name, code, teacherId, term, schoolYear
     body.language_group = languageGroup || null
   }
   return apiPut(`/courses/${courseId}`, body)
+}
+
+// POST /api/v1/courses/bulk-setup/preview (admin). Resolves catalog subjects
+// and server-owned defaults for the selected classes without writing data.
+export function previewBulkCourseSetup({ schoolYear, term, classIds }) {
+  return apiPost('/courses/bulk-setup/preview', {
+    school_year: schoolYear.trim(),
+    term,
+    class_ids: classIds,
+  })
+}
+
+// POST /api/v1/courses/bulk-setup (admin). Creates course structure only;
+// existing active class/subject setups are skipped by the backend.
+export function createBulkCourseSetup({ schoolYear, term, items }) {
+  return apiPost('/courses/bulk-setup', {
+    school_year: schoolYear.trim(),
+    term,
+    items: items.map((item) => ({
+      class_id: item.class_id,
+      subject_id: item.subject_id,
+      code: item.code.trim(),
+      teacher_id: item.teacher_id || null,
+      coefficient: Number(item.coefficient),
+      grading_system: item.grading_system,
+    })),
+  })
 }
 
 // DELETE /api/v1/courses/{course_id} (admin). Blocks when roster, grade, result, or report data exists.

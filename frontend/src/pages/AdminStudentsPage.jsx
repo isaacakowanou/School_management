@@ -117,6 +117,9 @@ export default function AdminStudentsPage() {
           <Link to="/admin/students/trash" className="btn btn-ghost">
             {t('students.deletedStudents')}
           </Link>
+          <Link to="/admin/students/import" className="btn btn-ghost">
+            {t('studentImport.action')}
+          </Link>
           <Link to="/admin/students/new" className="btn btn-primary">
             {t('students.addStudent')}
           </Link>

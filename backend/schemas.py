@@ -491,6 +491,74 @@ class StudentResponse(BaseModel):
     is_unassigned_for_year: bool = False
 
 
+class StudentImportIssue(BaseModel):
+    code: str
+    field: str | None = None
+    message: str
+
+
+class StudentImportPreviewRow(BaseModel):
+    row_number: int
+    student_first_name: str
+    student_last_name: str
+    class_name: str
+    parent_name: str
+    parent_email: str
+    student_number: str
+    educmaster_number: str
+    parent_phone: str
+    relationship: str
+    class_id: UUID | None = None
+    school_level: SchoolLevel | None = None
+    parent_action: str
+    is_valid: bool
+    errors: list[StudentImportIssue]
+    warnings: list[StudentImportIssue]
+
+
+class StudentImportPreviewResponse(BaseModel):
+    school_year: str
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    rows: list[StudentImportPreviewRow]
+
+
+class StudentImportCommitRow(BaseModel):
+    row_number: int
+    status: str
+    student_id: UUID | None = None
+    student_number: str | None = None
+    parent_id: UUID | None = None
+    parent_action: str | None = None
+
+
+class StudentImportFailure(BaseModel):
+    row_number: int
+    errors: list[StudentImportIssue]
+
+
+class StudentImportEmailResult(BaseModel):
+    parent_id: UUID
+    email: str
+    success: bool
+    error: str | None = None
+    temp_password: str | None = None
+
+
+class StudentImportCommitResponse(BaseModel):
+    status: str
+    created: int
+    failed: int
+    parents_reused: int
+    parents_created: int
+    emails_sent: int
+    emails_failed: int
+    rows: list[StudentImportCommitRow]
+    failures: list[StudentImportFailure]
+    email_results: list[StudentImportEmailResult]
+
+
 class DeletedStudentResponse(StudentResponse):
     deleted_at: datetime
 
@@ -593,7 +661,7 @@ class CourseResponse(BaseModel):
     id: UUID
     name: str
     code: str
-    teacher_id: UUID
+    teacher_id: UUID | None = None
     term: str
     school_year: str
     language_group: LanguageGroup | None = None
@@ -614,7 +682,7 @@ class CourseCreate(BaseModel):
     # subject); still required for free-text courses — enforced in the route.
     name: str | None = None
     code: str
-    teacher_id: UUID
+    teacher_id: UUID | None = None
     term: TrimesterTerm
     school_year: str
     language_group: LanguageGroup | None = None
@@ -639,6 +707,67 @@ class CourseUpdate(BaseModel):
     coefficient: int | None = Field(default=None, ge=1)
     grading_system: GradingSystem | None = None
     confirm_grading_system_change: bool = False
+
+
+class CourseBulkPreviewRequest(BaseModel):
+    school_year: str
+    term: TrimesterTerm
+    class_ids: list[UUID] = Field(min_length=1)
+
+
+class CourseBulkPreviewRow(BaseModel):
+    class_id: UUID
+    class_name: str
+    subject_id: UUID
+    subject_name: str
+    language_group: LanguageGroup
+    sort_order: int
+    code: str
+    coefficient: int = 1
+    grading_system: GradingSystem
+    teacher_id: UUID | None = None
+    already_exists: bool = False
+    existing_course_id: UUID | None = None
+    code_conflict: bool = False
+
+
+class CourseBulkPreviewResponse(BaseModel):
+    school_year: str
+    term: TrimesterTerm
+    rows: list[CourseBulkPreviewRow]
+    applicable_count: int
+    missing_count: int
+    existing_count: int
+
+
+class CourseBulkCreateItem(BaseModel):
+    class_id: UUID
+    subject_id: UUID
+    code: str
+    teacher_id: UUID | None = None
+    coefficient: int = Field(default=1, ge=1)
+    grading_system: GradingSystem
+
+
+class CourseBulkCreateRequest(BaseModel):
+    school_year: str
+    term: TrimesterTerm
+    items: list[CourseBulkCreateItem] = Field(min_length=1)
+
+
+class CourseBulkValidationFailure(BaseModel):
+    class_id: UUID | None = None
+    subject_id: UUID | None = None
+    code: str
+    message: str
+
+
+class CourseBulkCreateResponse(BaseModel):
+    status: str
+    created_count: int
+    skipped_existing_count: int
+    created_course_ids: list[UUID]
+    validation_failures: list[CourseBulkValidationFailure] = Field(default_factory=list)
 
 
 class CourseCloneYearRequest(BaseModel):

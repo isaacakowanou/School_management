@@ -36,6 +36,7 @@ from routes.passages import router as passages_router
 from routes.reports import router as reports_router
 from routes.school_years import router as school_years_router
 from routes.students import router as students_router
+from routes.student_imports import router as student_imports_router
 from routes.subjects import router as subjects_router
 from routes.teachers import router as teachers_router
 from routes.trash import router as trash_router
@@ -75,6 +76,7 @@ app.include_router(passages_router, prefix="/api/v1/passages")
 app.include_router(reports_router, prefix="/api/v1/reports")
 app.include_router(school_years_router, prefix="/api/v1")
 app.include_router(students_router, prefix="/api/v1/students")
+app.include_router(student_imports_router, prefix="/api/v1/students/import")
 app.include_router(subjects_router, prefix="/api/v1/subjects")
 app.include_router(teachers_router, prefix="/api/v1/teachers")
 app.include_router(trash_router, prefix="/api/v1")

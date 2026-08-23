@@ -115,6 +115,19 @@ export async function apiPost(path, body) {
   return response.json()
 }
 
+// Authenticated multipart POST. The browser supplies the multipart boundary;
+// setting Content-Type manually would produce an unreadable upload body.
+export async function apiPostForm(path, formData) {
+  const response = await rawFetch(path, {
+    method: 'POST',
+    headers: authHeaders({ Accept: 'application/json' }),
+    body: formData,
+  })
+  if (response.status === 401) throw handleUnauthorized()
+  if (!response.ok) throw await parseAndHandleError(response)
+  return response.json()
+}
+
 // Authenticated PUT. Unlike apiPost (used by login), a 401 here means an
 // expired session, so it triggers the global logout like apiGet.
 export async function apiPut(path, body) {

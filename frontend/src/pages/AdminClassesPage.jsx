@@ -366,6 +366,12 @@ export default function AdminClassesPage() {
                           <td className="num">{cls.student_count}</td>
                           <td className="num">{cls.course_count}</td>
                           <td className="nowrap row-actions">
+                            <Link
+                              className="link-action"
+                              to={`/admin/courses/setup?year=${encodeURIComponent(cls.school_year)}&class_id=${encodeURIComponent(cls.id)}`}
+                            >
+                              {t('courses.bulkSetupShort')}
+                            </Link>
                             <button
                               type="button"
                               className="link-action"

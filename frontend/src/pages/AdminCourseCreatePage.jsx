@@ -13,7 +13,6 @@ import SubjectSelect from '../components/SubjectSelect.jsx'
 import TermSelect from '../components/TermSelect.jsx'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
-import Empty from '../components/Empty.jsx'
 
 const EMPTY_FORM = {
   name: '',
@@ -96,10 +95,6 @@ export default function AdminCourseCreatePage() {
       .then((data) => {
         if (cancelled) return
         setTeachers(data)
-        setForm((current) => ({
-          ...current,
-          teacherId: current.teacherId || data[0]?.id || '',
-        }))
       })
       .catch((err) => {
         if (!cancelled) setError(err.message)
@@ -135,7 +130,6 @@ export default function AdminCourseCreatePage() {
     if (
       (!form.subjectId && !form.name.trim()) ||
       !form.code.trim() ||
-      !form.teacherId ||
       !form.term.trim() ||
       !form.schoolYear.trim()
     ) {
@@ -171,11 +165,7 @@ export default function AdminCourseCreatePage() {
 
       {error && <ErrorBanner message={error} />}
       {!error && teachers === null && <Spinner label={t('courses.loadingTeachers')} />}
-      {!error && teachers && teachers.length === 0 && (
-        <Empty message={t('courses.needsTeacher')} />
-      )}
-
-      {teachers && teachers.length > 0 && (
+      {teachers && (
         <form className="card admin-form" onSubmit={handleSubmit}>
           <label className="field">
             <span>{t('courses.subject')}</span>
@@ -219,9 +209,9 @@ export default function AdminCourseCreatePage() {
               value={form.teacherId}
               onChange={(event) => updateField('teacherId', event.target.value)}
               disabled={saving}
-              required
               style={{ width: '100%', textAlign: 'left' }}
             >
+              <option value="">{t('common.unassigned')}</option>
               {teachers.map((teacher) => (
                 <option key={teacher.id} value={teacher.id}>
                   {teacher.name} — {teacher.email} — #{teacher.employee_number}

@@ -327,7 +327,29 @@ def _restore_conflict(parent_label: str) -> None:
     )
 
 
-def validate_restore_dependencies(row) -> None:
+def _validate_course_setup_restore_conflict(db: Session, row) -> None:
+    if not isinstance(row, Course) or row.class_id is None or row.subject_id is None:
+        return
+    duplicate = db.scalar(
+        select(Course.id).where(
+            Course.school_year == row.school_year,
+            Course.class_id == row.class_id,
+            Course.subject_id == row.subject_id,
+            Course.deleted_at.is_(None),
+            Course.id != row.id,
+        )
+    )
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "restore_course_setup_conflict",
+                "message": "An active course already uses this class and subject for the school year",
+            },
+        )
+
+
+def validate_restore_dependencies(db: Session, row) -> None:
     # A soft-deleted child may be individually visible in Corbeille even while
     # its parent remains deleted. Returning 409 preserves referential meaning
     # and tells the admin to restore the ownership chain first.
@@ -340,6 +362,7 @@ def validate_restore_dependencies(row) -> None:
             _restore_conflict("class")
         if row.subject is not None and row.subject.deleted_at is not None:
             _restore_conflict("subject")
+        _validate_course_setup_restore_conflict(db, row)
     if isinstance(row, Enrollment):
         if _parent_deleted(row.student, "students", "student"):
             _restore_conflict("student")
@@ -376,7 +399,7 @@ def restore_row_entry(db: Session, *, table: str, entity_id: UUID, current_user:
     row = db.get(model, entity_id)
     if row is None or row.deleted_at is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
-    validate_restore_dependencies(row)
+    validate_restore_dependencies(db, row)
     if isinstance(row, (Parent, Teacher)):
         restore_profile_accounts(db, [row])
     old_deleted_at = row.deleted_at
@@ -407,6 +430,11 @@ def restore_batch_entry(db: Session, *, batch_id: UUID, current_user: User) -> t
         if not rows:
             continue
         rows_by_table[table] = rows
+
+    # Batch-owned parent/child rows are restored together, so single-row parent
+    # guards do not apply. Only check conflicts against live course setup.
+    for course in rows_by_table.get("courses", []):
+        _validate_course_setup_restore_conflict(db, course)
 
     profiles = [
         row

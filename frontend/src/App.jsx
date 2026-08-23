@@ -21,6 +21,7 @@ import AdminParentsPage from './pages/AdminParentsPage.jsx'
 import AdminTeachersPage from './pages/AdminTeachersPage.jsx'
 import AdminCoursesPage from './pages/AdminCoursesPage.jsx'
 import AdminStudentCreatePage from './pages/AdminStudentCreatePage.jsx'
+import AdminStudentImportPage from './pages/AdminStudentImportPage.jsx'
 import AdminStudentDetailPage from './pages/AdminStudentDetailPage.jsx'
 import AdminParentCreatePage from './pages/AdminParentCreatePage.jsx'
 import AdminParentDetailPage from './pages/AdminParentDetailPage.jsx'
@@ -28,6 +29,7 @@ import AdminTeacherCreatePage from './pages/AdminTeacherCreatePage.jsx'
 import AdminTeacherDetailPage from './pages/AdminTeacherDetailPage.jsx'
 import AdminCourseCreatePage from './pages/AdminCourseCreatePage.jsx'
 import AdminCourseDetailPage from './pages/AdminCourseDetailPage.jsx'
+import AdminCourseSetupPage from './pages/AdminCourseSetupPage.jsx'
 import AdminClassesPage from './pages/AdminClassesPage.jsx'
 import AdminArchivesPage from './pages/AdminArchivesPage.jsx'
 import AdminPassagesPage from './pages/AdminPassagesPage.jsx'
@@ -101,6 +103,7 @@ export default function App() {
         <Route path="/admin/school-years/new" element={<AdminSchoolYearCreatePage />} />
         <Route path="/admin/students" element={<AdminStudentsPage />} />
         <Route path="/admin/students/new" element={<AdminStudentCreatePage />} />
+        <Route path="/admin/students/import" element={<AdminStudentImportPage />} />
         <Route path="/admin/students/trash" element={<AdminStudentTrashPage />} />
         <Route path="/admin/students/:studentId" element={<AdminStudentDetailPage />} />
         <Route path="/admin/teachers" element={<AdminTeachersPage />} />
@@ -111,6 +114,7 @@ export default function App() {
         <Route path="/admin/parents/:parentId" element={<AdminParentDetailPage />} />
         <Route path="/admin/courses" element={<AdminCoursesPage />} />
         <Route path="/admin/courses/new" element={<AdminCourseCreatePage />} />
+        <Route path="/admin/courses/setup" element={<AdminCourseSetupPage />} />
         <Route path="/admin/courses/:courseId" element={<AdminCourseDetailPage />} />
         <Route path="/admin/classes" element={<AdminClassesPage />} />
         <Route path="/admin/passages" element={<AdminPassagesPage />} />

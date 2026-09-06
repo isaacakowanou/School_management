@@ -198,6 +198,24 @@
     "student_import_school_year_required": "Choose a school year.",
     "student_import_no_rows_selected": "Select at least one valid row.",
     "student_import_invalid_selection": "The selected rows do not match this workbook. Preview the file again."
+    ,"teacher_import_invalid_file_type": "Choose an Excel .xlsx workbook."
+    ,"teacher_import_file_too_large": "The workbook is too large. The maximum size is 5 MB."
+    ,"teacher_import_invalid_workbook": "The teacher workbook could not be read."
+    ,"teacher_import_empty_workbook": "The workbook contains no teacher rows."
+    ,"teacher_import_duplicate_columns": "The workbook contains duplicate column headings."
+    ,"teacher_import_missing_columns": "The workbook is missing required teacher columns."
+    ,"teacher_import_unknown_columns": "The workbook contains unsupported columns."
+    ,"teacher_import_no_rows_selected": "Select at least one valid teacher row."
+    ,"teacher_import_invalid_selection": "The selected rows do not match this workbook. Preview it again."
+    ,"parent_link_import_invalid_file_type": "Choose an Excel .xlsx workbook."
+    ,"parent_link_import_file_too_large": "The workbook is too large. The maximum size is 5 MB."
+    ,"parent_link_import_invalid_workbook": "The parent-link workbook could not be read."
+    ,"parent_link_import_empty_workbook": "The workbook contains no parent-link rows."
+    ,"parent_link_import_duplicate_columns": "The workbook contains duplicate column headings."
+    ,"parent_link_import_missing_columns": "The workbook is missing required parent-link columns."
+    ,"parent_link_import_unknown_columns": "The workbook contains unsupported columns."
+    ,"parent_link_import_no_rows_selected": "Select at least one valid parent-link row."
+    ,"parent_link_import_invalid_selection": "The selected rows do not match this workbook. Preview it again."
   },
   "forgotPassword": {
     "title": "Forgot password?",
@@ -384,6 +402,75 @@
       "student_import_email_role_conflict": "This email belongs to an active non-parent account.",
       "student_import_parent_details_differ": "An existing parent account will be reused without changing its name or phone.",
       "student_import_commit_conflict": "The row changed or conflicted after preview and was not imported."
+    }
+  },
+  "teacherImport": {
+    "action": "Import from Excel",
+    "title": "Import teachers from Excel",
+    "subtitle": "Preview and validate teacher accounts before creating anything. Courses can be assigned later.",
+    "fileLabel": "Excel workbook (.xlsx)",
+    "fileRequired": "Choose an .xlsx workbook.",
+    "requiredColumns": "Required columns: teacher_name, teacher_email.",
+    "optionalColumns": "Optional columns: teacher_phone, employee_number.",
+    "preview": "Preview file",
+    "previewing": "Reading workbook…",
+    "total": "Rows", "valid": "Valid", "invalid": "With errors", "selected": "Selected",
+    "include": "Include", "row": "Row", "teacher": "Teacher", "validation": "Validation",
+    "selectRow": "Select spreadsheet row {{row}}",
+    "ready": "Ready",
+    "importSelected": "Import {{count}} selected",
+    "confirmTitle": "Confirm teacher import",
+    "confirmBody": "Create the {{count}} selected teacher accounts?",
+    "confirm": "Start import", "importing": "Importing…",
+    "resultTitle": "Import complete",
+    "resultSummary": "{{created}} teachers created · {{failed}} failed · {{emails_sent}} emails sent · {{emails_failed}} emails failed.",
+    "failedRows": "Rows not imported", "rowFailure": "Row {{row}}",
+    "emailFailedPassword": "Welcome email failed for {{email}}. Temporary password: {{password}}",
+    "backToTeachers": "Back to teachers",
+    "issues": {
+      "teacher_import_required": "A required value is missing.",
+      "teacher_import_invalid_email": "The teacher email is invalid.",
+      "teacher_import_duplicate_email": "This teacher email appears more than once in the workbook.",
+      "teacher_import_email_conflict": "This email belongs to an active account.",
+      "teacher_import_duplicate_employee_number": "This employee number appears more than once in the workbook.",
+      "teacher_import_employee_number_conflict": "This employee number belongs to an active teacher.",
+      "teacher_import_commit_conflict": "The row changed or conflicted after preview and was not imported."
+    }
+  },
+  "parentLinkImport": {
+    "action": "Link from Excel",
+    "title": "Link additional parents from Excel",
+    "subtitle": "Create or reuse parent accounts and link them to existing active students.",
+    "fileLabel": "Excel workbook (.xlsx)",
+    "fileRequired": "Choose an .xlsx workbook.",
+    "requiredColumns": "Required columns: student_number, parent_name, parent_email.",
+    "optionalColumns": "Optional columns: parent_phone, relationship.",
+    "preview": "Preview file", "previewing": "Reading workbook…",
+    "total": "Rows", "valid": "Valid", "invalid": "With errors", "selected": "Selected",
+    "include": "Include", "row": "Row", "student": "Student", "parent": "Parent",
+    "relationship": "Relationship", "actions": "Actions", "validation": "Validation",
+    "selectRow": "Select spreadsheet row {{row}}", "ready": "Ready",
+    "parentActions": { "create": "Create parent", "reuse": "Reuse parent" },
+    "linkActions": { "link": "Create link", "reactivate": "Reactivate link", "skip_existing": "Already linked" },
+    "importSelected": "Link {{count}} selected",
+    "confirmTitle": "Confirm parent links",
+    "confirmBody": "Process the {{count}} selected parent links?",
+    "confirm": "Start linking", "importing": "Linking…",
+    "resultTitle": "Linking complete",
+    "resultSummary": "{{linked}} linked · {{reactivated}} reactivated · {{skipped_existing}} already linked · {{failed}} failed · {{parents_created}} parents created · {{parents_reused}} parents reused · {{emails_sent}} emails sent · {{emails_failed}} emails failed.",
+    "failedRows": "Rows not processed", "rowFailure": "Row {{row}}",
+    "emailFailedPassword": "Welcome email failed for {{email}}. Temporary password: {{password}}",
+    "backToParents": "Back to parents",
+    "issues": {
+      "parent_link_import_required": "A required value is missing.",
+      "parent_link_import_invalid_email": "The parent email is invalid.",
+      "parent_link_import_duplicate_row": "This student and parent appear more than once in the workbook.",
+      "parent_link_import_parent_name_conflict": "This parent email has conflicting names in the workbook.",
+      "parent_link_import_parent_details_differ": "Existing parent reused; workbook name or phone values are ignored.",
+      "parent_link_import_student_not_found": "No active student has this student number.",
+      "parent_link_import_email_role_conflict": "This email belongs to an active non-parent account.",
+      "parent_link_import_link_exists": "This parent is already linked to the student.",
+      "parent_link_import_commit_conflict": "The row changed or conflicted after preview and was not processed."
     }
   },
   "reports": {

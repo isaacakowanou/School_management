@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
+import { apiDelete, apiGet, apiPost, apiPostForm, apiPut } from './client.js'
 
 // GET /api/v1/teachers (admin) -> [{ id, user_id, name, email, employee_number }]
 export function listTeachers() {
@@ -46,4 +46,17 @@ export function deleteTeacher(teacherId) {
 
 export function resetTeacherPassword(teacherId) {
   return apiPost(`/teachers/${teacherId}/reset-password`)
+}
+
+export function previewTeacherImport(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiPostForm('/teachers/import/preview', formData)
+}
+
+export function commitTeacherImport({ file, selectedRows }) {
+  const formData = new FormData()
+  formData.append('selected_rows', JSON.stringify(selectedRows))
+  formData.append('file', file)
+  return apiPostForm('/teachers/import/commit', formData)
 }

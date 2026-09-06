@@ -32,6 +32,7 @@ from routes.enrollments import router as enrollments_router
 from routes.grade_items import router as grade_items_router
 from routes.grades import router as grades_router
 from routes.parents import router as parents_router
+from routes.parent_link_imports import router as parent_link_imports_router
 from routes.passages import router as passages_router
 from routes.reports import router as reports_router
 from routes.school_years import router as school_years_router
@@ -39,6 +40,7 @@ from routes.students import router as students_router
 from routes.student_imports import router as student_imports_router
 from routes.subjects import router as subjects_router
 from routes.teachers import router as teachers_router
+from routes.teacher_imports import router as teacher_imports_router
 from routes.trash import router as trash_router
 from routes.trimester_locks import router as trimester_locks_router
 from routes.users import router as users_router
@@ -72,6 +74,7 @@ app.include_router(enrollments_router, prefix="/api/v1")
 app.include_router(grade_items_router, prefix="/api/v1")
 app.include_router(grades_router, prefix="/api/v1")
 app.include_router(parents_router, prefix="/api/v1/parents")
+app.include_router(parent_link_imports_router, prefix="/api/v1/parents/link-import")
 app.include_router(passages_router, prefix="/api/v1/passages")
 app.include_router(reports_router, prefix="/api/v1/reports")
 app.include_router(school_years_router, prefix="/api/v1")
@@ -79,6 +82,7 @@ app.include_router(students_router, prefix="/api/v1/students")
 app.include_router(student_imports_router, prefix="/api/v1/students/import")
 app.include_router(subjects_router, prefix="/api/v1/subjects")
 app.include_router(teachers_router, prefix="/api/v1/teachers")
+app.include_router(teacher_imports_router, prefix="/api/v1/teachers/import")
 app.include_router(trash_router, prefix="/api/v1")
 app.include_router(trimester_locks_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1/users")

@@ -559,6 +559,128 @@ class StudentImportCommitResponse(BaseModel):
     email_results: list[StudentImportEmailResult]
 
 
+class TeacherImportIssue(BaseModel):
+    code: str
+    field: str | None = None
+    message: str
+
+
+class TeacherImportPreviewRow(BaseModel):
+    row_number: int
+    teacher_name: str
+    teacher_email: str
+    teacher_phone: str
+    employee_number: str
+    teacher_action: str
+    is_valid: bool
+    errors: list[TeacherImportIssue]
+    warnings: list[TeacherImportIssue]
+
+
+class TeacherImportPreviewResponse(BaseModel):
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    rows: list[TeacherImportPreviewRow]
+
+
+class TeacherImportCommitRow(BaseModel):
+    row_number: int
+    status: str
+    teacher_id: UUID | None = None
+    employee_number: str | None = None
+
+
+class TeacherImportFailure(BaseModel):
+    row_number: int
+    errors: list[TeacherImportIssue]
+
+
+class TeacherImportEmailResult(BaseModel):
+    teacher_id: UUID
+    email: str
+    success: bool
+    error: str | None = None
+    temp_password: str | None = None
+
+
+class TeacherImportCommitResponse(BaseModel):
+    status: str
+    created: int
+    failed: int
+    emails_sent: int
+    emails_failed: int
+    rows: list[TeacherImportCommitRow]
+    failures: list[TeacherImportFailure]
+    email_results: list[TeacherImportEmailResult]
+
+
+class ParentLinkImportIssue(BaseModel):
+    code: str
+    field: str | None = None
+    message: str
+
+
+class ParentLinkImportPreviewRow(BaseModel):
+    row_number: int
+    student_number: str
+    student_id: UUID | None = None
+    student_name: str | None = None
+    parent_name: str
+    parent_email: str
+    parent_phone: str
+    relationship: str
+    parent_action: str
+    link_action: str
+    is_valid: bool
+    errors: list[ParentLinkImportIssue]
+    warnings: list[ParentLinkImportIssue]
+
+
+class ParentLinkImportPreviewResponse(BaseModel):
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    rows: list[ParentLinkImportPreviewRow]
+
+
+class ParentLinkImportCommitRow(BaseModel):
+    row_number: int
+    status: str
+    student_id: UUID | None = None
+    parent_id: UUID | None = None
+    link_id: UUID | None = None
+    parent_action: str | None = None
+
+
+class ParentLinkImportFailure(BaseModel):
+    row_number: int
+    errors: list[ParentLinkImportIssue]
+
+
+class ParentLinkImportEmailResult(BaseModel):
+    parent_id: UUID
+    email: str
+    success: bool
+    error: str | None = None
+    temp_password: str | None = None
+
+
+class ParentLinkImportCommitResponse(BaseModel):
+    status: str
+    linked: int
+    reactivated: int
+    skipped_existing: int
+    failed: int
+    parents_reused: int
+    parents_created: int
+    emails_sent: int
+    emails_failed: int
+    rows: list[ParentLinkImportCommitRow]
+    failures: list[ParentLinkImportFailure]
+    email_results: list[ParentLinkImportEmailResult]
+
+
 class DeletedStudentResponse(StudentResponse):
     deleted_at: datetime
 

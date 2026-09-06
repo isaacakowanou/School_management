@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost, apiPut } from './client.js'
+import { apiDelete, apiGet, apiPost, apiPostForm, apiPut } from './client.js'
 
 // GET /api/v1/parents/me -> { id, user_id, name, email, phone }
 export function getCurrentParent() {
@@ -64,4 +64,17 @@ export function deleteParent(parentId) {
 
 export function resetParentPassword(parentId) {
   return apiPost(`/parents/${parentId}/reset-password`)
+}
+
+export function previewParentLinkImport(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiPostForm('/parents/link-import/preview', formData)
+}
+
+export function commitParentLinkImport({ file, selectedRows }) {
+  const formData = new FormData()
+  formData.append('selected_rows', JSON.stringify(selectedRows))
+  formData.append('file', file)
+  return apiPostForm('/parents/link-import/commit', formData)
 }

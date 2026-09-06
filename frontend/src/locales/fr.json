@@ -198,6 +198,24 @@
     "student_import_school_year_required": "Choisissez une année scolaire.",
     "student_import_no_rows_selected": "Sélectionnez au moins une ligne valide.",
     "student_import_invalid_selection": "Les lignes sélectionnées ne correspondent pas à ce fichier. Prévisualisez-le à nouveau."
+    ,"teacher_import_invalid_file_type": "Choisissez un fichier Excel .xlsx."
+    ,"teacher_import_file_too_large": "Le fichier est trop volumineux. La taille maximale est de 5 Mo."
+    ,"teacher_import_invalid_workbook": "Le fichier des enseignants ne peut pas être lu."
+    ,"teacher_import_empty_workbook": "Le fichier ne contient aucune ligne d'enseignant."
+    ,"teacher_import_duplicate_columns": "Le fichier contient des en-têtes en double."
+    ,"teacher_import_missing_columns": "Des colonnes obligatoires pour les enseignants sont absentes."
+    ,"teacher_import_unknown_columns": "Le fichier contient des colonnes non autorisées."
+    ,"teacher_import_no_rows_selected": "Sélectionnez au moins une ligne d'enseignant valide."
+    ,"teacher_import_invalid_selection": "Les lignes sélectionnées ne correspondent pas au fichier. Prévisualisez-le à nouveau."
+    ,"parent_link_import_invalid_file_type": "Choisissez un fichier Excel .xlsx."
+    ,"parent_link_import_file_too_large": "Le fichier est trop volumineux. La taille maximale est de 5 Mo."
+    ,"parent_link_import_invalid_workbook": "Le fichier de liens parent ne peut pas être lu."
+    ,"parent_link_import_empty_workbook": "Le fichier ne contient aucune ligne de lien parent."
+    ,"parent_link_import_duplicate_columns": "Le fichier contient des en-têtes en double."
+    ,"parent_link_import_missing_columns": "Des colonnes obligatoires pour les liens parent sont absentes."
+    ,"parent_link_import_unknown_columns": "Le fichier contient des colonnes non autorisées."
+    ,"parent_link_import_no_rows_selected": "Sélectionnez au moins une ligne de lien parent valide."
+    ,"parent_link_import_invalid_selection": "Les lignes sélectionnées ne correspondent pas au fichier. Prévisualisez-le à nouveau."
   },
   "forgotPassword": {
     "title": "Mot de passe oublié ?",
@@ -384,6 +402,73 @@
       "student_import_email_role_conflict": "Cette adresse email appartient à un compte actif qui n'est pas parent.",
       "student_import_parent_details_differ": "Le compte parent existant sera réutilisé sans modifier son nom ni son téléphone.",
       "student_import_commit_conflict": "La ligne a changé ou est entrée en conflit après la prévisualisation et n'a pas été importée."
+    }
+  },
+  "teacherImport": {
+    "action": "Importer depuis Excel",
+    "title": "Importer des enseignants depuis Excel",
+    "subtitle": "Prévisualisez et validez les comptes enseignants avant toute création. Les cours pourront être affectés ensuite.",
+    "fileLabel": "Fichier Excel (.xlsx)",
+    "fileRequired": "Choisissez un fichier .xlsx.",
+    "requiredColumns": "Colonnes requises : teacher_name, teacher_email.",
+    "optionalColumns": "Colonnes facultatives : teacher_phone, employee_number.",
+    "preview": "Prévisualiser le fichier", "previewing": "Lecture du fichier…",
+    "total": "Lignes", "valid": "Valides", "invalid": "Avec erreurs", "selected": "Sélectionnées",
+    "include": "Inclure", "row": "Ligne", "teacher": "Enseignant", "validation": "Validation",
+    "selectRow": "Sélectionner la ligne {{row}}", "ready": "Prête",
+    "importSelected": "Importer les {{count}} sélectionnés",
+    "confirmTitle": "Confirmer l'importation des enseignants",
+    "confirmBody": "Créer les {{count}} comptes enseignants sélectionnés ?",
+    "confirm": "Lancer l'importation", "importing": "Importation…",
+    "resultTitle": "Importation terminée",
+    "resultSummary": "{{created}} enseignants créés · {{failed}} échecs · {{emails_sent}} emails envoyés · {{emails_failed}} emails en échec.",
+    "failedRows": "Lignes non importées", "rowFailure": "Ligne {{row}}",
+    "emailFailedPassword": "L'email de bienvenue à {{email}} a échoué. Mot de passe temporaire : {{password}}",
+    "backToTeachers": "Retour aux enseignants",
+    "issues": {
+      "teacher_import_required": "Une valeur obligatoire est manquante.",
+      "teacher_import_invalid_email": "L'adresse email de l'enseignant est invalide.",
+      "teacher_import_duplicate_email": "Cette adresse email apparaît plusieurs fois dans le fichier.",
+      "teacher_import_email_conflict": "Cette adresse email appartient à un compte actif.",
+      "teacher_import_duplicate_employee_number": "Ce numéro d'employé apparaît plusieurs fois dans le fichier.",
+      "teacher_import_employee_number_conflict": "Ce numéro d'employé appartient à un enseignant actif.",
+      "teacher_import_commit_conflict": "La ligne a changé ou est entrée en conflit après la prévisualisation."
+    }
+  },
+  "parentLinkImport": {
+    "action": "Lier depuis Excel",
+    "title": "Lier des parents supplémentaires depuis Excel",
+    "subtitle": "Créez ou réutilisez des comptes parents et liez-les aux élèves actifs existants.",
+    "fileLabel": "Fichier Excel (.xlsx)",
+    "fileRequired": "Choisissez un fichier .xlsx.",
+    "requiredColumns": "Colonnes requises : student_number, parent_name, parent_email.",
+    "optionalColumns": "Colonnes facultatives : parent_phone, relationship.",
+    "preview": "Prévisualiser le fichier", "previewing": "Lecture du fichier…",
+    "total": "Lignes", "valid": "Valides", "invalid": "Avec erreurs", "selected": "Sélectionnées",
+    "include": "Inclure", "row": "Ligne", "student": "Élève", "parent": "Parent",
+    "relationship": "Lien", "actions": "Actions", "validation": "Validation",
+    "selectRow": "Sélectionner la ligne {{row}}", "ready": "Prête",
+    "parentActions": { "create": "Créer le parent", "reuse": "Réutiliser le parent" },
+    "linkActions": { "link": "Créer le lien", "reactivate": "Réactiver le lien", "skip_existing": "Déjà lié" },
+    "importSelected": "Lier les {{count}} sélectionnés",
+    "confirmTitle": "Confirmer les liens parent",
+    "confirmBody": "Traiter les {{count}} liens parent sélectionnés ?",
+    "confirm": "Lancer la liaison", "importing": "Liaison…",
+    "resultTitle": "Liaison terminée",
+    "resultSummary": "{{linked}} liés · {{reactivated}} réactivés · {{skipped_existing}} déjà liés · {{failed}} échecs · {{parents_created}} parents créés · {{parents_reused}} parents réutilisés · {{emails_sent}} emails envoyés · {{emails_failed}} emails en échec.",
+    "failedRows": "Lignes non traitées", "rowFailure": "Ligne {{row}}",
+    "emailFailedPassword": "L'email de bienvenue à {{email}} a échoué. Mot de passe temporaire : {{password}}",
+    "backToParents": "Retour aux parents",
+    "issues": {
+      "parent_link_import_required": "Une valeur obligatoire est manquante.",
+      "parent_link_import_invalid_email": "L'adresse email du parent est invalide.",
+      "parent_link_import_duplicate_row": "Cet élève et ce parent apparaissent plusieurs fois dans le fichier.",
+      "parent_link_import_parent_name_conflict": "Cette adresse email correspond à plusieurs noms de parent dans le fichier.",
+      "parent_link_import_parent_details_differ": "Parent existant réutilisé : le nom ou le téléphone du fichier est ignoré.",
+      "parent_link_import_student_not_found": "Aucun élève actif ne possède ce numéro.",
+      "parent_link_import_email_role_conflict": "Cette adresse email appartient à un compte actif qui n'est pas parent.",
+      "parent_link_import_link_exists": "Ce parent est déjà lié à l'élève.",
+      "parent_link_import_commit_conflict": "La ligne a changé ou est entrée en conflit après la prévisualisation."
     }
   },
   "reports": {

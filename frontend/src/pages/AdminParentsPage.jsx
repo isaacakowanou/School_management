@@ -82,9 +82,14 @@ export default function AdminParentsPage() {
           <h2 className="page-title">{t('nav.parents')}</h2>
           <p className="muted">{t('parents.count', { count: parents?.length ?? 0 })}</p>
         </div>
-        <Link to="/admin/parents/new" className="btn btn-primary">
-          {t('parents.addParent')}
-        </Link>
+        <div className="grade-actions">
+          <Link to="/admin/parents/link-import" className="btn btn-ghost">
+            {t('parentLinkImport.action')}
+          </Link>
+          <Link to="/admin/parents/new" className="btn btn-primary">
+            {t('parents.addParent')}
+          </Link>
+        </div>
       </div>
 
       {notice && <p className="grade-summary">{notice}</p>}

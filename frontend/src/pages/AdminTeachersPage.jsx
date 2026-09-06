@@ -82,9 +82,14 @@ export default function AdminTeachersPage() {
           <h2 className="page-title">{t('nav.teachers')}</h2>
           <p className="muted">{t('teachers.count', { count: teachers?.length ?? 0 })}</p>
         </div>
-        <Link to="/admin/teachers/new" className="btn btn-primary">
-          {t('teachers.addTeacher')}
-        </Link>
+        <div className="grade-actions">
+          <Link to="/admin/teachers/import" className="btn btn-ghost">
+            {t('teacherImport.action')}
+          </Link>
+          <Link to="/admin/teachers/new" className="btn btn-primary">
+            {t('teachers.addTeacher')}
+          </Link>
+        </div>
       </div>
 
       {notice && <p className="grade-summary">{notice}</p>}

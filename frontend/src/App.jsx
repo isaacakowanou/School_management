@@ -24,8 +24,10 @@ import AdminStudentCreatePage from './pages/AdminStudentCreatePage.jsx'
 import AdminStudentImportPage from './pages/AdminStudentImportPage.jsx'
 import AdminStudentDetailPage from './pages/AdminStudentDetailPage.jsx'
 import AdminParentCreatePage from './pages/AdminParentCreatePage.jsx'
+import AdminParentLinkImportPage from './pages/AdminParentLinkImportPage.jsx'
 import AdminParentDetailPage from './pages/AdminParentDetailPage.jsx'
 import AdminTeacherCreatePage from './pages/AdminTeacherCreatePage.jsx'
+import AdminTeacherImportPage from './pages/AdminTeacherImportPage.jsx'
 import AdminTeacherDetailPage from './pages/AdminTeacherDetailPage.jsx'
 import AdminCourseCreatePage from './pages/AdminCourseCreatePage.jsx'
 import AdminCourseDetailPage from './pages/AdminCourseDetailPage.jsx'
@@ -108,9 +110,11 @@ export default function App() {
         <Route path="/admin/students/:studentId" element={<AdminStudentDetailPage />} />
         <Route path="/admin/teachers" element={<AdminTeachersPage />} />
         <Route path="/admin/teachers/new" element={<AdminTeacherCreatePage />} />
+        <Route path="/admin/teachers/import" element={<AdminTeacherImportPage />} />
         <Route path="/admin/teachers/:teacherId" element={<AdminTeacherDetailPage />} />
         <Route path="/admin/parents" element={<AdminParentsPage />} />
         <Route path="/admin/parents/new" element={<AdminParentCreatePage />} />
+        <Route path="/admin/parents/link-import" element={<AdminParentLinkImportPage />} />
         <Route path="/admin/parents/:parentId" element={<AdminParentDetailPage />} />
         <Route path="/admin/courses" element={<AdminCoursesPage />} />
         <Route path="/admin/courses/new" element={<AdminCourseCreatePage />} />

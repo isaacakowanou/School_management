@@ -19,6 +19,7 @@ from models import (
     ReportCard,
     ReportCardCourse,
     Student,
+    StudentClassAssignment,
     StudentParent,
     Teacher,
     User,
@@ -157,6 +158,14 @@ class ReportPdfTests(unittest.TestCase):
         self.db.add(school_class)
         self.db.flush()
         self.student.class_id = school_class.id
+        self.db.add(
+            StudentClassAssignment(
+                student_id=self.student.id,
+                school_year="2026-2027",
+                class_id=school_class.id,
+                class_name_snapshot=school_class.name_fr,
+            )
+        )
         self.db.commit()
         report = self._add_report(term="1er Trimestre", status="sent", fr=14.0, en=16.0, bil=15.0)
 
@@ -183,7 +192,10 @@ class ReportPdfTests(unittest.TestCase):
         self.assertIsNone(term_number(None))
 
     def test_final_trimester_populates_annual(self):
-        self._add_report(term="1er Trimestre", status="approved", fr=12.0, en=14.0, bil=13.0)
+        self.sent_report.french_average = 12.0
+        self.sent_report.english_average = 14.0
+        self.sent_report.bilingual_average = 13.0
+        self.db.commit()
         self._add_report(term="2ème Trimestre", status="approved", fr=14.0, en=16.0, bil=15.0)
         third = self._add_report(term="3ème Trimestre", status="approved", fr=16.0, en=18.0, bil=17.0)
 

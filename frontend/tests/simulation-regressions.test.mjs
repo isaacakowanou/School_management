@@ -116,3 +116,31 @@ test('passage outcome includes pass, repeat, and graduate decisions', async () =
     { passed: 2, repeated: 1, graduated: 1 },
   )
 })
+
+
+test('complete annual average uses the ordinary label', async () => {
+  const { annualAverageLabel } = await import('../src/utils/bulletinDisplay.js')
+  const t = (key, values = {}) => key === 'reports.annualAveragePartial'
+    ? `Moyenne annuelle (partielle — ${values.complete}/${values.total} trimestres)`
+    : 'Moyenne annuelle'
+
+  assert.equal(
+    annualAverageLabel({ complete_term_count: 3, total_term_count: 3, is_partial: false }, t),
+    'Moyenne annuelle',
+  )
+})
+
+
+test('partial annual average label includes the correct trimester count', async () => {
+  const { annualAverageLabel } = await import('../src/utils/bulletinDisplay.js')
+  const t = (key, values = {}) => key === 'reports.annualAveragePartial'
+    ? `Moyenne annuelle (partielle — ${values.complete}/${values.total} trimestres)`
+    : 'Moyenne annuelle'
+
+  for (const complete of [1, 2]) {
+    assert.equal(
+      annualAverageLabel({ complete_term_count: complete, total_term_count: 3, is_partial: true }, t),
+      `Moyenne annuelle (partielle — ${complete}/3 trimestres)`,
+    )
+  }
+})

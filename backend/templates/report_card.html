@@ -57,9 +57,9 @@
 {%- macro beninese_course_rows(courses) -%}
   {%- for c in courses -%}
   {%- if c.moy_int is not none -%}
-  <tr><td>{{ c.course_name }}</td><td class="num">{{ fmt(c.moy_int) }}</td><td class="num">{{ fmt(c.devoir_score) }}</td><td class="num">{{ fmt(c.mcc) }}</td><td class="num">{{ fmt(c.composition_score) }}</td><td class="num bold">{{ fmt(c.average) }}</td><td class="num">{{ c.coefficient }}</td><td class="num">{{ gr(c.letter_grade) }}</td></tr>
+  <tr><td>{{ c.course_name }}</td><td class="num">{{ fmt(c.moy_int) }}</td><td class="num">{{ fmt(c.devoir_score) }}</td><td class="num">{{ fmt(c.mcc) }}</td><td class="num">{{ fmt(c.composition_score) }}</td><td class="num bold">{{ fmt(c.average) }}</td><td class="num">{{ gr(c.letter_grade) }}</td></tr>
   {%- else -%}
-  <tr><td colspan="5">{{ c.course_name }}</td><td></td><td class="num">{{ c.coefficient }}</td><td class="num">{{ gr(c.letter_grade) }}</td></tr>
+  <tr><td colspan="5">{{ c.course_name }}</td><td></td><td class="num">{{ gr(c.letter_grade) }}</td></tr>
   {%- endif -%}
   {%- endfor -%}
 {%- endmacro -%}
@@ -114,8 +114,8 @@
     {% if ns.has_beninese_fr %}
       {% if r.courses_by_language.french_courses %}
       <table class="ben-tbl">
-        <tr><td class="section-title" colspan="8">FRANÇAIS / FRENCH</td></tr>
-        <tr><th style="width:33%;">Matière / Subject</th><th class="num small">Moy Int</th><th class="num small">Dev</th><th class="num small">MCC</th><th class="num small">Comp</th><th class="num small bold">Moy</th><th class="num small">Coef</th><th class="num small">Grade</th></tr>
+        <tr><td class="section-title" colspan="7">FRANÇAIS / FRENCH</td></tr>
+        <tr><th style="width:38%;">Matière / Subject</th><th class="num small">Moy Int</th><th class="num small">Dev</th><th class="num small">MCC</th><th class="num small">Comp</th><th class="num small bold">Moy</th><th class="num small">Grade</th></tr>
         {{ beninese_course_rows(r.courses_by_language.french_courses) }}
       </table>
       {% endif %}
@@ -194,7 +194,10 @@
   </tr>
   {% if r.is_final_trimester %}
   <tr>
-    <td class="lbl bold">Annual Avg / Moyenne annuelle</td>
+    <td class="lbl bold">
+      Annual Avg / Moyenne annuelle{% if r.annual_averages.is_partial %}
+      (partial / partielle — {{ r.annual_averages.complete_term_count }}/{{ r.annual_averages.total_term_count }}){% endif %}
+    </td>
     <td class="num" colspan="3">{{ avg(r.three_averages.annual.french) }}</td>
     <td class="num tsep" colspan="3">{{ avg(r.three_averages.annual.english) }}</td>
     <td class="num tsep" colspan="3">{{ avg(r.three_averages.annual.bilingual) }}</td>

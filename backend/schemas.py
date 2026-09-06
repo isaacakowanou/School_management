@@ -1016,6 +1016,87 @@ class ReportItemResponse(BaseModel):
     letter_grade: LetterGrade | None = None
 
 
+class BulletinStudentResponse(BaseModel):
+    id: UUID
+    first_name: str
+    last_name: str
+    full_name: str
+    student_number: str
+    educmaster_number: str | None = None
+    class_name: str | None = None
+
+
+class BulletinClassResponse(BaseModel):
+    name_fr: str
+    name_en: str | None = None
+
+
+class BulletinCourseResponse(BaseModel):
+    course_id: UUID
+    course_name: str
+    course_code: str
+    average: float
+    letter_grade: str
+    appreciation: str
+    language_group: str | None = None
+    moy_int: float | None = None
+    mcc: float | None = None
+    devoir_score: float | None = None
+    composition_score: float | None = None
+
+
+class BulletinCourseGroupsResponse(BaseModel):
+    french_courses: list[BulletinCourseResponse]
+    english_courses: list[BulletinCourseResponse]
+    untagged_courses: list[BulletinCourseResponse]
+
+
+class BulletinTrackAverageResponse(BaseModel):
+    student: float | None = None
+    class_highest: float | None = None
+    class_lowest: float | None = None
+
+
+class BulletinAnnualAveragesResponse(BaseModel):
+    french: float | None = None
+    english: float | None = None
+    bilingual: float | None = None
+    complete_terms: list[str]
+    missing_terms: list[str]
+    complete_term_count: int
+    total_term_count: int
+    is_partial: bool
+
+
+class BulletinItemResponse(BaseModel):
+    key: str
+    en_label: str
+    fr_label: str
+    letter_grade: str | None = None
+
+
+class BulletinDisplayResponse(BaseModel):
+    student: BulletinStudentResponse
+    term_number: int | None = None
+    is_final_trimester: bool
+    term_ordinal_en: str | None = None
+    term_ordinal_fr: str | None = None
+    term_dates_en: str | None = None
+    term_dates_fr: str | None = None
+    school_class: BulletinClassResponse | None = None
+    class_effectif: int | None = None
+    courses_by_language: BulletinCourseGroupsResponse
+    averages_grid: dict[int, dict[str, BulletinTrackAverageResponse]]
+    annual_averages: BulletinAnnualAveragesResponse
+    conduct_items: list[BulletinItemResponse]
+    work_habit_items: list[BulletinItemResponse]
+    teacher_comment_fr: str | None = None
+    teacher_comment_en: str | None = None
+    principal_comment_fr: str | None = None
+    principal_comment_en: str | None = None
+    grading_key: str
+
+
 class ReportItemUpdate(BaseModel):
     item_key: str
     letter_grade: LetterGrade | None = None
@@ -1053,6 +1134,14 @@ class ReportCardResponse(BaseModel):
 class AdminReportCardResponse(ReportCardResponse):
     student_name: str
     student_number: str
+
+
+class ReportCardDetailResponse(ReportCardResponse):
+    bulletin: BulletinDisplayResponse
+
+
+class AdminReportCardDetailResponse(AdminReportCardResponse):
+    bulletin: BulletinDisplayResponse
 
 
 class ReportDetailsUpdate(BaseModel):

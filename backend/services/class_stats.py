@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import ReportCard, Student, StudentClassAssignment
+from services.annual_averages import ANNUAL_REPORT_STATUSES
 from services.student_assignments import assignment_for_student_year
 
 
@@ -27,8 +28,10 @@ def _empty_stats() -> dict:
 def compute_class_stats(db: Session, student: Student, term: str, school_year: str) -> dict:
     """Return {track: {"highest", "lowest"}} across the student's class.
 
-    Considers every ReportCard for (term, school_year) belonging to a student in
-    the same class (including this student's own). Edge cases:
+    Considers published ReportCard snapshots for (term, school_year) belonging
+    to a student in the same class. Draft and withdrawn needs-review rows are
+    excluded so parent-visible statistics never include unpublished results.
+    Edge cases:
       - student has no class -> all None
       - class of one / no peers with a report yet -> highest == lowest == self
       - a track with no values anywhere -> None / None
@@ -47,6 +50,7 @@ def compute_class_stats(db: Session, student: Student, term: str, school_year: s
             Student.deleted_at.is_(None),
             ReportCard.term == term,
             ReportCard.school_year == school_year,
+            ReportCard.status.in_(ANNUAL_REPORT_STATUSES),
             ReportCard.deleted_at.is_(None),
         )
     ).all()

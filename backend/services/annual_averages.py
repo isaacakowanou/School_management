@@ -1,8 +1,9 @@
 """Compute annual track averages from official bulletin snapshots.
 
 The PDF builder and Passage de classe use the same source of truth: approved,
-sent, or review-needed ReportCard rows for the three canonical trimesters. This
-service only reads snapshots; it never recalculates course grades and never
+sent ReportCard rows for the three canonical trimesters. Draft and needs-review
+snapshots are excluded so unpublished or stale results cannot affect annual
+averages. This service only reads snapshots; it never recalculates course grades and never
 writes progression decisions.
 """
 
@@ -16,7 +17,10 @@ from constants import FINAL_TRIMESTER_NUMBER, TRIMESTER_TERMS, term_number
 from models import ReportCard
 
 
-ANNUAL_REPORT_STATUSES = {"approved", "sent", "needs_review"}
+# Only published snapshots may contribute to an annual value shown to parents.
+# A needs-review bulletin is withdrawn from the portal and therefore cannot
+# silently influence the annual value surfaced through another bulletin.
+ANNUAL_REPORT_STATUSES = {"approved", "sent"}
 
 
 @dataclass(frozen=True)

@@ -14,9 +14,9 @@ import {
 import { checkReport, generateReportSummary } from '../api/ai.js'
 import { formatReportAverage, formatScore20 } from '../utils/format.js'
 import ReportAverages from '../components/ReportAverages.jsx'
+import BulletinAcademicDetails from '../components/BulletinAcademicDetails.jsx'
 import Spinner from '../components/Spinner.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
-import Empty from '../components/Empty.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import { LETTER_GRADES } from '../constants/letterGrades.js'
 
@@ -550,30 +550,7 @@ export default function AdminReportDetailPage() {
         </>
       )}
 
-      {/* ---- Courses ---- */}
-      <h3 className="section-title">{t('reports.coursesSection')}</h3>
-      {report.courses.length === 0 ? (
-        <Empty message={t('reports.noCourseRows')} />
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t('reports.course')}</th>
-              <th className="num">{t('reports.average')}</th>
-              <th className="num">{t('reports.grade')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {report.courses.map((course) => (
-              <tr key={course.id}>
-                <td>{course.course_name}</td>
-                <td className="num">{formatReportAverage(course.average, report.scale)}</td>
-                <td className="num">{course.letter_grade}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <BulletinAcademicDetails report={report} />
 
       {/* ---- Conduct ---- */}
       <h3 className="section-title">{t('reports.conductSection')}</h3>

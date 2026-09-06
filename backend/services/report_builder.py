@@ -18,7 +18,7 @@ matching the school's official format. Do not add a printed ``Coef`` column.
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from constants import (
@@ -32,16 +32,17 @@ from constants import (
     appreciation_for_letter,
     term_number,
 )
-from models import Course, CourseResult, ReportCard, ReportCardCourse, Student
+from models import Course, CourseResult, ReportCard, ReportCardCourse, Student, StudentClassAssignment
 from schemas import LanguageGroup
 from services.class_stats import compute_class_stats
-from services.annual_averages import compute_student_annual_averages
+from services.annual_averages import ANNUAL_REPORT_STATUSES, compute_student_annual_averages
 from services.grade_calculator import (
     calculate_gpa,
     calculate_overall_average,
     calculate_weighted_average,
     normalize_average_to_20,
 )
+from services.student_assignments import assignment_for_student_year
 
 
 STALE_FLOAT_TOLERANCE = 0.005
@@ -321,6 +322,7 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
             ReportCard.student_id == student.id,
             ReportCard.school_year == report_card.school_year,
             ReportCard.id != report_card.id,
+            ReportCard.status.in_(ANNUAL_REPORT_STATUSES),
             ReportCard.deleted_at.is_(None),
         )
     ).all()
@@ -339,13 +341,29 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
 
     # Annual = mean of the student's own track averages across the year's trims,
     # populated only in the final trimester and only where values exist.
+    annual_details = {
+        "french": None,
+        "english": None,
+        "bilingual": None,
+        "complete_terms": [],
+        "missing_terms": [],
+        "complete_term_count": 0,
+        "total_term_count": FINAL_TRIMESTER_NUMBER,
+        "is_partial": False,
+    }
     if current_term_num == FINAL_TRIMESTER_NUMBER:
         annual = compute_student_annual_averages(db, student.id, report_card.school_year)
-        three_averages["annual"] = {
+        annual_details = {
             "french": annual.french,
             "english": annual.english,
             "bilingual": annual.bilingual,
+            "complete_terms": annual.complete_terms,
+            "missing_terms": annual.missing_terms,
+            "complete_term_count": len(annual.complete_terms),
+            "total_term_count": FINAL_TRIMESTER_NUMBER,
+            "is_partial": len(annual.complete_terms) < FINAL_TRIMESTER_NUMBER,
         }
+    three_averages["annual"] = annual_details
 
     # Template convenience: per-trimester (1..3) track blocks for the averages
     # grid. Reports whose term isn't a recognized trimester simply don't appear.
@@ -361,12 +379,23 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
         for trim in (1, 2, 3)
     }
 
-    school_class = student.school_class
+    assignment = assignment_for_student_year(db, student.id, report_card.school_year)
+    school_class = assignment.school_class if assignment is not None else None
+    historical_class_name = assignment.class_name_snapshot if assignment is not None else None
     class_block = None
     class_effectif = None
-    if school_class is not None:
-        class_block = {"name_fr": school_class.name_fr, "name_en": school_class.name_en}
-        class_effectif = len(school_class.students)
+    if assignment is not None:
+        class_block = {
+            "name_fr": historical_class_name,
+            "name_en": school_class.name_en if school_class is not None else None,
+        }
+        if assignment.class_id is not None:
+            class_effectif = db.scalar(
+                select(func.count(StudentClassAssignment.id)).where(
+                    StudentClassAssignment.school_year == report_card.school_year,
+                    StudentClassAssignment.class_id == assignment.class_id,
+                )
+            )
 
     term_dates_en, term_dates_fr = TRIMESTER_DATE_RANGES.get(current_term_num, (None, None))
 
@@ -378,7 +407,7 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
             "full_name": f"{student.first_name} {student.last_name}",
             "student_number": student.student_number,
             "educmaster_number": student.educmaster_number,
-            "class_name": student.school_class.name_fr if student.school_class else None,
+            "class_name": historical_class_name,
         },
         "term": report_card.term,
         "school_year": report_card.school_year,
@@ -396,6 +425,7 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
         "gpa": report_card.gpa,
         "scale": report_card.scale,
         "three_averages": three_averages,
+        "annual_averages": annual_details,
         "previous_term_averages": previous_term_averages,
         "averages_grid": averages_grid,
         "class_stats": class_stats,

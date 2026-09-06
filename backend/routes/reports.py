@@ -49,8 +49,10 @@ from models import (
     User,
 )
 from schemas import (
+    AdminReportCardDetailResponse,
     AdminReportListItem,
     AdminReportCardResponse,
+    BulletinDisplayResponse,
     ClassPdfJobResponse,
     ClassReportBatchApproveResponse,
     ClassReportBatchGenerateResponse,
@@ -62,6 +64,7 @@ from schemas import (
     ReportBulkGenerateRequest,
     ReportApproveRequest,
     ReportCardCourseResponse,
+    ReportCardDetailResponse,
     ReportCardResponse,
     ReportCardStalenessResponse,
     ReportDetailsUpdate,
@@ -251,6 +254,25 @@ def to_admin_report_card_response(report_card: ReportCard, db: Session | None = 
         **base,
         student_name=f"{student.first_name} {student.last_name}",
         student_number=student.student_number,
+    )
+
+
+def _bulletin_display_response(db: Session, report_card: ReportCard) -> BulletinDisplayResponse:
+    report_data = build_report_card_data_from_report_card(db, report_card)
+    return BulletinDisplayResponse.model_validate(report_data)
+
+
+def to_report_card_detail_response(db: Session, report_card: ReportCard) -> ReportCardDetailResponse:
+    return ReportCardDetailResponse(
+        **to_report_card_response(report_card, db).model_dump(),
+        bulletin=_bulletin_display_response(db, report_card),
+    )
+
+
+def to_admin_report_card_detail_response(db: Session, report_card: ReportCard) -> AdminReportCardDetailResponse:
+    return AdminReportCardDetailResponse(
+        **to_admin_report_card_response(report_card, db).model_dump(),
+        bulletin=_bulletin_display_response(db, report_card),
     )
 
 
@@ -1365,15 +1387,15 @@ def list_reports(
     ]
 
 
-@router.get("/admin/{report_id}", response_model=AdminReportCardResponse)
+@router.get("/admin/{report_id}", response_model=AdminReportCardDetailResponse)
 def get_admin_report(
     report_id: UUID,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
-) -> AdminReportCardResponse:
+) -> AdminReportCardDetailResponse:
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
-    return to_admin_report_card_response(report_card, db)
+    return to_admin_report_card_detail_response(db, report_card)
 
 
 @router.get("/student/{student_id}", response_model=list[ReportCardResponse])
@@ -1795,12 +1817,12 @@ def download_report_pdf(
     )
 
 
-@router.get("/{report_id}", response_model=ReportCardResponse)
+@router.get("/{report_id}", response_model=ReportCardDetailResponse)
 def get_report(
     report_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> ReportCardResponse:
+) -> ReportCardDetailResponse:
     report_card = get_report_card_or_404(db, report_id)
     ensure_can_view_report(db, current_user, report_card)
-    return to_report_card_response(report_card, db)
+    return to_report_card_detail_response(db, report_card)

@@ -18,6 +18,7 @@ from models import (
     ReportCard,
     ReportCardCourse,
     Student,
+    StudentClassAssignment,
     Teacher,
     User,
 )
@@ -91,6 +92,23 @@ class ClassPdfJobTests(unittest.TestCase):
         self.student_other = Student(first_name="Dede", last_name="Gbaguidi", student_number="P-999", class_id=self.other_class.id)
         self.db.add_all([self.student_a, self.student_b, self.student_c, self.student_other])
         self.db.flush()
+
+        self.db.add_all(
+            [
+                StudentClassAssignment(
+                    student_id=student.id,
+                    school_year=YEAR,
+                    class_id=school_class.id,
+                    class_name_snapshot=school_class.name_fr,
+                )
+                for student, school_class in (
+                    (self.student_a, self.terminale),
+                    (self.student_b, self.terminale),
+                    (self.student_c, self.terminale),
+                    (self.student_other, self.other_class),
+                )
+            ]
+        )
 
         # Two parent-visible reports in the class, one draft (excluded), one
         # approved report in another class (excluded).

@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from audit import create_audit_log
 from auth import hash_password, invalidate_user_sessions
 from models import Parent, Teacher, User
-from services.email_service import send_account_created_email
-from services.sms_service import send_account_created_sms
+from services.email_service import send_temporary_password_reset_email
+from services.sms_service import send_temporary_password_reset_sms
 
 
 def reset_profile_password(
@@ -36,7 +36,7 @@ def reset_profile_password(
     if user.email:
         try:
             email_sent = bool(
-                send_account_created_email(
+                send_temporary_password_reset_email(
                     name=user.name, to_email=user.email, temp_password=temp_password
                 ).get("success")
             )
@@ -44,7 +44,7 @@ def reset_profile_password(
             email_sent = False
     elif profile.phone:
         try:
-            results = send_account_created_sms(
+            results = send_temporary_password_reset_sms(
                 name=user.name, phone=profile.phone, temp_password=temp_password
             )
             sms_sent = any(result.get("success") for result in results)

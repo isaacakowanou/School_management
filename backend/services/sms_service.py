@@ -379,16 +379,55 @@ def send_account_created_sms(
         return [_skipped_result(provider=None, channel="sms", to=phone, reason=str(exc))]
 
     app_url = cfg["app_base_url"].rstrip("/")
-    body = (
-        f"Your GGFK School account has been created.\n"
-        f"Temporary password: {temp_password}\n"
-        f"Log in at {app_url} and change it immediately."
+    body = "\n".join(
+        [
+            f"Bonjour {name}. Votre compte GGFK a été créé.",
+            f"Mot de passe temporaire : {temp_password}",
+            f"Connectez-vous sur {app_url} et créez votre propre mot de passe lors de votre première connexion.",
+            "",
+            f"Hello {name}. Your GGFK account has been created.",
+            f"Temporary password: {temp_password}",
+            f"Log in at {app_url} and set your own password the first time you sign in.",
+        ]
     )
 
     try:
         return send_sms_message(phone, body, cfg)
     except Exception as exc:
         logger.warning("Twilio account-created SMS failed for %s: %s", phone, exc)
+        return [_failed_result(provider=cfg["provider"], channel="sms", to=phone, error=str(exc))]
+
+
+def send_temporary_password_reset_sms(
+    name: str,
+    phone: str,
+    temp_password: str,
+    config: dict | None = None,
+) -> list[dict]:
+    """Deliver an administrator-reset forced-change credential by phone."""
+    try:
+        cfg = config or _get_messaging_config()
+    except ValueError as exc:
+        logger.warning("SMS config missing, skipping password-reset SMS: %s", exc)
+        return [_skipped_result(provider=None, channel="sms", to=phone, reason=str(exc))]
+
+    app_url = cfg["app_base_url"].rstrip("/")
+    body = "\n".join(
+        [
+            f"Bonjour {name}. Votre mot de passe temporaire GGFK a été réinitialisé.",
+            f"Mot de passe temporaire : {temp_password}",
+            f"Connectez-vous sur {app_url} et créez votre propre mot de passe lors de votre prochaine connexion.",
+            "",
+            f"Hello {name}. Your temporary GGFK password has been reset.",
+            f"Temporary password: {temp_password}",
+            f"Log in at {app_url} and set your own password the next time you sign in.",
+        ]
+    )
+
+    try:
+        return send_sms_message(phone, body, cfg)
+    except Exception as exc:
+        logger.warning("Password-reset SMS failed for %s: %s", phone, exc)
         return [_failed_result(provider=cfg["provider"], channel="sms", to=phone, error=str(exc))]
 
 

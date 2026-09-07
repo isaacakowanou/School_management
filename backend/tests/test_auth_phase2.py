@@ -156,7 +156,7 @@ class AuthPhase2Tests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/auth/me", headers=headers).status_code, 401)
         self.assertEqual(self.client.get("/api/v1/auth/me", headers=fresh_headers).status_code, 200)
 
-    @patch("services.account_security.send_account_created_email", return_value={"success": True})
+    @patch("services.account_security.send_temporary_password_reset_email", return_value={"success": True})
     def test_admin_reset_invalidates_target_and_audits_without_password(self, _send):
         old_token = self.login("ZZ-TEST-PHASE2-TCH")
         admin_token = self.login("zz-phase2-admin@example.test")

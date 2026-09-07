@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -95,7 +96,8 @@ class TeacherRouteTests(unittest.TestCase):
             "employee_number": employee_number,
         }
 
-    def test_admin_can_create_teacher(self):
+    @patch("routes.teachers.send_account_created_email", return_value={"success": True})
+    def test_admin_can_create_teacher(self, send_email):
         response = self.client.post(
             "/api/v1/teachers",
             json=self._teacher_payload(),
@@ -109,6 +111,12 @@ class TeacherRouteTests(unittest.TestCase):
         self.assertEqual(data["employee_number"], "TCH-NEW-001")
         self.assertIn("temp_password", data)
         self.assertGreater(len(data["temp_password"]), 0)
+        self.assertTrue(data["email_sent"])
+        send_email.assert_called_once_with(
+            name="New Teacher",
+            to_email="new-teacher@example.test",
+            temp_password=data["temp_password"],
+        )
 
         user = self.db.scalar(select(User).where(User.email == "new-teacher@example.test"))
         self.assertIsNotNone(user)

@@ -5,7 +5,9 @@ fallback. A ``resend.dev`` sender is test mode and can reach only the Resend
 account-owner inbox; production delivery needs DNS verification and a school
 ``EMAIL_FROM`` value, not code changes. Credential emails intentionally contain
 plaintext temporary passwords because those credentials are short-lived,
-force a first-login change, and invalidate prior sessions.
+force a first-login change, and invalidate prior sessions. Welcome and
+administrator-reset notices are bilingual (French first) and use distinct
+wording so a reset is never described as account creation.
 
 Grade-entry notifications name the student/course but expose no score or
 average; bulletin-send notifications link to the approved/sent snapshot.
@@ -261,14 +263,28 @@ def _build_account_created_body(name: str, email: str, temp_password: str, app_b
     # reuse this channel for permanent passwords or write the value to logs.
     return "\n".join(
         [
-            f"Dear {name},",
+            f"Bonjour {name},",
             "",
-            "Your account has been created for GGFK School Management.",
+            "Votre compte GGFK a été créé.",
             "",
-            f"Email:    {email}",
-            f"Password: {temp_password}",
+            f"Adresse e-mail : {email}",
+            f"Mot de passe temporaire : {temp_password}",
             "",
-            f"Please log in at {app_base_url.rstrip('/')} and change your password immediately.",
+            f"Veuillez vous connecter à {app_base_url.rstrip('/')} et créer votre propre mot de passe lors de votre première connexion.",
+            "",
+            "Cordialement,",
+            "L'administration scolaire",
+            "",
+            "---",
+            "",
+            f"Hello {name},",
+            "",
+            "Your GGFK account has been created.",
+            "",
+            f"Email: {email}",
+            f"Temporary password: {temp_password}",
+            "",
+            f"Please log in at {app_base_url.rstrip('/')} and set your own password the first time you sign in.",
             "",
             "Best regards,",
             "School Administration",
@@ -276,16 +292,14 @@ def _build_account_created_body(name: str, email: str, temp_password: str, app_b
     )
 
 
-def send_account_created_email(
-    name: str,
+def _send_temporary_credential_email(
+    *,
     to_email: str,
-    temp_password: str,
-    config: dict | None = None,
+    subject: str,
+    body: str,
+    config: dict,
 ) -> dict:
-    config = config or _get_email_config()
     provider = config["provider"]
-    subject = "Your GGFK account has been created"
-    body = _build_account_created_body(name, to_email, temp_password, config["app_base_url"])
     secrets = _config_secrets(config)
     clean_to_email = (to_email or "").strip()
 
@@ -328,6 +342,78 @@ def send_account_created_email(
         "provider_message_id": provider_message_id,
         "error": None,
     }
+
+
+def send_account_created_email(
+    name: str,
+    to_email: str,
+    temp_password: str,
+    config: dict | None = None,
+) -> dict:
+    config = config or _get_email_config()
+    return _send_temporary_credential_email(
+        to_email=to_email,
+        subject="Bienvenue sur GGFK / Welcome to GGFK",
+        body=_build_account_created_body(name, to_email, temp_password, config["app_base_url"]),
+        config=config,
+    )
+
+
+def _build_temporary_password_reset_body(
+    name: str,
+    email: str,
+    temp_password: str,
+    app_base_url: str,
+) -> str:
+    return "\n".join(
+        [
+            f"Bonjour {name},",
+            "",
+            "Votre mot de passe temporaire GGFK a été réinitialisé par l'administration.",
+            "",
+            f"Adresse e-mail : {email}",
+            f"Mot de passe temporaire : {temp_password}",
+            "",
+            f"Veuillez vous connecter à {app_base_url.rstrip('/')} et créer votre propre mot de passe lors de votre prochaine connexion.",
+            "",
+            "Cordialement,",
+            "L'administration scolaire",
+            "",
+            "---",
+            "",
+            f"Hello {name},",
+            "",
+            "Your temporary GGFK password has been reset by the school administration.",
+            "",
+            f"Email: {email}",
+            f"Temporary password: {temp_password}",
+            "",
+            f"Please log in at {app_base_url.rstrip('/')} and set your own password the next time you sign in.",
+            "",
+            "Best regards,",
+            "School Administration",
+        ]
+    )
+
+
+def send_temporary_password_reset_email(
+    name: str,
+    to_email: str,
+    temp_password: str,
+    config: dict | None = None,
+) -> dict:
+    config = config or _get_email_config()
+    return _send_temporary_credential_email(
+        to_email=to_email,
+        subject="Nouveau mot de passe temporaire GGFK / New temporary GGFK password",
+        body=_build_temporary_password_reset_body(
+            name,
+            to_email,
+            temp_password,
+            config["app_base_url"],
+        ),
+        config=config,
+    )
 
 
 def send_password_reset_email(

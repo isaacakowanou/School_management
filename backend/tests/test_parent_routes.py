@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -232,7 +233,8 @@ class CurrentParentRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["detail"], "Invalid credentials")
 
-    def test_admin_can_create_parent(self):
+    @patch("routes.parents.send_account_created_email", return_value={"success": True})
+    def test_admin_can_create_parent(self, send_email):
         response = self.client.post(
             "/api/v1/parents",
             json=self._parent_payload(),
@@ -246,6 +248,12 @@ class CurrentParentRouteTests(unittest.TestCase):
         self.assertEqual(data["phone"], "555-0199")
         self.assertIn("temp_password", data)
         self.assertGreater(len(data["temp_password"]), 0)
+        self.assertTrue(data["email_sent"])
+        send_email.assert_called_once_with(
+            name="New Parent",
+            to_email="new-parent@example.test",
+            temp_password=data["temp_password"],
+        )
 
         user = self.db.scalar(select(User).where(User.email == "new-parent@example.test"))
         self.assertIsNotNone(user)

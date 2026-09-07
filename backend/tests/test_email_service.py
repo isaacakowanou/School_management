@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from models import Base, Parent, ReportCard, Student, StudentParent, User
+from services import email_service
 from services.email_service import send_report_available_email, send_report_notification_to_parents
 
 
@@ -74,6 +75,57 @@ class EmailServiceTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(ValueError, "Missing email configuration"):
                 send_report_notification_to_parents(self.db, self.report_card.id)
+
+    @patch("services.email_service._send_resend_email", return_value="welcome-message-id")
+    def test_welcome_email_is_bilingual_french_first_and_non_urgent(self, send_email):
+        result = email_service.send_account_created_email(
+            name="Marie Parent",
+            to_email="marie@example.test",
+            temp_password="TempPass123",
+            config={
+                "provider": "resend",
+                "resend_api_key": "test-key",
+                "email_from": "school@example.test",
+                "app_base_url": "https://portal.example.test/",
+            },
+        )
+
+        self.assertTrue(result["success"])
+        payload = send_email.call_args.kwargs
+        self.assertEqual(payload["subject"], "Bienvenue sur GGFK / Welcome to GGFK")
+        body = payload["body"]
+        self.assertLess(body.index("Bonjour Marie Parent"), body.index("Hello Marie Parent"))
+        self.assertIn("marie@example.test", body)
+        self.assertIn("TempPass123", body)
+        self.assertIn("https://portal.example.test", body)
+        self.assertNotIn("immediately", body.lower())
+        self.assertNotIn("immédiatement", body.lower())
+
+    @patch("services.email_service._send_resend_email", return_value="reset-message-id")
+    def test_admin_password_reset_email_is_distinct_from_welcome_email(self, send_email):
+        result = email_service.send_temporary_password_reset_email(
+            name="Marie Parent",
+            to_email="marie@example.test",
+            temp_password="ResetPass123",
+            config={
+                "provider": "resend",
+                "resend_api_key": "test-key",
+                "email_from": "school@example.test",
+                "app_base_url": "https://portal.example.test",
+            },
+        )
+
+        self.assertTrue(result["success"])
+        payload = send_email.call_args.kwargs
+        body = payload["body"]
+        self.assertIn("mot de passe", payload["subject"].lower())
+        self.assertLess(body.index("Bonjour Marie Parent"), body.index("Hello Marie Parent"))
+        self.assertNotIn("account has been created", body.lower())
+        self.assertNotIn("compte ggfk a été créé", body.lower())
+        self.assertIn("ResetPass123", body)
+        self.assertIn("https://portal.example.test", body)
+        self.assertNotIn("immediately", body.lower())
+        self.assertNotIn("immédiatement", body.lower())
 
     def test_sends_resend_email_to_linked_parent_and_returns_structured_results(self):
         send_mock = MagicMock(return_value={"id": "resend-message-123"})

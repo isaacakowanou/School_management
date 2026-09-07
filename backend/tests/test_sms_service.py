@@ -5,7 +5,9 @@ from unittest.mock import Mock, patch
 from services.sms_service import (
     _get_messaging_config,
     _send_africastalking_messages,
+    send_account_created_sms,
     send_sms_message,
+    send_temporary_password_reset_sms,
     to_e164,
 )
 
@@ -63,6 +65,40 @@ class PhoneNormalizationTests(unittest.TestCase):
 
 
 class AfricasTalkingAdapterTests(unittest.TestCase):
+    @patch("services.sms_service.send_sms_message", return_value=[{"success": True}])
+    def test_account_created_sms_is_bilingual_french_first_and_non_urgent(self, send_message):
+        results = send_account_created_sms(
+            "Marie Parent",
+            "97123456",
+            "TempPass123",
+            config=AT_CONFIG,
+        )
+
+        self.assertTrue(results[0]["success"])
+        body = send_message.call_args.args[1]
+        self.assertLess(body.index("Bonjour Marie Parent"), body.index("Hello Marie Parent"))
+        self.assertIn("TempPass123", body)
+        self.assertIn("https://portal.example.test", body)
+        self.assertNotIn("immediately", body.lower())
+        self.assertNotIn("immédiatement", body.lower())
+
+    @patch("services.sms_service.send_sms_message", return_value=[{"success": True}])
+    def test_admin_password_reset_sms_does_not_claim_account_was_created(self, send_message):
+        results = send_temporary_password_reset_sms(
+            "Marie Parent",
+            "97123456",
+            "ResetPass123",
+            config=AT_CONFIG,
+        )
+
+        self.assertTrue(results[0]["success"])
+        body = send_message.call_args.args[1]
+        self.assertNotIn("account has been created", body.lower())
+        self.assertNotIn("compte ggfk a été créé", body.lower())
+        self.assertIn("ResetPass123", body)
+        self.assertNotIn("immediately", body.lower())
+        self.assertNotIn("immédiatement", body.lower())
+
     @patch("services.sms_service._post_africastalking_sms")
     def test_all_success_and_whatsapp_is_explicitly_skipped(self, post_sms):
         number = "+2290197123456"

@@ -120,7 +120,7 @@ export default function ParentStudentPage() {
 
       {studentError && <ErrorBanner message={studentError} />}
 
-      <div className="section-heading">
+      <div className="section-heading parent-grade-filters">
         <div>
           <h3>{t('parentGrades.title')}</h3>
           <p className="muted">{t('parentGrades.subtitle')}</p>

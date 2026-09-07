@@ -145,7 +145,7 @@ export default function AdminTeacherImportPage() {
                     <td>{row.employee_number}</td>
                     <td>
                       {row.is_valid && row.warnings.length === 0 && <span className="import-ready">{t('teacherImport.ready')}</span>}
-                      {row.errors.map((issue, index) => <div className="import-error" key={`${issue.code}-${index}`}>{issueText(t, issue)}</div>)}
+                      {row.errors.map((issue, index) => <small className="import-issue import-issue-error" key={`${issue.code}-${index}`}>{issueText(t, issue)}</small>)}
                       {row.warnings.map((issue, index) => <div className="import-warning" key={`${issue.code}-${index}`}>{issueText(t, issue)}</div>)}
                     </td>
                   </tr>

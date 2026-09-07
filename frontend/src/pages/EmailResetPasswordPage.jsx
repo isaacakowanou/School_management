@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { resetPasswordByEmail } from '../api/auth.js'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import LanguageSwitcher from '../components/LanguageSwitcher.jsx'
+import { resetPasswordErrorMessage } from '../utils/resetPasswordErrors.js'
 
 export default function EmailResetPasswordPage() {
   const { t } = useTranslation()
@@ -25,7 +26,7 @@ export default function EmailResetPasswordPage() {
       await resetPasswordByEmail(params.get('token') || '', form.password)
       setDone(true)
     } catch (err) {
-      setError(t('forgotPassword.invalidResetLink'))
+      setError(resetPasswordErrorMessage(err, t))
     } finally {
       setSaving(false)
     }

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -7,6 +8,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   Library,
+  Menu,
   MoveRight,
   School,
   ScrollText,
@@ -14,6 +16,7 @@ import {
   Trash2,
   UserRound,
   Users,
+  X,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext.jsx'
 import LanguageSwitcher from './LanguageSwitcher.jsx'
@@ -56,6 +59,7 @@ const NAV_GROUPS = [
 export default function AdminLayout() {
   const { user, logout, homePath } = useAuth()
   const { t } = useTranslation()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   return (
     <div className="app">
@@ -63,6 +67,16 @@ export default function AdminLayout() {
         <Link to={homePath} className="brand">
           {t('common.schoolName')}
         </Link>
+        <button
+          type="button"
+          className="btn btn-ghost admin-menu-toggle"
+          aria-expanded={mobileNavOpen}
+          aria-controls="admin-navigation"
+          onClick={() => setMobileNavOpen((open) => !open)}
+        >
+          {mobileNavOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
+          {t('common.menu')}
+        </button>
         <div className="topbar-right">
           {user && <span className="parent-name">{user.name}</span>}
           <Link to="/admin/settings" className="btn btn-ghost">{t('common.settings')}</Link>
@@ -74,7 +88,11 @@ export default function AdminLayout() {
       </header>
 
       <div className="admin-shell">
-        <nav className="admin-sidebar" aria-label="Admin navigation">
+        <nav
+          id="admin-navigation"
+          className={`admin-sidebar${mobileNavOpen ? ' admin-sidebar-open' : ''}`}
+          aria-label="Admin navigation"
+        >
           {NAV_GROUPS.map((group, groupIndex) => (
             <div className="admin-nav-group" key={group.labelKey || 'primary'}>
               {group.labelKey && <div className="admin-nav-section">{t(group.labelKey)}</div>}
@@ -85,6 +103,7 @@ export default function AdminLayout() {
                     key={item.to}
                     to={item.to}
                     end={item.end}
+                    onClick={() => setMobileNavOpen(false)}
                     className={({ isActive }) =>
                       `admin-nav-link${isActive ? ' admin-nav-link-active' : ''}`
                     }

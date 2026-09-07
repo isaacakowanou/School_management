@@ -147,7 +147,7 @@ export default function AdminParentLinkImportPage() {
                     <td>{t(`parentLinkImport.parentActions.${row.parent_action}`)} · {t(`parentLinkImport.linkActions.${row.link_action}`)}</td>
                     <td>
                       {row.is_valid && row.warnings.length === 0 && <span className="import-ready">{t('parentLinkImport.ready')}</span>}
-                      {row.errors.map((issue, index) => <div className="import-error" key={`${issue.code}-${index}`}>{issueText(t, issue)}</div>)}
+                      {row.errors.map((issue, index) => <small className="import-issue import-issue-error" key={`${issue.code}-${index}`}>{issueText(t, issue)}</small>)}
                       {row.warnings.map((issue, index) => <div className="import-warning" key={`${issue.code}-${index}`}>{issueText(t, issue)}</div>)}
                     </td>
                   </tr>

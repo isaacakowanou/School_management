@@ -175,6 +175,10 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 
+.topbar .admin-menu-toggle {
+  display: none;
+}
+
 .content {
   width: 100%;
   max-width: 780px;
@@ -329,11 +333,26 @@ a.card:active {
   font-size: var(--font-size-caption);
 }
 
-.parent-student-card-actions span,
+.parent-student-card-action,
 .parent-tab {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+.parent-student-name-link {
+  color: inherit;
+}
+
+.parent-student-card-action {
+  padding: var(--space-2);
+  border-radius: var(--radius-control);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+.parent-student-card-action:hover {
+  background: var(--color-accent-soft);
 }
 
 .parent-tabs {
@@ -1738,24 +1757,60 @@ a.card:active {
 }
 
 @media (max-width: 720px) {
+  .topbar {
+    height: auto;
+    min-height: 60px;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .brand {
+    flex: 1 1 180px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar-right {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    gap: var(--space-1);
+  }
+
+  .topbar .parent-name {
+    display: none;
+  }
+
+  .topbar .btn {
+    padding: 6px var(--space-2);
+    font-size: 0.82rem;
+  }
+
+  .topbar .admin-menu-toggle {
+    display: inline-flex;
+  }
+
   .admin-shell {
     flex-direction: column;
   }
   .admin-sidebar {
-    flex-direction: row;
-    flex-wrap: wrap;
+    display: none;
+    flex-direction: column;
     min-height: 0;
     width: 100%;
+    max-height: calc(100vh - 108px);
+    overflow-y: auto;
     border-right: none;
     border-bottom: 1px solid var(--border);
     padding: var(--space-3);
   }
-  .admin-nav-group {
-    display: contents;
+  .admin-sidebar-open {
+    display: flex;
   }
-  .admin-nav-section,
-  .admin-nav-divider {
-    display: none;
+  .admin-nav-group {
+    display: grid;
   }
   .admin-main {
     width: 100%;
@@ -1786,6 +1841,16 @@ a.card:active {
 
   .stale-report-warning .btn {
     width: 100%;
+  }
+
+  .parent-grade-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .parent-grade-filters .compact-field {
+    width: 100%;
+    min-width: 0;
   }
 }
 

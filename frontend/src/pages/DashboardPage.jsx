@@ -49,20 +49,24 @@ export default function DashboardPage() {
         <ul className="card-list">
           {students.map((student) => (
             <li key={student.id}>
-              <Link className="card student-card parent-student-card" to={`/students/${student.id}`}>
+              <div className="card student-card parent-student-card">
                 <div>
-                  <div className="student-name">
+                  <Link className="student-name parent-student-name-link" to={`/students/${student.id}`}>
                     {student.first_name} {student.last_name}
-                  </div>
+                  </Link>
                   <div className="muted">
                     {student.class_name || '—'} · #{student.student_number}
                   </div>
                 </div>
-                <div className="parent-student-card-actions" aria-hidden="true">
-                  <span><GraduationCap size={16} /> {t('parentGrades.notes')}</span>
-                  <span><FileText size={16} /> {t('nav.reports')}</span>
+                <div className="parent-student-card-actions">
+                  <Link className="parent-student-card-action" to={`/students/${student.id}`}>
+                    <GraduationCap size={16} aria-hidden="true" /> {t('parentGrades.notes')}
+                  </Link>
+                  <Link className="parent-student-card-action" to={`/students/${student.id}/reports`}>
+                    <FileText size={16} aria-hidden="true" /> {t('nav.reports')}
+                  </Link>
                 </div>
-              </Link>
+              </div>
             </li>
           ))}
         </ul>

@@ -218,6 +218,9 @@
     ,"parent_link_import_no_rows_selected": "Sélectionnez au moins une ligne de lien parent valide."
     ,"parent_link_import_invalid_selection": "Les lignes sélectionnées ne correspondent pas au fichier. Prévisualisez-le à nouveau."
   },
+  "serverStatus": {
+    "slow": "Le serveur met plus de temps que prévu. Il peut être en cours de démarrage, ce qui peut prendre jusqu’à une minute."
+  },
   "forgotPassword": {
     "title": "Mot de passe oublié ?",
     "subtitle": "Saisissez votre email ou numéro de téléphone. Si un compte existe, vous recevrez un code par SMS.",

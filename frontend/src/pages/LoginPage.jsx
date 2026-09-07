@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import LanguageSwitcher from '../components/LanguageSwitcher.jsx'
@@ -11,7 +12,15 @@ function isBackendWakeupError(error) {
 }
 
 export default function LoginPage() {
-  const { login, isAuthenticated, bootstrapping, role, homePath } = useAuth()
+  const {
+    login,
+    isAuthenticated,
+    bootstrapping,
+    role,
+    homePath,
+    sessionNotice,
+    dismissSessionNotice,
+  } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const { t } = useTranslation()
@@ -63,6 +72,21 @@ export default function LoginPage() {
       <form className="card login-card" onSubmit={handleSubmit}>
         <h1 className="login-title">{t('login.title')}</h1>
         <p className="login-sub">{t('login.subtitle')}</p>
+
+        {sessionNotice && (
+          <div className="state state-warning session-notice" role="status">
+            <span>{t(`apiErrors.${sessionNotice}`)}</span>
+            <button
+              type="button"
+              className="session-notice-dismiss"
+              onClick={dismissSessionNotice}
+              aria-label={t('common.close')}
+              title={t('common.close')}
+            >
+              <X size={17} aria-hidden="true" />
+            </button>
+          </div>
+        )}
 
         {error && <ErrorBanner message={error} />}
 

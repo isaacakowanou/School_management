@@ -56,7 +56,7 @@ export default function AdminDashboardPage() {
     try {
       setStats(await getAdminStats())
     } catch (err) {
-      setError(err.status === 0 || err.status === 404 ? t('adminDashboard.backendWakeup') : err.message)
+      setError(err.message)
     } finally {
       setLoading(false)
     }

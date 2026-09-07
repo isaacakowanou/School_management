@@ -218,6 +218,9 @@
     ,"parent_link_import_no_rows_selected": "Select at least one valid parent-link row."
     ,"parent_link_import_invalid_selection": "The selected rows do not match this workbook. Preview it again."
   },
+  "serverStatus": {
+    "slow": "The server is taking longer than expected. It may be starting up, which can take up to a minute."
+  },
   "forgotPassword": {
     "title": "Forgot password?",
     "subtitle": "Enter your email or phone number. If an account exists, you will receive a one-time code by SMS.",

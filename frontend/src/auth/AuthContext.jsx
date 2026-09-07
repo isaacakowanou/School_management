@@ -13,15 +13,26 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null) // { id, name, email, role, must_change_password }
   const [parent, setParent] = useState(null) // Parent row; parents only
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [sessionNotice, setSessionNotice] = useState(null)
   // While true, we don't yet know if the stored token is valid.
   const [bootstrapping, setBootstrapping] = useState(true)
 
-  const logout = useCallback(() => {
+  const clearAuthState = useCallback(() => {
     clearToken()
     setUser(null)
     setParent(null)
     setIsAuthenticated(false)
   }, [])
+
+  const logout = useCallback(() => {
+    setSessionNotice(null)
+    clearAuthState()
+  }, [clearAuthState])
+
+  const expireSession = useCallback(() => {
+    setSessionNotice('session_expired')
+    clearAuthState()
+  }, [clearAuthState])
 
   // Loads the signed-in account: verifies role via /auth/me, and for parents
   // also loads the Parent row (needed for parent_id). Forced-change sessions
@@ -67,8 +78,11 @@ export function AuthProvider({ children }) {
           setParent(parentProfile)
           setIsAuthenticated(true)
         }
-      } catch {
-        if (!cancelled) logout()
+      } catch (err) {
+        if (!cancelled) {
+          if (err?.status === 401) expireSession()
+          else logout()
+        }
       } finally {
         if (!cancelled) setBootstrapping(false)
       }
@@ -77,13 +91,13 @@ export function AuthProvider({ children }) {
     return () => {
       cancelled = true
     }
-  }, [loadSession, logout])
+  }, [expireSession, loadSession, logout])
 
   // Any authenticated request that 401s broadcasts this event -> log out.
   useEffect(() => {
-    window.addEventListener('auth:unauthorized', logout)
-    return () => window.removeEventListener('auth:unauthorized', logout)
-  }, [logout])
+    window.addEventListener('auth:unauthorized', expireSession)
+    return () => window.removeEventListener('auth:unauthorized', expireSession)
+  }, [expireSession])
 
   useEffect(() => {
     const requirePasswordChange = () => {
@@ -105,6 +119,7 @@ export function AuthProvider({ children }) {
         setUser(me)
         setParent(parentProfile)
         setIsAuthenticated(true)
+        setSessionNotice(null)
         return me
       } catch (err) {
         clearToken()
@@ -150,6 +165,8 @@ export function AuthProvider({ children }) {
     login,
     logout,
     refreshUser,
+    sessionNotice,
+    dismissSessionNotice: () => setSessionNotice(null),
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

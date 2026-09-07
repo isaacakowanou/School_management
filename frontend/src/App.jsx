@@ -42,10 +42,13 @@ import AdminTrashPage from './pages/AdminTrashPage.jsx'
 import ChangePasswordPage from './pages/ChangePasswordPage.jsx'
 import AccountSettingsPage from './pages/AccountSettingsPage.jsx'
 import EmailResetPasswordPage from './pages/EmailResetPasswordPage.jsx'
+import SlowServerBanner from './components/SlowServerBanner.jsx'
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <SlowServerBanner />
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<EmailResetPasswordPage />} />
@@ -128,7 +131,8 @@ export default function App() {
         <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   )
 }

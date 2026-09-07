@@ -6,6 +6,7 @@
 // token globally, while login 401s remain ordinary invalid-credential errors.
 
 import i18n from '../i18n.js'
+import { startSlowRequestTracking } from './requestActivity.js'
 
 const API_BASE = '/api/v1'
 const TOKEN_KEY = 'parent_portal_token'
@@ -78,10 +79,13 @@ async function parseAndHandleError(response) {
 }
 
 async function rawFetch(path, options) {
+  const requestActivity = startSlowRequestTracking()
   try {
     return await fetch(`${API_BASE}${path}`, options)
   } catch {
     throw new ApiError(0, i18n.t('apiErrors.network_error'))
+  } finally {
+    requestActivity.finish()
   }
 }
 
@@ -103,12 +107,23 @@ export async function apiGet(path) {
   return response.json()
 }
 
-// Login uses this. A 401 here is "bad credentials", NOT session expiry,
-// so it intentionally does not trigger the global logout.
 export async function apiPost(path, body) {
   const response = await rawFetch(path, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+    body: body != null ? JSON.stringify(body) : undefined,
+  })
+  if (response.status === 401) throw handleUnauthorized()
+  if (!response.ok) throw await parseAndHandleError(response)
+  return response.json()
+}
+
+// Public authentication calls must not turn a login/reset failure into an
+// authenticated-session expiry or attach a stale bearer token.
+export async function apiPostPublic(path, body) {
+  const response = await rawFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: body != null ? JSON.stringify(body) : undefined,
   })
   if (!response.ok) throw await parseAndHandleError(response)
@@ -128,8 +143,7 @@ export async function apiPostForm(path, formData) {
   return response.json()
 }
 
-// Authenticated PUT. Unlike apiPost (used by login), a 401 here means an
-// expired session, so it triggers the global logout like apiGet.
+// Authenticated PUT follows the same global 401 boundary as other writes.
 export async function apiPut(path, body) {
   const response = await rawFetch(path, {
     method: 'PUT',

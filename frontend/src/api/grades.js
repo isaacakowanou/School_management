@@ -26,6 +26,6 @@ export function saveCourseGradesBatch(courseId, entries) {
 }
 
 // POST /api/v1/courses/{courseId}/notify-grades -> fire grade notifications for changed students
-export async function notifyGradesChanged(courseId, studentIds) {
-  return apiPost(`/courses/${courseId}/notify-grades`, { student_ids: studentIds })
+export async function notifyGradesChanged(courseId, studentIds, { term } = {}) {
+  return apiPost(`/courses/${courseId}/notify-grades`, { student_ids: studentIds, term })
 }

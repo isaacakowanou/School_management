@@ -205,7 +205,7 @@ export default function TeacherCourseDetailPage() {
       }
 
       try {
-        const outcome = await notifyGradesChanged(courseId, changedStudentIds)
+        const outcome = await notifyGradesChanged(courseId, changedStudentIds, { term: selectedTerm })
         if (outcome.recipients > 0) {
           const delivered = outcome.delivered.email + outcome.delivered.sms
           const failed = outcome.failed.email + outcome.failed.sms

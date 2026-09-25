@@ -71,10 +71,16 @@ class EmailServiceTests(unittest.TestCase):
         Base.metadata.drop_all(self.engine)
         self.engine.dispose()
 
-    def test_missing_smtp_config_raises_value_error(self):
+    @patch("services.sms_service.send_report_available_sms")
+    @patch("services.sms_service._get_messaging_config", return_value={"provider": "africastalking"})
+    def test_missing_email_config_still_allows_report_sms(self, _sms_config, send_sms):
+        send_sms.return_value = [{"channel": "sms", "sent": True}]
+
         with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaisesRegex(ValueError, "Missing email configuration"):
-                send_report_notification_to_parents(self.db, self.report_card.id)
+            results = send_report_notification_to_parents(self.db, self.report_card.id)
+
+        send_sms.assert_called_once()
+        self.assertEqual(results, [{"channel": "sms", "sent": True}])
 
     @patch("services.email_service._send_resend_email", return_value="welcome-message-id")
     def test_welcome_email_is_bilingual_french_first_and_non_urgent(self, send_email):
@@ -152,8 +158,10 @@ class EmailServiceTests(unittest.TestCase):
         payload = send_mock.call_args.args[0]
         self.assertEqual(payload["from"], "school@example.test")
         self.assertEqual(payload["to"], ["parent@example.test"])
-        self.assertEqual(payload["subject"], "Report card available")
-        self.assertIn("A report card is available. Please log in to view it.", payload["text"])
+        self.assertEqual(payload["subject"], "Bulletin disponible / Report card available")
+        self.assertLess(payload["text"].index("Bonjour Parent One"), payload["text"].index("Dear Parent One"))
+        self.assertIn("Un bulletin est disponible", payload["text"])
+        self.assertIn("A report card is available", payload["text"])
         self.assertIn(f"https://portal.example.test/reports/{self.report_card.id}", payload["text"])
         self.assertNotIn("Isaac Akowanou", payload["text"])
         self.assertNotIn("91.7", payload["text"])
@@ -187,7 +195,9 @@ class EmailServiceTests(unittest.TestCase):
         body = message.get_content()
         self.assertEqual(message["To"], "parent@example.test")
         self.assertEqual(message["From"], "school@example.test")
-        self.assertIn("A report card is available. Please log in to view it.", body)
+        self.assertLess(body.index("Bonjour Parent One"), body.index("Dear Parent One"))
+        self.assertIn("Un bulletin est disponible", body)
+        self.assertIn("A report card is available", body)
         self.assertIn(f"https://portal.example.test/reports/{self.report_card.id}", body)
         self.assertNotIn("Isaac Akowanou", body)
         self.assertNotIn("91.7", body)
@@ -218,6 +228,29 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(result["provider"], "resend")
         self.assertIn("[redacted]", result["error"])
         self.assertNotIn("secret-resend-key", result["error"])
+
+    @patch("services.email_service._send_resend_email", return_value="correction-message-id")
+    def test_grade_correction_email_is_bilingual_and_discloses_no_score(self, send_email):
+        result = email_service.send_grade_correction_email(
+            "parent@example.test",
+            "Parent One",
+            "Isaac Akowanou",
+            "Mathematics",
+            "1er Trimestre",
+            config={
+                "provider": "resend",
+                "resend_api_key": "test-key",
+                "email_from": "school@example.test",
+                "app_base_url": "https://portal.example.test",
+            },
+        )
+
+        self.assertTrue(result["sent"])
+        body = send_email.call_args.kwargs["body"]
+        self.assertLess(body.index("Une note"), body.index("A grade"))
+        self.assertNotIn("14", body)
+        self.assertNotIn("regener", body.lower())
+        self.assertNotIn("régénér", body.lower())
 
     def test_smtp_username_and_password_are_sanitized(self):
         config = {

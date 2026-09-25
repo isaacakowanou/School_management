@@ -9,8 +9,8 @@ force a first-login change, and invalidate prior sessions. Welcome and
 administrator-reset notices are bilingual (French first) and use distinct
 wording so a reset is never described as account creation.
 
-Grade-entry notifications name the student/course but expose no score or
-average; bulletin-send notifications link to the approved/sent snapshot.
+Grade-entry and correction notifications name the student/course but expose no
+score or average; bulletin-send notifications link to the approved/sent snapshot.
 Averages remain inside authenticated bulletins, never notification bodies.
 Dispatch targets only active parent links and profiles and returns structured
 per-channel outcomes so callers can distinguish delivery from state changes.
@@ -152,6 +152,14 @@ def _build_report_link(app_base_url: str, report_card_id: UUID) -> str:
 def _build_email_body(parent_name: str, report_link: str) -> str:
     return "\n".join(
         [
+            f"Bonjour {parent_name},",
+            "",
+            "Un bulletin est disponible. Connectez-vous pour le consulter.",
+            "",
+            report_link,
+            "",
+            "---",
+            "",
             f"Dear {parent_name},",
             "",
             "A report card is available. Please log in to view it.",
@@ -212,7 +220,7 @@ def send_report_available_email(
 ) -> dict:
     config = config or _get_email_config()
     provider = config["provider"]
-    subject = "Report card available"
+    subject = "Bulletin disponible / Report card available"
     body = _build_email_body(parent_name, report_link)
     secrets = _config_secrets(config)
     clean_to_email = (to_email or "").strip()
@@ -562,6 +570,88 @@ def send_grade_notification_email(
     }
 
 
+def _build_grade_correction_email_body(
+    parent_name: str,
+    student_name: str,
+    course_name: str,
+    term: str,
+    app_base_url: str,
+) -> str:
+    portal = app_base_url.rstrip("/")
+    return "\n".join(
+        [
+            f"Cher(e) {parent_name},",
+            "",
+            f"Une note de {student_name} en {course_name} ({term}) a été corrigée.",
+            "Consultez votre espace parent pour voir les informations disponibles :",
+            portal,
+            "",
+            "---",
+            "",
+            f"Dear {parent_name},",
+            "",
+            f"A grade for {student_name} in {course_name} ({term}) was corrected.",
+            "Check your parent portal for the available information:",
+            portal,
+            "",
+            "Best regards,",
+            "School Administration / Administration scolaire",
+        ]
+    )
+
+
+def send_grade_correction_email(
+    to_email: str,
+    parent_name: str,
+    student_name: str,
+    course_name: str,
+    term: str,
+    config: dict | None = None,
+) -> dict:
+    config = config or _get_email_config()
+    provider = config["provider"]
+    subject = f"Note corrigée pour {student_name} / Grade corrected"
+    body = _build_grade_correction_email_body(
+        parent_name, student_name, course_name, term, config["app_base_url"]
+    )
+    secrets = _config_secrets(config)
+    clean_to_email = (to_email or "").strip()
+    if not clean_to_email:
+        return {
+            "email": None,
+            "sent": False,
+            "success": False,
+            "provider": provider,
+            "provider_message_id": None,
+            "error": "Parent email is missing",
+        }
+    try:
+        if provider == "resend":
+            provider_message_id = _send_resend_email(
+                config, to_email=clean_to_email, subject=subject, body=body
+            )
+        else:
+            _send_smtp_email(config, to_email=clean_to_email, subject=subject, body=body)
+            provider_message_id = None
+    except Exception as exc:
+        return {
+            "email": clean_to_email,
+            "sent": False,
+            "success": False,
+            "provider": provider,
+            "provider_message_id": None,
+            "error": _sanitize_error(exc, secrets),
+        }
+    return {
+        "email": clean_to_email,
+        "sent": True,
+        "success": True,
+        "provider": provider,
+        "provider_message_id": provider_message_id,
+        "error": None,
+    }
+
+
 def _empty_grade_notification_summary() -> dict:
     return {
         "recipients": 0,
@@ -571,8 +661,19 @@ def _empty_grade_notification_summary() -> dict:
     }
 
 
-def send_grades_notification(db: Session, course: Course, student: Student) -> dict:
-    from services.sms_service import _get_messaging_config, send_grades_available_sms
+def send_grades_notification(
+    db: Session,
+    course: Course,
+    student: Student,
+    *,
+    correction: bool = False,
+    term: str | None = None,
+) -> dict:
+    from services.sms_service import (
+        _get_messaging_config,
+        send_grade_correction_sms,
+        send_grades_available_sms,
+    )
 
     try:
         email_config = _get_email_config()
@@ -589,6 +690,7 @@ def send_grades_notification(db: Session, course: Course, student: Student) -> d
         sms_config = None
 
     student_name = f"{student.first_name} {student.last_name}"
+    notification_term = term or course.term
 
     # Notify once per affected student in the grade-entry workflow. The portal
     # is the disclosure boundary for scores; neither scores nor averages enter
@@ -612,12 +714,13 @@ def send_grades_notification(db: Session, course: Course, student: Student) -> d
         if not parent.user.email or email_config is None:
             summary["skipped"]["email"] += 1
         else:
-            email_result = send_grade_notification_email(
+            email_sender = send_grade_correction_email if correction else send_grade_notification_email
+            email_result = email_sender(
                 parent.user.email,
                 parent_name,
                 student_name,
                 course.name,
-                course.term,
+                notification_term,
                 config=email_config,
             )
             bucket = "delivered" if email_result.get("sent") else "failed"
@@ -626,11 +729,12 @@ def send_grades_notification(db: Session, course: Course, student: Student) -> d
         if not parent.phone or sms_config is None:
             summary["skipped"]["sms"] += 1
         else:
-            phone_results = send_grades_available_sms(
+            sms_sender = send_grade_correction_sms if correction else send_grades_available_sms
+            phone_results = sms_sender(
                 phone=parent.phone,
                 student_name=student_name,
                 course_name=course.name,
-                term=course.term,
+                term=notification_term,
                 config=sms_config,
             )
             if not phone_results:
@@ -646,14 +750,29 @@ def send_grades_notification(db: Session, course: Course, student: Student) -> d
 
 
 def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> list[dict]:
-    from services.sms_service import send_report_available_sms
+    from services.sms_service import _get_messaging_config, send_report_available_sms
 
-    email_config = _get_email_config()
+    try:
+        email_config = _get_email_config()
+    except ValueError as exc:
+        import logging
+        logging.getLogger(__name__).warning("Email config missing, skipping report email: %s", exc)
+        email_config = None
+    try:
+        sms_config = _get_messaging_config()
+    except ValueError as exc:
+        import logging
+        logging.getLogger(__name__).warning("SMS config missing, skipping report SMS: %s", exc)
+        sms_config = None
     report_card = db.get(ReportCard, report_card_id)
     if report_card is None or report_card.deleted_at is not None or report_card.student.deleted_at is not None:
         raise ValueError("Report card not found")
 
-    report_link = _build_report_link(email_config["app_base_url"], report_card.id)
+    report_link = (
+        _build_report_link(email_config["app_base_url"], report_card.id)
+        if email_config is not None
+        else None
+    )
     student = report_card.student
     student_name = f"{student.first_name} {student.last_name}"
     term = report_card.term
@@ -673,7 +792,7 @@ def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> li
     for parent in parents:
         parent_name = parent.user.name if parent.user and parent.user.name else "Parent/Guardian"
 
-        if parent.user.email:
+        if parent.user.email and email_config is not None:
             results.append(
                 send_report_available_email(
                     parent.user.email,
@@ -683,12 +802,13 @@ def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> li
                 )
             )
 
-        if parent.phone:
+        if parent.phone and sms_config is not None:
             sms_results = send_report_available_sms(
                 phone=parent.phone,
                 student_name=student_name,
                 term=term,
                 report_card_id=report_card.id,
+                config=sms_config,
             )
             results.extend(sms_results)
 

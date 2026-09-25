@@ -1040,6 +1040,7 @@ class GradeBatchSaveResponse(BaseModel):
 
 class NotifyGradesPayload(BaseModel):
     student_ids: list[UUID]
+    term: TrimesterTerm | None = None
 
 
 class NotificationChannelCounts(BaseModel):

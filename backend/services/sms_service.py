@@ -30,14 +30,21 @@ def _clean_env(name: str) -> str:
 
 
 def to_e164(phone: str) -> str:
-    """Normalise current and pre-2024 Benin formats to E.164."""
+    """Normalise Benin local formats or validate an explicit E.164 number."""
     raw = (phone or "").strip()
     if not raw:
         raise ValueError("Phone number is required")
+    if re.search(r"[A-Za-z]", raw) or not re.fullmatch(r"[+\d\s().-]+", raw):
+        raise ValueError("Invalid phone number")
 
     if raw.startswith("00"):
-        raw = f"+{raw[2:]}"
+        digits = re.sub(r"\D", "", raw)
+        if not digits.startswith("00229"):
+            raise ValueError("Foreign phone numbers must use a + prefix")
+        raw = f"+{digits[2:]}"
     if raw.startswith("+"):
+        if raw.count("+") != 1:
+            raise ValueError("Invalid international phone number")
         digits = re.sub(r"\D", "", raw[1:])
         if digits.startswith("229"):
             national = digits[3:]
@@ -46,7 +53,7 @@ def to_e164(phone: str) -> str:
             if len(national) != 10 or not national.startswith("01"):
                 raise ValueError("Invalid Benin phone number")
             return f"+229{national}"
-        if not 4 <= len(digits) <= 15:
+        if not re.fullmatch(r"[1-9]\d{1,14}", digits):
             raise ValueError("Invalid international phone number")
         return f"+{digits}"
 
@@ -218,6 +225,8 @@ def _post_africastalking_sms(config: dict, recipients: list[str], body: str) -> 
         "message": body,
         "bulkSMSMode": 1,
     }
+    # GGFK is registered as a sender ID in Benin. Other destination networks
+    # may reject or replace it, so international delivery is not guaranteed.
     if config.get("sender_id"):
         payload["from"] = config["sender_id"]
     request = Request(
@@ -448,7 +457,9 @@ def send_report_available_sms(
     app_url = cfg["app_base_url"].rstrip("/")
     report_link = f"{app_url}/reports/{report_card_id}"
     body = (
-        f"{student_name}'s report card for {term} is ready.\n"
+        f"Le bulletin de {student_name} pour {term} est disponible.\n"
+        f"Connectez-vous pour le consulter : {report_link}\n"
+        f"/ The report card for {student_name} ({term}) is available.\n"
         f"Log in to view it: {report_link}"
     )
 
@@ -484,4 +495,33 @@ def send_grades_available_sms(
         return send_sms_message(phone, body, cfg)
     except Exception as exc:
         logger.warning("Twilio grades-available SMS failed for %s: %s", phone, exc)
+        return [_failed_result(provider=cfg["provider"], channel="sms", to=phone, error=str(exc))]
+
+
+def send_grade_correction_sms(
+    phone: str,
+    student_name: str,
+    course_name: str,
+    term: str,
+    config: dict | None = None,
+) -> list[dict]:
+    """Announce a corrected grade without disclosing values or snapshot state."""
+    try:
+        cfg = config or _get_messaging_config()
+    except ValueError as exc:
+        logger.warning("SMS config missing, skipping grade-correction SMS: %s", exc)
+        return [_skipped_result(provider=None, channel="sms", to=phone, reason=str(exc))]
+
+    app_url = cfg["app_base_url"].rstrip("/")
+    body = (
+        f"Une note de {student_name} en {course_name} ({term}) a été corrigée.\n"
+        f"Consultez l'espace parent : {app_url}\n"
+        f"/ A grade for {student_name} in {course_name} ({term}) was corrected.\n"
+        f"Check the parent portal: {app_url}"
+    )
+
+    try:
+        return send_sms_message(phone, body, cfg)
+    except Exception as exc:
+        logger.warning("Grade-correction SMS failed for %s: %s", phone, exc)
         return [_failed_result(provider=cfg["provider"], channel="sms", to=phone, error=str(exc))]

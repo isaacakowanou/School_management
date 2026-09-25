@@ -8,7 +8,8 @@ Only the assigned teacher (or an admin acting through that course) may write
 scores for enrolled students. In batch entry, ``score=null`` means an audited
 soft deletion so clearing a cell cannot resurrect an old grade. Notifications
 are sent per affected student after the save/recalculation workflow and announce
-availability without exposing scores or averages outside the parent portal.
+availability or a correction without exposing scores, averages, or stale
+snapshot claims outside the parent portal.
 School-year trimester locks are enforced before every actual mutation; admins
 retain an audited override while teachers receive ``trimester_locked``.
 """
@@ -24,7 +25,17 @@ from sqlalchemy.orm import Session, contains_eager
 from auth import get_current_user, require_admin
 from audit import create_audit_log
 from database import get_db
-from models import Course, Enrollment, Grade, GradeItem, Student, Teacher, User
+from models import (
+    Course,
+    Enrollment,
+    Grade,
+    GradeItem,
+    ReportCard,
+    ReportCardCourse,
+    Student,
+    Teacher,
+    User,
+)
 from schemas import (
     GradeBatchSaveRequest,
     GradeBatchSaveResponse,
@@ -156,6 +167,64 @@ def soft_delete_grade(db: Session, *, grade: Grade, current_user: User) -> None:
     grade.deleted_at = datetime.now(timezone.utc)
 
 
+def _comparable_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
+def is_post_publication_grade_correction(
+    db: Session,
+    *,
+    course: Course,
+    student_id: UUID,
+    term: str,
+) -> bool:
+    """Return true only when a visible matching snapshot predates a grade write."""
+    reports = db.scalars(
+        select(ReportCard)
+        .join(ReportCardCourse, ReportCardCourse.report_card_id == ReportCard.id)
+        .where(
+            ReportCard.student_id == student_id,
+            ReportCard.school_year == course.school_year,
+            ReportCard.term == term,
+            ReportCard.status.in_(("approved", "sent")),
+            ReportCard.approved_at.is_not(None),
+            ReportCard.deleted_at.is_(None),
+            ReportCardCourse.course_id == course.id,
+            ReportCardCourse.deleted_at.is_(None),
+        )
+        .distinct()
+    ).all()
+    if not reports:
+        return False
+
+    grade_writes = db.scalars(
+        select(Grade)
+        .join(GradeItem, GradeItem.id == Grade.grade_item_id)
+        .where(
+            Grade.student_id == student_id,
+            GradeItem.course_id == course.id,
+            GradeItem.term == term,
+        )
+    ).all()
+    write_times = [
+        _comparable_datetime(grade.updated_at or grade.created_at)
+        for grade in grade_writes
+        if grade.updated_at or grade.created_at
+    ]
+    if not write_times:
+        return False
+    latest_write = max(write_times)
+    return any(
+        latest_write > approved_at
+        for report in reports
+        if (approved_at := _comparable_datetime(report.approved_at)) is not None
+    )
+
+
 @router.post("/courses/{course_id}/notify-grades", response_model=GradeNotificationResponse)
 def notify_grades(
     course_id: UUID,
@@ -185,14 +254,26 @@ def notify_grades(
         "failed": {"email": 0, "sms": 0},
         "skipped": {"email": 0, "sms": 0},
     }
-    for student_id in payload.student_ids:
+    notification_term = payload.term.value if payload.term is not None else course.term
+    for student_id in dict.fromkeys(payload.student_ids):
         if student_id not in enrolled_ids:
             continue
         student = db.get(Student, student_id)
         if student is None or student.deleted_at is not None:
             continue
         try:
-            result = send_grades_notification(db, course, student)
+            result = send_grades_notification(
+                db,
+                course,
+                student,
+                correction=is_post_publication_grade_correction(
+                    db,
+                    course=course,
+                    student_id=student.id,
+                    term=notification_term,
+                ),
+                term=notification_term,
+            )
             summary["recipients"] += result["recipients"]
             for outcome in ("delivered", "failed", "skipped"):
                 for channel in ("email", "sms"):

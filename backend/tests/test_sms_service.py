@@ -6,6 +6,8 @@ from services.sms_service import (
     _get_messaging_config,
     _send_africastalking_messages,
     send_account_created_sms,
+    send_grade_correction_sms,
+    send_report_available_sms,
     send_sms_message,
     send_temporary_password_reset_sms,
     to_e164,
@@ -58,6 +60,22 @@ class PhoneNormalizationTests(unittest.TestCase):
 
     def test_preserves_valid_foreign_e164_number(self):
         self.assertEqual(to_e164("+1 (312) 555-0199"), "+13125550199")
+        self.assertEqual(to_e164("+33 6 12 34 56 78"), "+33612345678")
+
+    def test_rejects_invalid_international_numbers(self):
+        cases = [
+            "+0123456789",
+            "+1234567890123456",
+            "+1ABC3125550199",
+            "++13125550199",
+            "0033612345678",
+            "13125550199",
+        ]
+
+        for value in cases:
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    to_e164(value)
 
     def test_rejects_malformed_benin_number(self):
         with self.assertRaises(ValueError):
@@ -65,6 +83,38 @@ class PhoneNormalizationTests(unittest.TestCase):
 
 
 class AfricasTalkingAdapterTests(unittest.TestCase):
+    @patch("services.sms_service.send_sms_message", return_value=[{"success": True}])
+    def test_report_available_sms_is_bilingual_french_first(self, send_message):
+        report_id = "11111111-1111-1111-1111-111111111111"
+
+        send_report_available_sms(
+            "97123456",
+            "Isaac Akowanou",
+            "1er Trimestre",
+            report_id,
+            config=AT_CONFIG,
+        )
+
+        body = send_message.call_args.args[1]
+        self.assertLess(body.index("Le bulletin"), body.index("The report card"))
+        self.assertIn("https://portal.example.test/reports/", body)
+
+    @patch("services.sms_service.send_sms_message", return_value=[{"success": True}])
+    def test_grade_correction_sms_is_bilingual_and_discloses_no_score(self, send_message):
+        send_grade_correction_sms(
+            "97123456",
+            "Isaac Akowanou",
+            "Mathematics",
+            "1er Trimestre",
+            config=AT_CONFIG,
+        )
+
+        body = send_message.call_args.args[1]
+        self.assertLess(body.index("Une note"), body.index("A grade"))
+        self.assertNotIn("14", body)
+        self.assertNotIn("regener", body.lower())
+        self.assertNotIn("régénér", body.lower())
+
     @patch("services.sms_service.send_sms_message", return_value=[{"success": True}])
     def test_account_created_sms_is_bilingual_french_first_and_non_urgent(self, send_message):
         results = send_account_created_sms(

@@ -1,7 +1,8 @@
 """Read current class high/low bulletin values for each language track.
 
-Resolve the student's assignment in the requested year and use non-deleted
-approved/sent reports for that class and trimester. Missing assignments or
+Resolve the student's assignment in the requested year and use one non-deleted
+approved/sent report per student for that class and trimester, choosing the
+newest by creation time with report ID as a stable tie-breaker. Missing assignments or
 track values yield None, but database errors propagate rather than being hidden.
 These are read-time statistics: stored draft/needs_review rows are excluded,
 while derived staleness is not checked.
@@ -30,7 +31,8 @@ def compute_class_stats(db: Session, student: Student, term: str, school_year: s
     """Return highest/lowest published track values for the student's assigned class and period.
 
     Resolve the selected year's assignment and include non-deleted approved/sent
-    reports from that class. Stored draft/needs_review rows are excluded; derived
+    reports from that class, keeping only the newest published report per student.
+    Stored draft/needs_review rows are excluded; derived
     staleness is not evaluated. Missing assignments or track values yield None;
     database errors propagate. These statistics are computed now, not frozen.
     """
@@ -51,10 +53,17 @@ def compute_class_stats(db: Session, student: Student, term: str, school_year: s
             ReportCard.status.in_(ANNUAL_REPORT_STATUSES),
             ReportCard.deleted_at.is_(None),
         )
+        .order_by(ReportCard.created_at.desc(), ReportCard.id.desc())
     ).all()
+
+    # Select the whole newest snapshot once; an older value must not reappear
+    # merely because the newer report has no value for a particular track.
+    latest_by_student = {}
+    for report in reports:
+        latest_by_student.setdefault(report.student_id, report)
 
     stats = {}
     for track, field in _TRACK_FIELDS.items():
-        values = [getattr(report, field) for report in reports if getattr(report, field) is not None]
+        values = [getattr(report, field) for report in latest_by_student.values() if getattr(report, field) is not None]
         stats[track] = {"highest": max(values), "lowest": min(values)} if values else {"highest": None, "lowest": None}
     return stats

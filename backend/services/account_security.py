@@ -1,10 +1,9 @@
 """Perform administrator-initiated parent and teacher password resets.
 
-Stage a temporary password, forced-change flag, and token-version increment,
-attempt delivery, then audit and commit the account changes.
-Audit entries contain delivery outcomes but no plaintext password; the temporary
-password is returned to the admin for handoff, and delivery currently precedes
-the database commit.
+Commit a temporary password, forced-change flag, token-version increment, and
+audit record before attempting delivery. Delivery outcomes are then added to
+that audit record without storing the plaintext password. A delivery failure
+leaves the reset valid and returns the temporary password for admin handoff.
 """
 
 import secrets
@@ -27,16 +26,33 @@ def reset_profile_password(
 ) -> dict:
     """Reset a parent's or teacher's password for the requesting admin and return delivery results.
 
-    Stage a generated password, forced-change flag, and token-version bump; attempt
-    email or SMS, then audit and commit. Delivery currently happens before commit.
-    The response includes the temporary password for admin handoff, but the audit
-    entry records delivery outcomes without that secret.
+    Commit the generated password, forced-change flag, version bump, and audit
+    before attempting email or SMS. Failed delivery does not undo the reset;
+    the response includes the valid temporary password for admin handoff.
+    Persist delivery outcomes afterward without including the secret in the audit.
     """
     temp_password = secrets.token_urlsafe(9)
     user = profile.user
     user.password_hash = hash_password(temp_password)
     user.must_change_password = True
     invalidate_user_sessions(user)
+
+    # Commit the credential and its audit together before exposing it externally.
+    # Null outcomes mean delivery has not been attempted, not that it succeeded.
+    audit = create_audit_log(
+        db=db,
+        actor_user_id=actor.id,
+        action="admin_password_reset",
+        entity_type=entity_type,
+        entity_id=profile.id,
+        new_value={
+            "target_user_id": user.id,
+            "target_role": user.role,
+            "email_sent": None,
+            "sms_sent": None,
+        },
+    )
+    db.commit()
 
     email_sent = None
     sms_sent = None
@@ -60,19 +76,11 @@ def reset_profile_password(
 
     # Never include temp_password in durable audit data: audit readers are more
     # numerous and logs generally have a longer retention period than secrets.
-    create_audit_log(
-        db=db,
-        actor_user_id=actor.id,
-        action="admin_password_reset",
-        entity_type=entity_type,
-        entity_id=profile.id,
-        new_value={
-            "target_user_id": user.id,
-            "target_role": user.role,
-            "email_sent": email_sent,
-            "sms_sent": sms_sent,
-        },
-    )
+    audit.new_value = {
+        **audit.new_value,
+        "email_sent": email_sent,
+        "sms_sent": sms_sent,
+    }
     db.commit()
     return {
         "temp_password": temp_password,

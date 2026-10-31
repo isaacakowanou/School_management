@@ -3,8 +3,8 @@
 Read enrollments, items, scores, results, and snapshot rows without changing any
 of them or using an LLM. Callers enforce authorization and choose whether to
 store warnings; optional report course scoping prevents a teacher's check from
-exposing other teachers' data. Course checks currently sum item weights directly
-and do not handle null weights or separate items by trimester.
+exposing other teachers' data. Weight checks ignore unweighted items and validate
+each trimester independently; other course checks still inspect all active items.
 """
 
 from uuid import UUID
@@ -36,8 +36,9 @@ def check_course_grade_data(db: Session, course_id: UUID) -> list[dict]:
     """Return deterministic warning dictionaries for a non-deleted course's data.
 
     Inspect active items, enrolled students, scores, and missing current-term
-    results without changing them. Items are collected across terms and their
-    weights are summed directly; null weights are not handled by this function.
+    results without changing them. Check numeric weight totals separately for
+    each trimester; null weights mean no weight and are omitted. A trimester
+    containing only unweighted items has no weight-total requirement here.
     A missing course raises ValueError. The caller must enforce access control.
     """
     course = db.get(Course, course_id)
@@ -56,17 +57,23 @@ def check_course_grade_data(db: Session, course_id: UUID) -> list[dict]:
         .where(Enrollment.course_id == course.id, Enrollment.deleted_at.is_(None), Student.deleted_at.is_(None))
     ).all()
 
-    total_weight = sum(item.weight for item in grade_items)
-    if grade_items and not WEIGHT_TOLERANCE_MIN <= total_weight <= WEIGHT_TOLERANCE_MAX:
-        warnings.append(
-            _warning(
-                warning_type="grade_weight_total",
-                message=f"{course.name} grade item weights total {total_weight:.2f}, not 1.00.",
-                severity="high",
-                entity_type="course",
-                entity_id=course.id,
+    # Beninese items have no weight. Totals from independently valid trimesters
+    # must never be combined into a false course-wide weight warning.
+    weights_by_term = {}
+    for item in grade_items:
+        if item.weight is not None:
+            weights_by_term[item.term] = weights_by_term.get(item.term, 0.0) + item.weight
+    for term, total_weight in weights_by_term.items():
+        if not WEIGHT_TOLERANCE_MIN <= total_weight <= WEIGHT_TOLERANCE_MAX:
+            warnings.append(
+                _warning(
+                    warning_type="grade_weight_total",
+                    message=f"{course.name} ({term}) grade item weights total {total_weight:.2f}, not 1.00.",
+                    severity="high",
+                    entity_type="course",
+                    entity_id=course.id,
+                )
             )
-        )
 
     grades = db.scalars(
         select(Grade)

@@ -1,4 +1,8 @@
 import sqlite3
+import os
+
+# Explicit test-only opt-in, before importing the application or dotenv config.
+os.environ["APP_ENV"] = "test"
 
 import pytest
 from sqlalchemy import event

@@ -29,14 +29,19 @@ from models import Parent, Teacher, User
 
 
 DEFAULT_JWT_SECRET_KEY = "change-me-before-production"
-APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "development").strip().lower()
+APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "").strip().lower()
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", DEFAULT_JWT_SECRET_KEY).strip() or DEFAULT_JWT_SECRET_KEY
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
-if APP_ENV == "production" and JWT_SECRET_KEY == DEFAULT_JWT_SECRET_KEY:
+# Only an explicit local/test mode permits the development signing key.
+# Unset, misspelled, and deployment-specific environment names fail closed.
+if APP_ENV not in {"local", "test"} and (
+    JWT_SECRET_KEY == DEFAULT_JWT_SECRET_KEY or len(JWT_SECRET_KEY) < 32
+):
     raise RuntimeError(
-        "JWT_SECRET_KEY must be set to a non-default value when APP_ENV or ENVIRONMENT is production"
+        "JWT_SECRET_KEY must be a non-default secret of at least 32 characters; "
+        "only explicit APP_ENV=local or APP_ENV=test permits development credentials"
     )
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

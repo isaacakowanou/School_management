@@ -138,14 +138,17 @@ def check_course_grade_data(db: Session, course_id: UUID) -> list[dict]:
     return warnings
 
 
-def check_report_card_data(db: Session, report_card_id: UUID) -> list[dict]:
+def check_report_card_data(
+    db: Session, report_card_id: UUID, *, course_ids: set[UUID] | None = None
+) -> list[dict]:
+    """Optional course scope excludes both foreign courses and report-wide warnings."""
     report_card = db.get(ReportCard, report_card_id)
     if report_card is None or report_card.deleted_at is not None:
         raise ValueError("Report card not found")
 
     warnings = []
 
-    if report_card.status == "draft" and not report_card.courses:
+    if course_ids is None and report_card.status == "draft" and not report_card.courses:
         warnings.append(
             _warning(
                 warning_type="report_missing_courses",
@@ -161,6 +164,8 @@ def check_report_card_data(db: Session, report_card_id: UUID) -> list[dict]:
     max_average = 100 if report_card.scale == "100" else 20
 
     for report_course in report_card.courses:
+        if course_ids is not None and report_course.course_id not in course_ids:
+            continue
         if report_course.average < 0 or report_course.average > max_average:
             warnings.append(
                 _warning(
@@ -183,8 +188,10 @@ def check_report_card_data(db: Session, report_card_id: UUID) -> list[dict]:
                 )
             )
 
-    course_ids = {report_course.course_id for report_course in report_card.courses}
-    for course_id in course_ids:
+    checked_course_ids = {report_course.course_id for report_course in report_card.courses}
+    if course_ids is not None:
+        checked_course_ids &= course_ids
+    for course_id in checked_course_ids:
         warnings.extend(check_course_grade_data(db, course_id))
 
     return warnings

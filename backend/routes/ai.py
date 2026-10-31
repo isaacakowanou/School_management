@@ -1,6 +1,9 @@
 """Expose advisory AI checks and screen-only summaries without changing official grades.
 
-Teachers may check only students reached through their active courses, while
+Teachers may check only their own active courses on a student's draft report.
+Teacher checks are read-only: unscoped stored report warnings belong to the
+admin's full-report check and must never be replaced by a partial check.
+Admins retain full-report check-and-replace behavior, while
 summary generation operates on the latest draft snapshot. Rechecking replaces
 stored warnings so they describe current data rather than accumulating history;
 AI output remains advisory and never changes bulletin status or PDF content.
@@ -154,6 +157,16 @@ def check_student_grades(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
     report_card = get_latest_draft_report_card_or_404(db, student.id)
+    if current_user.role == "teacher":
+        teacher = get_current_teacher(db, current_user)
+        course_ids = set(db.scalars(
+            select(Course.id).where(
+                Course.teacher_id == teacher.id,
+                Course.deleted_at.is_(None),
+            )
+        ).all())
+        warnings = check_report_card_data(db, report_card.id, course_ids=course_ids)
+        return [AIWarningResponse(**warning) for warning in warnings]
     warnings = check_report_card_data(db, report_card.id)
     return store_report_warnings(db, report_card.id, warnings)
 

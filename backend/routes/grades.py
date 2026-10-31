@@ -1,17 +1,11 @@
-"""Persist historical teacher-entered scores and availability notices.
+"""Save teacher-entered scores and expose separate parent-notification requests.
 
-Grades remain attached to the year-scoped course/item context in which they
-were recorded; year selectors never reinterpret them through a student's live
-class assignment.
-
-Only the assigned teacher (or an admin acting through that course) may write
-scores for enrolled students. In batch entry, ``score=null`` means an audited
-soft deletion so clearing a cell cannot resurrect an old grade. Notifications
-are sent per affected student after the save/recalculation workflow and announce
-availability or a correction without exposing scores, averages, or stale
-snapshot claims outside the parent portal.
-School-year trimester locks are enforced before every actual mutation; admins
-retain an audited override while teachers receive ``trimester_locked``.
+Scores belong to their course/item period, not the student's current class;
+single-score create/update require the assigned teacher, while batch entry also
+supports admins. Batch null scores mean audited soft deletion, and lock checks
+protect actual writes with separate audit entries for admin overrides.
+Notification requests announce availability or corrections without scores and
+do not themselves approve or regenerate bulletins.
 """
 
 import logging
@@ -60,6 +54,7 @@ router = APIRouter(tags=["grades"])
 
 
 def to_grade_response(grade: Grade) -> GradeResponse:
+    """Return a stored score with student identity and course-based historical class context."""
     student = grade.student
     course = grade.grade_item.course
     return GradeResponse(
@@ -77,6 +72,7 @@ def to_grade_response(grade: Grade) -> GradeResponse:
 
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
+    """Return a non-deleted course by ID or raise 404; authorize it separately."""
     course = db.get(Course, course_id)
     if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -84,6 +80,7 @@ def get_course_or_404(db: Session, course_id: UUID) -> Course:
 
 
 def get_student_or_404(db: Session, student_id: UUID) -> Student:
+    """Return a non-deleted student by ID or raise 404."""
     student = db.get(Student, student_id)
     if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
@@ -91,6 +88,7 @@ def get_student_or_404(db: Session, student_id: UUID) -> Student:
 
 
 def get_grade_item_or_404(db: Session, grade_item_id: UUID) -> GradeItem:
+    """Return the non-deleted item with a usable course or raise 404."""
     grade_item = db.get(GradeItem, grade_item_id)
     if grade_item is None or grade_item.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade item not found")
@@ -98,6 +96,7 @@ def get_grade_item_or_404(db: Session, grade_item_id: UUID) -> GradeItem:
 
 
 def get_grade_or_404(db: Session, grade_id: UUID) -> Grade:
+    """Return a non-deleted grade by ID or raise 404."""
     grade = db.get(Grade, grade_id)
     if grade is None or grade.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade not found")
@@ -105,6 +104,7 @@ def get_grade_or_404(db: Session, grade_id: UUID) -> Grade:
 
 
 def can_view_course_grades(db: Session, current_user: User, course: Course) -> bool:
+    """Return whether the caller is an admin or this course's assigned active teacher."""
     if current_user.role == "admin":
         return True
     if current_user.role != "teacher":
@@ -115,6 +115,11 @@ def can_view_course_grades(db: Session, current_user: User, course: Course) -> b
 
 
 def get_writable_teacher_for_course(db: Session, current_user: User, course: Course) -> Teacher:
+    """Return the assigned teacher profile after verifying the caller owns the course.
+
+    Reject other roles and other teachers with 403; admin batch entry uses the
+    separate get_submitter_for_course helper.
+    """
     if current_user.role != "teacher":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
@@ -126,12 +131,17 @@ def get_writable_teacher_for_course(db: Session, current_user: User, course: Cou
 
 
 def get_submitter_for_course(db: Session, current_user: User, course: Course) -> Teacher:
+    """Return the course teacher for admin batch entry, or verify teacher ownership.
+
+    An unassigned course can return None for an admin; callers handle attribution.
+    """
     if current_user.role == "admin":
         return course.teacher
     return get_writable_teacher_for_course(db, current_user, course)
 
 
 def ensure_student_enrolled(db: Session, student_id: UUID, course_id: UUID) -> None:
+    """Require an active enrollment for this student/course pair or raise an HTTP error."""
     enrollment = db.scalar(
         select(Enrollment).where(
             Enrollment.student_id == student_id,
@@ -144,6 +154,7 @@ def ensure_student_enrolled(db: Session, student_id: UUID, course_id: UUID) -> N
 
 
 def validate_score(score: float, max_score: float) -> None:
+    """Require a numeric score within zero and the item's maximum or raise 400."""
     if score < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="score must be greater than or equal to 0")
     if score > max_score:
@@ -151,6 +162,11 @@ def validate_score(score: float, max_score: float) -> None:
 
 
 def soft_delete_grade(db: Session, *, grade: Grade, current_user: User) -> None:
+    """Stage a grade deletion and its before-value audit entry without committing.
+
+    Keep the row for recovery instead of losing score history; the caller enforces
+    ownership and trimester locks before invoking this helper.
+    """
     create_audit_log(
         db=db,
         actor_user_id=current_user.id,
@@ -232,6 +248,12 @@ def notify_grades(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GradeNotificationResponse:
+    """Notify linked parents for selected enrolled students and return per-channel counts.
+
+    Authorize the course, deduplicate student IDs, and classify corrections using
+    published reports and grade-write times. This separate request does not save
+    grades or approve reports; delivery failures are reported and audited.
+    """
     course = get_course_or_404(db, course_id)
     if current_user.role != "admin":
         get_writable_teacher_for_course(db, current_user, course)
@@ -305,6 +327,12 @@ def save_course_grades_batch(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GradeBatchSaveResponse:
+    """Save the requested course cells for an admin or assigned teacher and return counts.
+
+    Validate enrollment, score ranges, and trimester locks. A null score soft-deletes
+    an existing grade; unchanged cells are skipped. Audit actual writes and locked
+    admin overrides, then commit the batch without sending notifications.
+    """
     course = get_course_or_404(db, course_id)
     submitter = get_submitter_for_course(db, current_user, course)
 
@@ -458,6 +486,7 @@ def list_course_grades(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[GradeResponse]:
+    """Return non-deleted course scores to an admin or its assigned teacher."""
     course = get_course_or_404(db, course_id)
     if not can_view_course_grades(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
@@ -484,6 +513,11 @@ def create_grade(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GradeResponse:
+    """Create and audit a teacher's score for an enrolled student, then return it.
+
+    Require course ownership and an unlocked trimester, reject invalid scores and
+    active duplicates, and commit the score with its audit entry.
+    """
     student = get_student_or_404(db, payload.student_id)
     grade_item = get_grade_item_or_404(db, payload.grade_item_id)
     course = grade_item.course
@@ -541,6 +575,11 @@ def update_grade(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GradeResponse:
+    """Update and audit a score owned by the calling teacher, then return it.
+
+    Check the item's trimester lock and score range before committing; this route
+    does not recalculate results or send notifications.
+    """
     grade = get_grade_or_404(db, grade_id)
     if grade.student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade not found")
@@ -576,6 +615,10 @@ def delete_grade(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Soft-delete and audit a grade as an admin, respecting the lock override audit.
+
+    Commit the deletion without changing course results or sending notifications.
+    """
     grade = get_grade_or_404(db, grade_id)
     if grade.student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade not found")

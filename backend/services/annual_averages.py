@@ -1,10 +1,10 @@
-"""Compute annual track averages from official bulletin snapshots.
+"""Read annual language-track averages for bulletin display and passage triage.
 
-The PDF builder and Passage de classe use the same source of truth: approved,
-sent ReportCard rows for the three canonical trimesters. Draft and needs-review
-snapshots are excluded so unpublished or stale results cannot affect annual
-averages. This service only reads snapshots; it never recalculates course grades and never
-writes progression decisions.
+Use the latest non-deleted approved/sent snapshot for each canonical trimester,
+ignoring null track values and reporting which terms are missing.
+Stored draft and needs_review statuses are excluded, but this service does not
+recompute derived staleness for approved/sent rows.
+It never changes grades, reports, or passage decisions.
 """
 
 from dataclasses import dataclass
@@ -17,9 +17,9 @@ from constants import FINAL_TRIMESTER_NUMBER, TRIMESTER_TERMS, term_number
 from models import ReportCard
 
 
-# Only published snapshots may contribute to an annual value shown to parents.
-# A needs-review bulletin is withdrawn from the portal and therefore cannot
-# silently influence the annual value surfaced through another bulletin.
+# Filter by stored publication status; derived staleness is not evaluated here.
+# A persisted needs_review state withdraws the report and excludes it from this
+# annual calculation, while approved/sent snapshots remain eligible.
 ANNUAL_REPORT_STATUSES = {"approved", "sent"}
 
 
@@ -33,6 +33,7 @@ class AnnualAverages:
 
     @property
     def incomplete(self) -> bool:
+        """Return True if any canonical term is missing or every track has no value."""
         return bool(self.missing_terms) or (self.french is None and self.english is None and self.bilingual is None)
 
 
@@ -44,6 +45,12 @@ def _mean(values: list[float | None]) -> float | None:
 
 
 def compute_student_annual_averages(db: Session, student_id: UUID, school_year: str) -> AnnualAverages:
+    """Return annual track means and term-completeness information for a student/year.
+
+    Use the newest non-deleted approved/sent report for each canonical trimester,
+    ignoring null track values when averaging. Stored draft/needs_review states
+    are excluded; derived staleness is not checked here. This performs reads only.
+    """
     reports = db.scalars(
         select(ReportCard).where(
             ReportCard.student_id == student_id,

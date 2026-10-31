@@ -1,11 +1,10 @@
-"""Role-profile and login-account lifecycle invariants.
+"""Keep login accounts and parent/teacher profile deletion states coordinated.
 
-Parent and teacher profiles own their one-to-one ``User`` login account for
-soft-delete and restore purposes. Active email uniqueness is global across all
-roles, while employee-number uniqueness is global across active teachers.
-Unlinking a parent from a student never changes account state. Restore validates
-all identities before mutating any row so a conflict leaves the complete entry
-in Corbeille; token versions are deliberately never rolled back on restore.
+Email uniqueness spans active users of every role; employee-number uniqueness
+spans active teachers, and unlinking a child does not release either identity.
+Restore checks active-row conflicts before clearing linked User deletion markers;
+the caller restores profile rows and commits both together.
+Restore never rolls token_version back, so previously revoked sessions stay dead.
 """
 
 from collections.abc import Iterable
@@ -28,6 +27,11 @@ def active_user_by_email(
     *,
     exclude_user_id: UUID | None = None,
 ) -> User | None:
+    """Return the active account with this exact email, or None.
+
+    An optional excluded user ID allows edits to keep their own email. Deleted
+    accounts do not reserve email addresses, and this check spans all roles.
+    """
     query = select(User).where(User.email == email, User.deleted_at.is_(None))
     if exclude_user_id is not None:
         query = query.where(User.id != exclude_user_id)
@@ -40,6 +44,11 @@ def active_teacher_by_employee_number(
     *,
     exclude_teacher_id: UUID | None = None,
 ) -> Teacher | None:
+    """Return the active teacher using this employee number, or None.
+
+    Exclude the supplied teacher ID during edits; deleted profiles do not reserve
+    employee numbers.
+    """
     query = select(Teacher).where(
         Teacher.employee_number == employee_number,
         Teacher.deleted_at.is_(None),
@@ -50,6 +59,11 @@ def active_teacher_by_employee_number(
 
 
 def soft_delete_profile_account(profile: RoleProfile, deleted_at: datetime) -> None:
+    """Mark a parent/teacher profile and its linked user deleted at the given time.
+
+    This stages changes only. Session-version invalidation and committing remain
+    the caller's responsibility; unlinking a child must not call this helper.
+    """
     profile.deleted_at = deleted_at
     profile.user.deleted_at = deleted_at
 
@@ -62,6 +76,11 @@ def _restore_conflict(code: str, message: str) -> None:
 
 
 def validate_profile_account_restores(db: Session, profiles: Iterable[RoleProfile]) -> list[RoleProfile]:
+    """Return the profiles after checking their emails and employee numbers for conflicts.
+
+    Compare each against active database rows before restoration. A conflict raises
+    409 without restoring anything; this helper does not commit.
+    """
     profile_rows = list(profiles)
     for profile in profile_rows:
         email = profile.user.email
@@ -83,6 +102,11 @@ def validate_profile_account_restores(db: Session, profiles: Iterable[RoleProfil
 
 
 def restore_profile_accounts(db: Session, profiles: Iterable[RoleProfile]) -> None:
+    """Validate the profiles and clear deletion markers on their linked user accounts.
+
+    The caller restores the profile rows themselves and commits the transaction.
+    Token versions are deliberately unchanged so previously revoked JWTs stay dead.
+    """
     profile_rows = validate_profile_account_restores(db, profiles)
     for profile in profile_rows:
         profile.user.deleted_at = None

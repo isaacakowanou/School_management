@@ -1,16 +1,11 @@
-"""Optional OTP and provider-switchable messaging for phone delivery.
+"""Normalize phone numbers and deliver OTP or ordinary account/school notices.
 
-Twilio Verify remains the OTP mechanism, independently of ``SMS_PROVIDER``.
-Ordinary messages use either ``twilio`` or ``africastalking``; an unset or
-invalid provider is treated as an unconfigured/skipped channel so delivery can
-never block core school records. Africa's Talking uses ``AT_USERNAME``,
-``AT_API_KEY``, and optional ``AT_SENDER_ID``. It is SMS-only here: its separate
-WhatsApp product is intentionally out of scope and is reported as skipped,
-whereas the Twilio provider keeps attempting both SMS and WhatsApp.
-
-Messages announce grades or bulletins without including scores or averages.
-Temporary credentials are the sole intentional plaintext secret because first
-login forces their replacement.
+Twilio Verify handles OTP independently of SMS_PROVIDER; ordinary messaging
+selects Twilio SMS/WhatsApp or Africa's Talking SMS with WhatsApp skipped.
+Wrappers report failed/skipped attempts for missing configuration or delivery
+errors, and provider acceptance is not confirmation of handset receipt.
+Messages omit grades/averages, except that account notices intentionally contain
+temporary passwords whose replacement is enforced by authentication.
 """
 
 import json
@@ -30,7 +25,13 @@ def _clean_env(name: str) -> str:
 
 
 def to_e164(phone: str) -> str:
-    """Normalise Benin local formats or validate an explicit E.164 number."""
+    """Normalize Benin local formats or return a shape-validated international number.
+
+    Accept legacy eight-digit and 01-prefixed Benin numbers, strip presentation
+    punctuation, and require '+' for other countries. Reject letters and invalid
+    length/leading-zero shapes; this does not check country-code allocation or
+    whether a provider can deliver to that destination.
+    """
     raw = (phone or "").strip()
     if not raw:
         raise ValueError("Phone number is required")
@@ -122,10 +123,11 @@ def _twilio_client(config: dict):
 
 
 def send_otp(phone: str, config: dict | None = None) -> dict:
-    """Send an OTP to *phone* via Twilio Verify (SMS channel only).
+    """Request a Twilio Verify code and return a sent/success/error dictionary.
 
-    Returns a result dict with sent/success/error keys.
-    Always catches Twilio exceptions so the caller can silent-fail.
+    Use supplied or environment config independently of SMS_PROVIDER. Missing config
+    and provider errors return failure results; invalid phone format can raise
+    ValueError before the provider call.
     """
     try:
         cfg = config or _get_twilio_config()
@@ -147,7 +149,11 @@ def send_otp(phone: str, config: dict | None = None) -> dict:
 
 
 def check_otp(phone: str, code: str, config: dict | None = None) -> bool:
-    """Check an OTP code via Twilio Verify. Returns True if approved."""
+    """Return whether Twilio Verify approves this phone/code pair.
+
+    Missing configuration or provider errors return False; phone normalization
+    can raise ValueError before contacting the provider.
+    """
     try:
         cfg = config or _get_twilio_config()
     except ValueError as exc:
@@ -335,7 +341,12 @@ def send_sms_message(
     body: str,
     config: dict | None = None,
 ) -> list[dict]:
-    """Send one ordinary phone message through the configured provider."""
+    """Send a body through the selected ordinary messaging provider and return channel outcomes.
+
+    Twilio attempts SMS/WhatsApp; Africa's Talking attempts SMS and marks WhatsApp
+    skipped. Missing configuration yields a skipped result and preparation errors
+    yield failures. Provider acceptance does not prove final handset delivery.
+    """
     try:
         cfg = config or _get_messaging_config()
     except ValueError as exc:
@@ -380,7 +391,11 @@ def send_account_created_sms(
     temp_password: str,
     config: dict | None = None,
 ) -> list[dict]:
-    """Notify a newly-created user of their forced-change credential."""
+    """Send a French-first welcome notice with the supplied temporary password.
+
+    Return channel outcomes, including failures/skips; the account workflow, not
+    this sender, enforces first-login password replacement.
+    """
     try:
         cfg = config or _get_messaging_config()
     except ValueError as exc:
@@ -413,7 +428,10 @@ def send_temporary_password_reset_sms(
     temp_password: str,
     config: dict | None = None,
 ) -> list[dict]:
-    """Deliver an administrator-reset forced-change credential by phone."""
+    """Send bilingual admin-reset instructions with the supplied temporary password.
+
+    Return channel outcomes without claiming the recipient's account was just created.
+    """
     try:
         cfg = config or _get_messaging_config()
     except ValueError as exc:
@@ -447,7 +465,11 @@ def send_report_available_sms(
     report_card_id: UUID,
     config: dict | None = None,
 ) -> list[dict]:
-    """Notify a parent that a report card is ready through phone messaging."""
+    """Send a bilingual report-availability portal link for the supplied student and term.
+
+    Return channel outcomes without marks or attachments; report access is still
+    checked when the parent opens the portal.
+    """
     try:
         cfg = config or _get_messaging_config()
     except ValueError as exc:
@@ -477,7 +499,10 @@ def send_grades_available_sms(
     term: str,
     config: dict | None = None,
 ) -> list[dict]:
-    """Notify a parent that grades have been recorded through phone messaging."""
+    """Send a bilingual new-grades notice for the supplied student/course/term.
+
+    Return channel outcomes without including scores or averages.
+    """
     try:
         cfg = config or _get_messaging_config()
     except ValueError as exc:
@@ -505,7 +530,10 @@ def send_grade_correction_sms(
     term: str,
     config: dict | None = None,
 ) -> list[dict]:
-    """Announce a corrected grade without disclosing values or snapshot state."""
+    """Send a bilingual correction notice and return channel outcomes.
+
+    Include no old/new scores and do not claim that the bulletin was regenerated.
+    """
     try:
         cfg = config or _get_messaging_config()
     except ValueError as exc:

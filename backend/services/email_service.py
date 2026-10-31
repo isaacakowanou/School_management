@@ -1,19 +1,12 @@
-"""Transactional email delivery and parent notification dispatch.
+"""Build transactional email and dispatch independent parent notification channels.
 
-Resend is the launch email path, with SMTP retained as an environment-selected
-fallback. A ``resend.dev`` sender is test mode and can reach only the Resend
-account-owner inbox; production delivery needs DNS verification and a school
-``EMAIL_FROM`` value, not code changes. Credential emails intentionally contain
-plaintext temporary passwords because those credentials are short-lived,
-force a first-login change, and invalidate prior sessions. Welcome and
-administrator-reset notices are bilingual (French first) and use distinct
-wording so a reset is never described as account creation.
-
-Grade-entry and correction notifications name the student/course but expose no
-score or average; bulletin-send notifications link to the approved/sent snapshot.
-Averages remain inside authenticated bulletins, never notification bodies.
-Dispatch targets only active parent links and profiles and returns structured
-per-channel outcomes so callers can distinguish delivery from state changes.
+Email uses the configured Resend or SMTP provider; welcome/reset messages are
+French-first and intentionally include temporary credentials that require a
+first-login change, not credentials with an enforced expiration here.
+Grade/correction notices contain no marks, and bulletin notices use authenticated
+portal links without attachments; only the caller controls publication/status.
+Dispatch deduplicates active parent links and returns provider-attempt outcomes,
+which do not prove final inbox delivery.
 """
 
 import os
@@ -81,6 +74,11 @@ def _warn_if_sandbox_sender(email_from: str) -> None:
 
 
 def _get_email_config() -> dict:
+    """Read and validate the selected email provider and portal URL configuration.
+
+    Return provider settings or raise ValueError for missing/invalid configuration;
+    callers that support independent channels handle that failure separately.
+    """
     provider = _select_email_provider()
     app_base_url = _clean_env("APP_BASE_URL")
     if not app_base_url:
@@ -218,6 +216,11 @@ def send_report_available_email(
     report_link: str,
     config: dict | None = None,
 ) -> dict:
+    """Send a bilingual portal-link email and return its delivery-attempt result.
+
+    Use supplied config or environment settings; include no grades or PDF attachment.
+    Provider errors become sanitized results, while configuration errors can raise.
+    """
     config = config or _get_email_config()
     provider = config["provider"]
     subject = "Bulletin disponible / Report card available"
@@ -307,6 +310,11 @@ def _send_temporary_credential_email(
     body: str,
     config: dict,
 ) -> dict:
+    """Send a prepared credential email and return a sanitized provider outcome.
+
+    Do not log the supplied body or temporary password; delivery acceptance is not
+    proof that the recipient has read the message.
+    """
     provider = config["provider"]
     secrets = _config_secrets(config)
     clean_to_email = (to_email or "").strip()
@@ -358,6 +366,11 @@ def send_account_created_email(
     temp_password: str,
     config: dict | None = None,
 ) -> dict:
+    """Send the shared French-first welcome email with login details and return an outcome.
+
+    Use the supplied temporary password without storing or expiring it here. Account
+    creation and forced-change enforcement belong to the calling workflow.
+    """
     config = config or _get_email_config()
     return _send_temporary_credential_email(
         to_email=to_email,
@@ -410,6 +423,11 @@ def send_temporary_password_reset_email(
     temp_password: str,
     config: dict | None = None,
 ) -> dict:
+    """Send French-first admin-reset instructions and return the provider outcome.
+
+    Include the new temporary password without describing the account as newly
+    created. Configuration is supplied or loaded from the environment.
+    """
     config = config or _get_email_config()
     return _send_temporary_credential_email(
         to_email=to_email,
@@ -430,6 +448,11 @@ def send_password_reset_email(
     reset_token: str,
     config: dict | None = None,
 ) -> dict:
+    """Email the supplied single-use reset token as a bilingual portal link and return an outcome.
+
+    The token service enforces its 45-minute lifetime; this function only builds and
+    sends the message. Provider errors are sanitized and no account state is changed.
+    """
     config = config or _get_email_config()
     reset_link = f"{config['app_base_url'].rstrip('/')}/reset-password?token={reset_token}"
     subject = "Réinitialisation de votre mot de passe GGFK / Reset your GGFK password"
@@ -523,6 +546,11 @@ def send_grade_notification_email(
     term: str,
     config: dict | None = None,
 ) -> dict:
+    """Notify one parent of scores available for a named student/course/term.
+
+    Return a provider result, with no scores or averages in the body. Configuration
+    errors may raise before delivery; provider errors are returned as failures.
+    """
     config = config or _get_email_config()
     provider = config["provider"]
     subject = f"Nouvelles notes de {student_name} — {course_name}"
@@ -608,6 +636,11 @@ def send_grade_correction_email(
     term: str,
     config: dict | None = None,
 ) -> dict:
+    """Send a French-first correction notice and return its provider result.
+
+    Use only the supplied names and term, never old/new scores or a claim that the
+    bulletin snapshot has been regenerated.
+    """
     config = config or _get_email_config()
     provider = config["provider"]
     subject = f"Note corrigée pour {student_name} / Grade corrected"
@@ -669,6 +702,12 @@ def send_grades_notification(
     correction: bool = False,
     term: str | None = None,
 ) -> dict:
+    """Notify distinct active linked parents for this student/course and return channel counts.
+
+    Choose new-grade or correction copy from the caller's flag, using the supplied
+    term or course.term. Email and phone configuration are independent; report
+    accepted, failed, and skipped attempts without writing database records.
+    """
     from services.sms_service import (
         _get_messaging_config,
         send_grade_correction_sms,
@@ -750,6 +789,12 @@ def send_grades_notification(
 
 
 def send_report_notification_to_parents(db: Session, report_card_id: UUID) -> list[dict]:
+    """Notify distinct active linked parents of this report and return attempted channel results.
+
+    Reject missing/deleted reports or students. Email and SMS configuration are
+    independent, and no PDF is attached. The caller must enforce report visibility
+    and owns status/audit changes; this service does not approve or mark reports sent.
+    """
     from services.sms_service import _get_messaging_config, send_report_available_sms
 
     try:

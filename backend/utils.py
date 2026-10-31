@@ -1,9 +1,10 @@
-"""Shared active-entity lookups and stable API response adapters.
+"""Share entity lookups, historical-context labels, and API response adapters.
 
-The lookup helpers intentionally treat soft-deleted rows as absent so callers
-cannot accidentally re-expose Corbeille data through an otherwise normal route.
-Response adapters centralize relationship-derived labels and default statistics;
-they do not authorize access, which remains the owning route's responsibility.
+Ordinary entity lookups treat soft-deleted rows as absent, while historical
+helpers use enrollment/course or passage evidence rather than a student's live
+class pointer. Adapters combine stored values with relationship-derived labels
+and default counts; these labels are not all frozen snapshots.
+Authorization remains the route's responsibility, not a side effect of serialization.
 """
 
 from sqlalchemy import select
@@ -26,6 +27,7 @@ from schemas import CourseResponse, StudentResponse
 
 
 def get_report_card_or_404(db: Session, report_id) -> ReportCard:
+    """Return a non-deleted report by ID or raise 404; the caller must authorize access."""
     report_card = db.get(ReportCard, report_id)
     if report_card is None or report_card.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
@@ -33,6 +35,7 @@ def get_report_card_or_404(db: Session, report_id) -> ReportCard:
 
 
 def get_class_or_404(db: Session, class_id) -> Class:
+    """Return a non-deleted class by ID or raise 404; this is not an ownership check."""
     school_class = db.get(Class, class_id)
     if school_class is None or school_class.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
@@ -40,6 +43,7 @@ def get_class_or_404(db: Session, class_id) -> Class:
 
 
 def get_subject_or_404(db: Session, subject_id) -> Subject:
+    """Return a non-deleted subject by ID or raise 404; authorization belongs to the route."""
     subject = db.get(Subject, subject_id)
     if subject is None or subject.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
@@ -47,10 +51,15 @@ def get_subject_or_404(db: Session, subject_id) -> Subject:
 
 
 def get_current_teacher(db: Session, current_user: User) -> Teacher | None:
+    """Return the current user's non-deleted teacher profile, or None."""
     return db.scalar(select(Teacher).where(Teacher.user_id == current_user.id, Teacher.deleted_at.is_(None)))
 
 
 def student_display_class_name(student: Student) -> str | None:
+    """Return the live class name, otherwise a graduation label or None.
+
+    This compatibility display is not a year-specific historical lookup.
+    """
     if student.school_class is not None:
         return student.school_class.name_fr
     if student.academic_status == "graduated":
@@ -59,6 +68,11 @@ def student_display_class_name(student: Student) -> str | None:
 
 
 def historical_class_name_for_student_year(db: Session, student_id, school_year: str) -> str | None:
+    """Find a class label from enrollment/course evidence, then passage history.
+
+    Use the requested year, not Student.class_id. The enrollment path reads the
+    course's related class name; it does not freeze that name against later edits.
+    """
     course = db.scalar(
         select(Course)
         .join(Enrollment, Enrollment.course_id == Course.id)
@@ -87,6 +101,10 @@ def historical_class_name_for_student_year(db: Session, student_id, school_year:
 
 
 def historical_class_name_for_course(course: Course | None) -> str | None:
+    """Return the course's related class name, or None if no class is available.
+
+    The course supplies the context instead of the student's current assignment.
+    """
     if course is not None and course.school_class is not None:
         return course.school_class.name_fr
     return None
@@ -98,6 +116,12 @@ def to_student_response(
     assignment: StudentClassAssignment | None = None,
     assignment_school_year: str | None = None,
 ) -> StudentResponse:
+    """Build student identity and assignment fields for an API response.
+
+    When assignment_school_year is supplied, use only that year's supplied
+    assignment and report an explicit unassigned state if absent. Without it,
+    use the live compatibility class display. This helper does not authorize reads.
+    """
     if assignment_school_year is not None:
         class_id = assignment.class_id if assignment is not None else None
         class_name = assignment.class_name_snapshot if assignment is not None else None
@@ -121,6 +145,11 @@ def to_student_response(
 
 
 def to_course_response(course: Course, stats: dict | None = None) -> CourseResponse:
+    """Build a course response with relationship labels and optional summary counts.
+
+    Missing statistics default to zero. The caller must already have authorized
+    access to the course.
+    """
     stats = stats or {}
     return CourseResponse(
         id=course.id,

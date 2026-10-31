@@ -1,10 +1,10 @@
-"""Security-sensitive account operations initiated by an administrator.
+"""Perform administrator-initiated parent and teacher password resets.
 
-An admin reset installs a generated temporary password, forces a first-login
-change, and increments ``token_version`` so every existing target-user session
-ends immediately. Delivery outcomes, but never the temporary password, are
-recorded in the audit log; the password is returned only to the calling admin
-for the existing credential handoff workflow.
+Stage a temporary password, forced-change flag, and token-version increment,
+attempt delivery, then audit and commit the account changes.
+Audit entries contain delivery outcomes but no plaintext password; the temporary
+password is returned to the admin for handoff, and delivery currently precedes
+the database commit.
 """
 
 import secrets
@@ -25,6 +25,13 @@ def reset_profile_password(
     actor: User,
     entity_type: str,
 ) -> dict:
+    """Reset a parent's or teacher's password for the requesting admin and return delivery results.
+
+    Stage a generated password, forced-change flag, and token-version bump; attempt
+    email or SMS, then audit and commit. Delivery currently happens before commit.
+    The response includes the temporary password for admin handoff, but the audit
+    entry records delivery outcomes without that secret.
+    """
     temp_password = secrets.token_urlsafe(9)
     user = profile.user
     user.password_hash = hash_password(temp_password)

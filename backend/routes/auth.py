@@ -1,14 +1,11 @@
-"""Authentication lifecycle routes for login, profiles, and password recovery.
+"""Handle login, account profiles, password changes, and recovery.
 
-Login supports email, teacher employee number, and parent phone while preserving
-anti-enumeration: unknown accounts, deleted users, bad passwords, and missing
-or trashed role profiles receive the same generic failure. Voluntary password changes require
-the current password; forced first-login changes and OTP/email resets do not
-because the temporary password, OTP, or reset token has just established
-identity. Every successful password event increments ``token_version`` so old
-JWTs stop working. Email recovery also returns the same response for known,
-unknown, deleted-user, missing-profile, and trashed-profile accounts; invalid
-role profiles receive no token and no email.
+Login accepts email, teacher employee number, or parent phone and gives the same
+failure for wrong credentials and unusable accounts to avoid revealing identities.
+Voluntary changes require the current password; forced changes, email tokens,
+and OTP recovery use their own identity checks and bump token_version on success.
+Recovery hides account existence, and missing/deleted role profiles receive no
+credential; logout itself does not revoke a still-valid JWT.
 """
 
 import logging
@@ -60,6 +57,7 @@ class ChangePasswordResponse(BaseModel):
 
 
 def _identifier_type(identifier: str) -> str:
+    """Classify an identifier for auditing without recording the identifier or password."""
     clean = identifier.strip()
     if "@" in clean:
         return "email"
@@ -69,6 +67,7 @@ def _identifier_type(identifier: str) -> str:
 
 
 def _profile_is_active(user: User, db: Session) -> bool:
+    """Return whether the user and required parent/teacher profile are present and not deleted."""
     if user.deleted_at is not None:
         return False
     if user.role == "teacher":
@@ -81,6 +80,11 @@ def _profile_is_active(user: User, db: Session) -> bool:
 
 
 async def read_login_credentials(request: Request) -> tuple[str, str]:
+    """Read an identifier/password pair from JSON or Swagger's form-encoded body.
+
+    JSON accepts identifier or the legacy email key; form username is the identifier.
+    Unsupported/malformed bodies raise 400 or 422 before authentication.
+    """
     content_type = request.headers.get("content-type", "").lower()
 
     if "application/json" in content_type:
@@ -124,6 +128,12 @@ async def read_login_credentials(request: Request) -> tuple[str, str]:
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit("5/minute")
 async def login(request: Request, db: Session = Depends(get_db)) -> LoginResponse:
+    """Authenticate an email, employee number, or parent phone and return a session token.
+
+    Use the same failure for unknown users, wrong passwords, and deleted/missing
+    profiles to avoid revealing account existence. Audit the outcome; forced-change
+    users receive a token but remain restricted by get_current_user.
+    """
     identifier, password = await read_login_credentials(request)
 
     # 1. Email lookup (works for admins and emailed teachers/parents).
@@ -210,6 +220,7 @@ async def login(request: Request, db: Session = Depends(get_db)) -> LoginRespons
 
 @router.get("/me", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)) -> UserResponse:
+    """Return the authenticated user's safe identity, including the forced-password-change flag."""
     return UserResponse(
         id=current_user.id,
         name=current_user.name,
@@ -224,6 +235,7 @@ def get_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AccountProfileResponse:
+    """Return the current account's profile fields without exposing its password hash."""
     phone = None
     if current_user.role == "teacher":
         profile = db.scalar(select(Teacher).where(Teacher.user_id == current_user.id))
@@ -240,6 +252,11 @@ def update_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AccountProfileResponse:
+    """Update allowed fields on the current account and return its profile.
+
+    The authenticated user's identity determines the target; no other user's ID
+    can be supplied to this endpoint.
+    """
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="name cannot be empty")
@@ -268,6 +285,11 @@ def change_password(
     # Forced-change users authenticated with a temporary password moments ago;
     # requiring that same value again adds no proof. Voluntary changes must
     # verify the current password to protect unattended authenticated sessions.
+    """Validate a password change, revoke old sessions, and return a replacement token.
+
+    Voluntary changes require the current password. Forced first-login changes
+    use the authenticated temporary-password session and clear the forced-change flag.
+    """
     if not current_user.must_change_password:
         if not payload.current_password:
             raise HTTPException(
@@ -306,6 +328,11 @@ def change_password(
 def logout(_: User = Depends(get_current_user)) -> dict[str, str]:
     # JWT logout is client-side token disposal; server-side global revocation is
     # reserved for password and profile-trash events via token_version.
+    """Return logout success without revoking the current JWT.
+
+    The client clears its token; server-wide revocation occurs through token-version
+    changes, not this endpoint.
+    """
     return {"status": "ok", "message": "Logged out"}
 
 
@@ -321,6 +348,7 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def password_strength(cls, v: str) -> str:
+        """Return the proposed password after the shared minimum-strength validation."""
         return validate_password_strength(v)
 
 
@@ -370,6 +398,12 @@ async def forgot_password(
     payload: ForgotPasswordRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
+    """Attempt recovery delivery while returning the same response for all identifiers.
+
+    Active email accounts receive a reset link unless one is already active; phone
+    or employee-number identifiers use OTP. Deleted/missing profiles receive no
+    recovery credential, preventing account discovery through the response.
+    """
     cleanup_reset_tokens(db)
     clean = payload.identifier.strip()
     identifier_type = _identifier_type(clean)
@@ -416,6 +450,7 @@ class EmailResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def password_strength(cls, value: str) -> str:
+        """Validate the new password using the same rule as other account changes."""
         return validate_password_strength(value)
 
 
@@ -426,6 +461,11 @@ async def reset_password_by_email(
     payload: EmailResetPasswordRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
+    """Consume a valid email reset token, change the password, audit, and commit.
+
+    Reject expired/used/version-invalid tokens and inactive profiles. Bump the user
+    version so every old JWT becomes invalid; return success without logging a secret.
+    """
     token = get_valid_reset_token(db, payload.token)
     if token is None or not _profile_is_active(token.user, db):
         db.commit()
@@ -457,6 +497,11 @@ async def reset_password(
     payload: ResetPasswordRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
+    """Verify the identifier's OTP, reset its active account password, audit, and commit.
+
+    Clear forced-change state and bump token_version to revoke existing sessions.
+    Invalid identifiers and OTPs share a generic error.
+    """
     cleanup_reset_tokens(db)
     phone = _resolve_phone_for_identifier(payload.identifier, db)
     if phone is None:

@@ -1,15 +1,11 @@
-"""Authentication primitives and the server-side session security boundary.
+"""Provide password/JWT helpers and enforce session checks on every authenticated request.
 
-JWTs carry the user's current ``token_version`` in a ``ver`` claim and are
-accepted only while that claim matches the database. Soft-deleted accounts are
-rejected before role checks. Every password event
-increments the version, providing a global session kill without maintaining a
-token denylist. The authenticated-user dependency also enforces forced password
-changes and rejects deleted users plus missing or trashed teacher/parent
-profiles on every request;
-frontend redirects and login-time checks are defense-in-depth, not the security
-boundary. Hard-deleting a user invalidates every JWT independently of
-``token_version`` because authenticated requests require the subject row.
+Reject weak/default signing secrets unless local/test mode is explicitly selected,
+and verify signature, expiry, database user, and token_version before access.
+Deleted users and missing or deleted parent/teacher profiles are rejected;
+hard deletion also invalidates tokens because the user lookup fails.
+Forced-password-change sessions may use only the explicit account endpoints,
+and role guards use the database role rather than trusting the browser.
 """
 
 import os
@@ -49,10 +45,12 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 def hash_password(password: str) -> str:
+    """Return a bcrypt hash of the supplied plaintext password for storage."""
     return password_context.hash(password)
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
+    """Return whether a plaintext password matches the stored bcrypt hash."""
     return password_context.verify(plain_password, password_hash)
 
 
@@ -61,6 +59,11 @@ def create_access_token(
     expires_delta: timedelta | None = None,
     extra_claims: dict[str, Any] | None = None,
 ) -> str:
+    """Sign a JWT for the given subject, expiry interval, and optional extra claims.
+
+    The default expiry comes from configuration. Extra claims are merged last;
+    callers are responsible for supplying trusted claim values.
+    """
     expires_at = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
@@ -75,6 +78,7 @@ def create_access_token(
 
 
 def create_user_access_token(user: User) -> str:
+    """Return a signed session token carrying this user's ID, role, and token version."""
     return create_access_token(
         subject=str(user.id),
         extra_claims={"role": user.role, "ver": user.token_version},
@@ -83,10 +87,19 @@ def create_user_access_token(user: User) -> str:
 
 def invalidate_user_sessions(user: User) -> None:
     # Versioning invalidates every previously issued JWT without storing tokens.
+    """Increment the user's token version in memory, invalidating old JWTs once committed.
+
+    The caller owns the database transaction; this function does not commit.
+    """
     user.token_version += 1
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
+    """Verify a JWT's signature and expiry and return its claims.
+
+    Only the configured signing algorithm is accepted. Invalid tokens raise 401;
+    user existence and token-version checks happen in get_current_user.
+    """
     try:
         return jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
     except JWTError as exc:
@@ -102,6 +115,13 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    """Resolve the bearer token to a usable database user or reject the request.
+
+    Check signature, expiry, user deletion, token version, and the existence of an
+    active parent/teacher profile on every call. A forced password change allows
+    only the explicit account-recovery endpoints, not ordinary school data.
+    Deleting the user also kills old JWTs because the subject lookup then fails.
+    """
     payload = decode_access_token(token)
     user_id = payload.get("sub")
     if not user_id:
@@ -173,6 +193,11 @@ def get_current_user(
 
 
 def require_role(required_role: str):
+    """Return a FastAPI dependency that requires the given database role.
+
+    It resolves the current user through the full session checks, then returns
+    that user or raises 403; it does not trust a role supplied by the browser.
+    """
     def role_guard(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role != required_role:
             raise HTTPException(

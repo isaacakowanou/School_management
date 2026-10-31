@@ -1,8 +1,9 @@
-"""Admin Passage de classe preview, decision, and history endpoints.
+"""Expose admin passage preview/confirmation and separate parent-safe history.
 
-Classes are per school year in this app. The target year therefore needs its
-own Class rows before a student can be moved there; admins create them from the
-Classes page, either manually or with the GGFK bulk-create button.
+Passage needs real target-year classes created through the shared school-year
+create/complete flow; preview reports missing setup instead of creating it.
+Admins receive council decision details, while linked parents receive only year,
+source class, final decision, and resulting class, including for graduates.
 """
 
 from uuid import UUID
@@ -67,6 +68,11 @@ def _decision_response(decision: StudentPassageDecision) -> PassageDecisionRespo
 
 
 def _parent_decision_response(decision: StudentPassageDecision) -> ParentPassageDecisionResponse:
+    """Return only school year, source class, final decision, and result class for parents.
+
+    Council notes, averages, overrides, and deciding staff identities stay in the
+    admin response rather than being hidden only in the browser.
+    """
     return ParentPassageDecisionResponse(
         school_year=decision.school_year,
         from_class_name=decision.from_class_name,
@@ -148,6 +154,10 @@ def preview_class_passage(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> PassageClassPreviewResponse:
+    """Return admin triage rows and missing target-class requirements for a class/year.
+
+    Preview reads existing decisions and annual averages without applying passage.
+    """
     school_class = db.get(Class, class_id)
     if school_class is None or school_class.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
@@ -186,6 +196,11 @@ def confirm_passage(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> PassageConfirmResponse:
+    """Validate and apply the admin's selected decisions, then commit and return them.
+
+    Unresolved rows cannot confirm; the service enforces target classes, repeat-safe
+    updates, assignment changes, graduation, and audit entries.
+    """
     if not payload.decisions:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"code": "passage_decision_required", "message": "At least one decision is required"})
 
@@ -257,6 +272,7 @@ def student_passage_history(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[PassageDecisionResponse]:
+    """Return the student's full passage history for an admin, including council details."""
     student = db.get(Student, student_id)
     if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
@@ -274,6 +290,11 @@ def parent_student_passage_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[ParentPassageDecisionResponse]:
+    """Return the four-field passage history for a parent's linked child.
+
+    Verify the active family link server-side, retain graduated history, and reject
+    unrelated parents without exposing the richer admin payload.
+    """
     if current_user.role != "parent" or not _parent_can_read_student(db, current_user, student_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
     decisions = db.scalars(

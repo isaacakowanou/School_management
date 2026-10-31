@@ -1,9 +1,10 @@
-"""Produce advisory integrity warnings without mutating grades or bulletins.
+"""Return deterministic advisory warnings about course data and report snapshots.
 
-Checks compare active enrollments, items, scores, calculated results, and stored
-bulletin snapshots to surface suspicious omissions or drift. Warning severity
-guides human review only; this service must not recalculate official values or
-silently repair data because those actions require audited domain workflows.
+Read enrollments, items, scores, results, and snapshot rows without changing any
+of them or using an LLM. Callers enforce authorization and choose whether to
+store warnings; optional report course scoping prevents a teacher's check from
+exposing other teachers' data. Course checks currently sum item weights directly
+and do not handle null weights or separate items by trimester.
 """
 
 from uuid import UUID
@@ -32,6 +33,13 @@ def _warning(
 
 
 def check_course_grade_data(db: Session, course_id: UUID) -> list[dict]:
+    """Return deterministic warning dictionaries for a non-deleted course's data.
+
+    Inspect active items, enrolled students, scores, and missing current-term
+    results without changing them. Items are collected across terms and their
+    weights are summed directly; null weights are not handled by this function.
+    A missing course raises ValueError. The caller must enforce access control.
+    """
     course = db.get(Course, course_id)
     if course is None or course.deleted_at is not None:
         raise ValueError("Course not found")
@@ -160,7 +168,7 @@ def check_report_card_data(
         )
 
     # Out-of-range bound depends on the report's grade scale: historical /100
-    # reports allow up to 100, post-A1.2 /20 reports up to 20.
+    # reports allow up to 100, while current /20 reports allow up to 20.
     max_average = 100 if report_card.scale == "100" else 20
 
     for report_course in report_card.courses:

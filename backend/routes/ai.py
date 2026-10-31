@@ -1,12 +1,10 @@
-"""Expose advisory AI checks and screen-only summaries without changing official grades.
+"""Expose advisory checks and generated summaries without changing official marks.
 
-Teachers may check only their own active courses on a student's draft report.
-Teacher checks are read-only: unscoped stored report warnings belong to the
-admin's full-report check and must never be replaced by a partial check.
-Admins retain full-report check-and-replace behavior, while
-summary generation operates on the latest draft snapshot. Rechecking replaces
-stored warnings so they describe current data rather than accumulating history;
-AI output remains advisory and never changes bulletin status or PDF content.
+Teacher checks are limited to their owned active courses and never replace
+stored full-report warnings; admin checks replace the complete warning list.
+Student-based summary generation selects the latest draft, while the report-ID
+route has no draft-status guard of its own.
+Summaries remain screen-only assistance and do not change report status or PDFs.
 """
 
 from uuid import UUID
@@ -28,6 +26,11 @@ router = APIRouter(tags=["ai"])
 
 
 def store_report_warnings(db: Session, report_card_id: UUID, warnings: list[dict]) -> list[AIWarningResponse]:
+    """Replace all stored warnings for a report, commit, and return warning responses.
+
+    This is the admin full-report storage path; a teacher's scoped check must not
+    call it or it would erase warnings about other courses.
+    """
     db.execute(delete(AIWarning).where(AIWarning.report_card_id == report_card_id))
     for warning in warnings:
         db.add(
@@ -44,6 +47,7 @@ def store_report_warnings(db: Session, report_card_id: UUID, warnings: list[dict
 
 
 def get_student_or_404(db: Session, student_id: UUID) -> Student:
+    """Return a non-deleted student by ID or raise 404."""
     student = db.get(Student, student_id)
     if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
@@ -51,6 +55,7 @@ def get_student_or_404(db: Session, student_id: UUID) -> Student:
 
 
 def teacher_can_check_student(db: Session, current_user: User, student_id: UUID) -> bool:
+    """Return whether this teacher owns an active course with this student's active enrollment."""
     teacher = get_current_teacher(db, current_user)
     if teacher is None:
         return False
@@ -71,6 +76,10 @@ def teacher_can_check_student(db: Session, current_user: User, student_id: UUID)
 
 
 def get_latest_draft_report_card_or_404(db: Session, student_id: UUID) -> ReportCard:
+    """Return the student's newest non-deleted draft report or raise 404.
+
+    Selection is by creation time across years and terms, not the global current year.
+    """
     report_card = db.scalar(
         select(ReportCard)
         .where(
@@ -86,6 +95,7 @@ def get_latest_draft_report_card_or_404(db: Session, student_id: UUID) -> Report
 
 
 def build_summary_report_data(report_card: ReportCard) -> dict:
+    """Return the student and stored course/average data supplied to the summary service."""
     student = report_card.student
     return {
         "student": {
@@ -111,6 +121,11 @@ def build_summary_report_data(report_card: ReportCard) -> dict:
 
 
 def generate_and_store_report_summary(db: Session, report_card: ReportCard) -> AISummaryResponse:
+    """Generate summary text from report data, save it, commit, and return its response.
+
+    Translate service ValueError into 400. Do not modify official marks, status,
+    PDFs, or course snapshots; this helper does not itself require draft status.
+    """
     report_data = build_summary_report_data(report_card)
 
     try:
@@ -131,6 +146,10 @@ def check_report_card(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[AIWarningResponse]:
+    """Run an admin's full deterministic report check and replace stored warnings.
+
+    Return the warning list, with missing/invalid report data mapped to HTTP errors.
+    """
     try:
         warnings = check_report_card_data(db, report_card_id)
     except ValueError as exc:
@@ -147,6 +166,12 @@ def check_student_grades(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[AIWarningResponse]:
+    """Check the student's latest draft, restricted to the caller's course scope.
+
+    Admins replace the report's full warning list. Teachers need enrollment in an
+    owned course and receive only owned-course warnings without changing stored
+    warnings. Parents are denied.
+    """
     student = get_student_or_404(db, student_id)
 
     if current_user.role == "admin":
@@ -177,6 +202,11 @@ def generate_summary_for_report(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> AISummaryResponse:
+    """Generate and save an admin-requested summary for the specified existing report.
+
+    This ID-based route does not itself enforce draft status; it leaves report
+    status and official results unchanged.
+    """
     report_card = get_report_card_or_404(db, report_card_id)
     return generate_and_store_report_summary(db, report_card)
 
@@ -187,6 +217,10 @@ def generate_summary_for_student(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> AISummaryResponse:
+    """Generate and save a summary for the student's latest draft report, admin-only.
+
+    Missing students or absent drafts return 404; reuse the report-based service.
+    """
     student = get_student_or_404(db, student_id)
     report_card = get_latest_draft_report_card_or_404(db, student.id)
     return generate_and_store_report_summary(db, report_card)

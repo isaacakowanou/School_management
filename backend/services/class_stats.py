@@ -1,9 +1,10 @@
-"""Fresh class-statistics for the report-card bulletin (A1.7b).
+"""Read current class high/low bulletin values for each language track.
 
-Per language track, the highest and lowest average across the student's class
-for a given (term, school_year). Read-only and best-effort — it must never
-raise for the PDF path; missing data yields None, which the template renders
-as "-".
+Resolve the student's assignment in the requested year and use non-deleted
+approved/sent reports for that class and trimester. Missing assignments or
+track values yield None, but database errors propagate rather than being hidden.
+These are read-time statistics: stored draft/needs_review rows are excluded,
+while derived staleness is not checked.
 """
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,15 +27,12 @@ def _empty_stats() -> dict:
 
 
 def compute_class_stats(db: Session, student: Student, term: str, school_year: str) -> dict:
-    """Return {track: {"highest", "lowest"}} across the student's class.
+    """Return highest/lowest published track values for the student's assigned class and period.
 
-    Considers published ReportCard snapshots for (term, school_year) belonging
-    to a student in the same class. Draft and withdrawn needs-review rows are
-    excluded so parent-visible statistics never include unpublished results.
-    Edge cases:
-      - student has no class -> all None
-      - class of one / no peers with a report yet -> highest == lowest == self
-      - a track with no values anywhere -> None / None
+    Resolve the selected year's assignment and include non-deleted approved/sent
+    reports from that class. Stored draft/needs_review rows are excluded; derived
+    staleness is not evaluated. Missing assignments or track values yield None;
+    database errors propagate. These statistics are computed now, not frozen.
     """
     assignment = assignment_for_student_year(db, student.id, school_year)
     if assignment is None:

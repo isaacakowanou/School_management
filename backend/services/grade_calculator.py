@@ -1,15 +1,11 @@
-"""Deterministic implementations of GGFK's numeric grading rules.
+"""Implement deterministic numeric grading without database or AI calls.
 
-Numeric course grades are normalized and stored on a /20 scale. French-track
-Collège courses use the Benin Ministry of Education formula: average all
-Interros into ``Moy_Int``, average ``Moy_Int`` with the Devoir into ``MCC``,
-then average ``MCC`` with the Composition into the trimester ``Moy``. This
-chain is a school-domain requirement, not a weighting scheme to simplify or
-rebalance. Other courses retain the separate weighted-item calculation.
-
-The resulting /20 value maps to GGFK's nine academic letter bands
-(A+/A/B+/B/C+/C/D/E/F). Conduct and work habits use the same set of letter
-codes as direct assessments, but remain separate from numeric course grades.
+Explicit course grading_system takes precedence; French-college inference is
+only a fallback for legacy setup. Beninese mode normalizes to /20 and computes
+Moy_Int from Interros, MCC from Moy_Int/Devoir, then Moy from MCC/Composition;
+weighted courses use their separate item-weight calculation.
+Academic letters use nine bands, while the retained GPA helper uses its distinct
+legacy five-band /100 conversion rather than those academic letters.
 """
 
 
@@ -20,7 +16,7 @@ WEIGHT_TOLERANCE_MAX = 1.001
 GRADE_SCALE_MAX = 20.0
 
 # GPA still uses the legacy /100 bridge (scale /20 × 5 → map to A/B/C/D/F).
-# A1.4 deletes GPA entirely; this constant goes with it.
+# This compatibility mapping is distinct from the nine academic letter bands.
 LETTER_GRADE_SCALE_FACTOR = 100.0 / GRADE_SCALE_MAX  # 5.0
 
 
@@ -44,10 +40,11 @@ def _as_number(value, field_name):
 
 
 def calculate_course_average(grades):
-    """Calculate a weighted course average on the /20 scale.
+    """Return a weighted /20 average, rounded to two decimals, from grade dictionaries or objects.
 
-    Each grade item's raw score is normalized to /20 via (score / max_score) * 20,
-    so items with any max_score (20, 10, 100, ...) contribute correctly.
+    Each item supplies score, max_score, and weight. Normalize scores before
+    weighting; reject empty input, invalid score ranges, nonpositive maxima, and
+    weights outside 0..1 or totals outside the configured tolerance.
     """
     if not grades:
         raise ValueError("grades list cannot be empty")
@@ -103,12 +100,11 @@ def get_letter_grade(average):
 
 
 def normalize_average_to_20(average, scale):
-    """Return a course average on the /20 scale.
+    """Return the numeric average on /20, converting only an explicit scale of '100'.
 
-    Historical results stored on the legacy /100 scale (scale == "100") are
-    scaled down by 0.2; results already on /20 (the default) pass through
-    unchanged. Used by the report builder so a report mixing pre- and
-    post-A1.2 course results is always computed on a single /20 scale.
+    Legacy /100 values are multiplied by 0.2 and rounded to two decimals. Other
+    scale values pass through unchanged so callers can combine stored generations
+    without applying that conversion twice.
     """
     average = _as_number(average, "average")
     if scale == "100":
@@ -118,7 +114,10 @@ def normalize_average_to_20(average, scale):
 
 
 def calculate_overall_average(course_averages):
-    """Calculate the arithmetic mean of course averages."""
+    """Return the arithmetic mean of numeric course averages, rounded to two decimals.
+
+    Empty input raises ValueError; this does not apply coefficients or change scale.
+    """
     if not course_averages:
         raise ValueError("course averages list cannot be empty")
 
@@ -127,7 +126,12 @@ def calculate_overall_average(course_averages):
 
 
 def is_beninese_mode(course) -> bool:
-    """Use explicit grading identity, with legacy setup inference as fallback."""
+    """Return whether the course uses the Beninese calculation chain.
+
+    An explicit grading_system takes precedence, even when language or level
+    suggests otherwise. Only when it is absent does a French-track college class
+    select the Beninese engine through legacy inference.
+    """
     grading_system = getattr(course, "grading_system", None)
     if grading_system is not None:
         return grading_system == "BENINESE"
@@ -170,7 +174,11 @@ def calculate_beninese_average(interros, devoir, composition):
 
 
 def calculate_weighted_average(course_averages, coefficients):
-    """Coefficient-weighted mean of course averages on the /20 scale."""
+    """Return a coefficient-weighted mean, rounded to two decimals, for paired lists.
+
+    Require nonempty averages, matching list lengths, and a positive coefficient
+    total. Individual coefficient signs and average ranges are not checked here.
+    """
     if not course_averages:
         raise ValueError("course averages list cannot be empty")
     if len(course_averages) != len(coefficients):
@@ -186,14 +194,19 @@ def calculate_weighted_average(course_averages, coefficients):
 
 
 def calculate_gpa(course_averages):
-    """Calculate GPA from course averages using the current letter-grade scale."""
+    """Return the legacy five-band GPA mean, rounded to two decimals, for /20 averages.
+
+    Scale each value to /100 and use A/B/C/D/F at 90/80/70/60 for 4/3/2/1/0
+    points. This is separate from the nine-band academic letters returned by
+    get_letter_grade. Empty input raises ValueError.
+    """
     if not course_averages:
         raise ValueError("course averages list cannot be empty")
 
     _grade_points = {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0, "F": 0.0}
 
     def _legacy_letter(avg):
-        # A1.4 removes GPA entirely; keeping /100 bridge here until then.
+        # Preserve the legacy GPA mapping independently of academic letters.
         scaled = _as_number(avg, "course average") * LETTER_GRADE_SCALE_FACTOR
         if scaled >= 90: return "A"
         if scaled >= 80: return "B"

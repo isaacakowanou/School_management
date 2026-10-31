@@ -1,10 +1,9 @@
-"""Append-only construction helper for operational and authentication audit rows.
+"""Stage audit records alongside the actions they describe.
 
-Callers own transaction boundaries so an audit row commits atomically with the
-action it describes. Values are normalized to JSON-safe UUID/date strings.
-``actor_user_id`` may be null for security events where no identity is proven,
-notably failed login and anti-enumeration reset requests; see the auth module for
-why those events must not manufacture or disclose an actor.
+Normalize UUIDs and dates for JSON storage and leave the commit to callers so
+record changes and their audits can share a transaction. Nullable actors support
+failed login and other events where identity is not proven; this helper does
+not invent a user or enforce permissions.
 """
 
 from datetime import date, datetime
@@ -16,6 +15,7 @@ from models import AuditLog
 
 
 def _json_safe(value):
+    """Recursively convert UUIDs and dates in audit values to JSON-safe strings."""
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, (datetime, date)):
@@ -36,6 +36,12 @@ def create_audit_log(
     old_value: dict | None = None,
     new_value: dict | None = None,
 ) -> AuditLog:
+    """Add an audit row to the session and return it, without committing.
+
+    Record the actor, action, target, and optional before/after dictionaries;
+    convert UUIDs and dates to JSON-safe strings. A null actor supports events
+    without a proven identity. The caller commits the row with its domain change.
+    """
     audit_log = AuditLog(
         actor_user_id=actor_user_id,
         action=action,

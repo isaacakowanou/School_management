@@ -1,12 +1,11 @@
-"""Manage grade-item definitions while protecting grading-mode invariants.
+"""Manage assessment definitions for each course and trimester.
 
-French-track Collège courses use notation béninoise and accept only Interro,
-Devoir, and Composition items. Those items have no custom category or weight,
-and each trimester has exactly one Devoir and one Composition; allowing foreign
-types would make the Ministry formula ambiguous. Non-Beninese courses retain
-the legacy weighted-item path and cannot set a Beninese ``item_type``.
-Trimester locks protect create/update/delete at the server boundary; admin
-overrides keep the ordinary audit event plus a conspicuous override event.
+An explicit grading_system selects Beninese or weighted rules, with legacy
+French-college inference only when that field is absent. Beninese items use
+Interro/Devoir/Composition without custom weights and allow at most one Devoir
+and Composition per term; calculation separately requires a complete set.
+Server-side locks protect writes, admin overrides receive extra audit entries,
+and items with active scores cannot be deleted through this route.
 """
 
 from uuid import UUID
@@ -32,6 +31,7 @@ router = APIRouter(tags=["grade-items"])
 
 
 def to_grade_item_response(grade_item: GradeItem) -> GradeItemResponse:
+    """Return the item's stored definition in the API response shape."""
     return GradeItemResponse(
         id=grade_item.id,
         course_id=grade_item.course_id,
@@ -46,6 +46,7 @@ def to_grade_item_response(grade_item: GradeItem) -> GradeItemResponse:
 
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
+    """Return a non-deleted course by ID or raise 404."""
     course = db.get(Course, course_id)
     if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -53,6 +54,7 @@ def get_course_or_404(db: Session, course_id: UUID) -> Course:
 
 
 def get_grade_item_or_404(db: Session, grade_item_id: UUID) -> GradeItem:
+    """Return a non-deleted item with its course available or raise 404."""
     grade_item = db.get(GradeItem, grade_item_id)
     if grade_item is None or grade_item.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grade item not found")
@@ -60,6 +62,7 @@ def get_grade_item_or_404(db: Session, grade_item_id: UUID) -> GradeItem:
 
 
 def can_manage_course_grade_items(db: Session, current_user: User, course: Course) -> bool:
+    """Return whether the caller is an admin or the course's assigned active teacher."""
     if current_user.role == "admin":
         return True
     if current_user.role != "teacher":
@@ -70,6 +73,7 @@ def can_manage_course_grade_items(db: Session, current_user: User, course: Cours
 
 
 def clean_required_text(value: str, field_name: str) -> str:
+    """Trim required item text and return it, rejecting empty content with 400."""
     cleaned = value.strip()
     if not cleaned:
         raise HTTPException(
@@ -80,6 +84,10 @@ def clean_required_text(value: str, field_name: str) -> str:
 
 
 def validate_grade_item_values(max_score: float | None = None, weight: float | None = None) -> None:
+    """Validate supplied maxima and weights, raising 400 for invalid numeric bounds.
+
+    Absent values are left to the caller's grading-mode rules rather than filled in.
+    """
     if max_score is not None and max_score <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="max_score must be greater than 0")
     if weight is not None and (weight <= 0 or weight > 1):
@@ -87,6 +95,7 @@ def validate_grade_item_values(max_score: float | None = None, weight: float | N
 
 
 def get_payload_fields(payload) -> set[str]:
+    """Return the set of fields explicitly supplied on the request schema."""
     fields = getattr(payload, "model_fields_set", None)
     if fields is None:
         fields = getattr(payload, "__fields_set__", set())
@@ -94,6 +103,7 @@ def get_payload_fields(payload) -> set[str]:
 
 
 def grade_item_audit_value(grade_item: GradeItem) -> dict:
+    """Return the item's identifying and grading fields for a before/after audit entry."""
     return {
         "course_id": grade_item.course_id,
         "title": grade_item.title,
@@ -112,6 +122,7 @@ def list_grade_items(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[GradeItemResponse]:
+    """Return active items for a course after admin/assigned-teacher authorization."""
     course = get_course_or_404(db, course_id)
     if not can_manage_course_grade_items(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
@@ -129,6 +140,11 @@ def create_grade_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GradeItemResponse:
+    """Create and audit an item for an admin or the assigned teacher, then return it.
+
+    Enforce grading-system item types, per-term Devoir/Composition uniqueness,
+    value bounds, and trimester locks; an admin override gets an additional audit.
+    """
     term = payload.term.value
     course = get_course_or_404(db, payload.course_id)
     if not can_manage_course_grade_items(db, current_user, course):
@@ -241,6 +257,11 @@ def update_grade_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GradeItemResponse:
+    """Update and audit an authorized item while preserving its grading-system rules.
+
+    Check locks for affected terms and reject incompatible type/weight changes.
+    Commit the item and any override audit together, then return the stored definition.
+    """
     updated_fields = get_payload_fields(payload)
     grade_item = get_grade_item_or_404(db, grade_item_id)
     if not can_manage_course_grade_items(db, current_user, grade_item.course):
@@ -334,6 +355,10 @@ def delete_grade_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Soft-delete an item as an admin only when it has no active grades.
+
+    Reject linked scores, enforce trimester override auditing, and commit the deletion.
+    """
     grade_item = get_grade_item_or_404(db, grade_item_id)
     locked_override = ensure_trimester_write_allowed(
         db,

@@ -1,18 +1,12 @@
-"""Build immutable bulletin snapshots and compare them with current results.
+"""Assemble new bulletin values and display existing bulletin snapshots.
 
-The builder consumes completed ``CourseResult`` rows rather than live grade
-items, normalizes historical values to /20, and freezes the values parents
-later receive in approved bulletins. It keeps French, English, and bilingual
-averages separate because GGFK operates parallel language tracks; bilingual is
-the equal blend of the two track averages and is absent until both exist.
-Conduct and work-habit letter assessments are snapshot domains distinct from
-numeric course averages.
-
-Courses are coefficient-weighted within each track and in the overall average
-when an admin configures coefficients; coefficient 1 preserves equal weight,
-which is the effective state of all current courses. Coefficients remain
-calculation metadata and are intentionally absent from the printed bulletin,
-matching the school's official format. Do not add a printed ``Coef`` column.
+New data comes from completed course results normalized to /20, with configured
+coefficients within each language track and an equal blend when both tracks exist.
+Stored course marks, names, coefficients, and intermediate values remain snapshots,
+but display reads student identity, course codes/languages, class context,
+statistics, prior reports, and annual averages at request time.
+Coefficients are calculation metadata, not a printed Coef column; no assumption
+is made about which coefficients are currently stored in the database.
 """
 
 from dataclasses import dataclass
@@ -60,6 +54,13 @@ class ReportCardStaleness:
 
 
 def build_report_card_data(db: Session, student_id: UUID, term: str, school_year: str) -> dict:
+    """Assemble new bulletin data from a student's results for the given term and year.
+
+    Normalize stored results to /20, apply course coefficients, and compute separate
+    language-track averages plus legacy GPA through calculator helpers. Read live
+    student/course metadata; raise ValueError for a missing student or no results.
+    Return a dictionary without creating a report or committing anything.
+    """
     student = db.get(Student, student_id)
     if student is None or student.deleted_at is not None:
         raise ValueError("Student not found")
@@ -80,9 +81,9 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
         raise ValueError("Student has no course results for the requested term and school year")
 
     # Normalize each result to /20 by its stored scale so a report mixing
-    # pre-A1.2 (/100) and post-A1.2 (/20) course results is computed on one
-    # scale. letter_grade is scale-invariant (A on /100 == A on /20), so the
-    # stored letter is kept as-is.
+    # legacy /100 and current /20 course results is computed on one
+    # scale. Keep the recorded letter as-is rather than remapping historical
+    # letters through today's academic letter thresholds.
     courses = [
         {
             "course_id": course_result.course_id,
@@ -102,7 +103,7 @@ def build_report_card_data(db: Session, student_id: UUID, term: str, school_year
     course_averages = [course["average"] for course in courses]
     coefficients = [course["coefficient"] for course in courses]
 
-    # A1.6 three parallel-track averages. Admin-configured coefficients apply
+    # Three parallel-track averages. Admin-configured coefficients apply
     # here; coefficient 1 is deliberately ordinary equal weight. The reference
     # coefficient catalog guides upper-class setup but is not auto-loaded,
     # because the admin owns each course's configuration.
@@ -229,8 +230,10 @@ def get_report_card_staleness(db: Session, report_card: ReportCard) -> ReportCar
 
 
 def _merge_report_items(stored_items, definitions) -> list[dict]:
-    """Merge stored conduct/work-habit rows onto the canonical list, so every
-    item appears in order with letter_grade None when unassessed (A1.7b)."""
+    """Return canonical conduct/work-habit items with their stored letter assessments.
+
+    Unassessed items remain in display order with a null letter.
+    """
     grade_by_key = {item.item_key: item.letter_grade for item in stored_items}
     return [
         {"key": key, "en_label": en_label, "fr_label": fr_label, "letter_grade": grade_by_key.get(key)}
@@ -239,11 +242,13 @@ def _merge_report_items(stored_items, definitions) -> list[dict]:
 
 
 def build_report_card_data_from_report_card(db: Session, report_card: ReportCard) -> dict:
-    """Reconstruct report_data from a stored ReportCard + ReportCardCourse snapshot.
+    """Return display data for a stored report without recalculating its course results.
 
-    Uses only persisted values — no CourseResult recomputation, no OpenAI, no DB
-    writes. course_code is resolved from the live Course row (by course_id); a course
-    that no longer exists falls back to "N/A".
+    Course names, averages, coefficients, and intermediate marks come from snapshot
+    rows. Student identity, course codes/language groups, class assignment/counts,
+    class statistics, prior reports, and annual averages are read at display time.
+    Annual data appears only for the final trimester and includes completeness.
+    This function reads the database but never writes or calls an AI service.
     """
     student = report_card.student
 
@@ -264,8 +269,8 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
             "course_code": code_by_course_id.get(course.course_id, "N/A"),
             "average": course.average,
             "letter_grade": course.letter_grade,
-            # A1.7b: French appreciation + language track (resolved live, since the
-            # snapshot ReportCardCourse rows don't carry language_group).
+            # French appreciation and language track are resolved at read time; the
+            # snapshot ReportCardCourse rows do not carry language_group.
             "appreciation": appreciation_for_letter(course.letter_grade),
             "language_group": language_by_course_id.get(course.course_id),
             "coefficient": course.coefficient,
@@ -294,7 +299,7 @@ def build_report_card_data_from_report_card(db: Session, report_card: ReportCard
         else None
     )
 
-    # --- A1.7b bulletin sections ---
+    # Keep unassessed conduct/work-habit rows visible on the official form.
     conduct_items = _merge_report_items(report_card.conduct_items, CONDUCT_ITEMS)
     work_habit_items = _merge_report_items(report_card.work_habit_items, WORK_HABIT_ITEMS)
 

@@ -1,9 +1,10 @@
-"""Own year-scoped student class assignments without scoping student identity.
+"""Read and maintain a student's class assignment for a particular school year.
 
-Students are permanent school members. ``StudentClassAssignment`` is the sole
-authority for year-specific class reads; ``Student.class_id`` is maintained only
-as a temporary live compatibility pointer. Missing assignment rows mean the
-student is explicitly unassigned for that year.
+Students remain permanent school members even without an assignment in a
+selected year, and a missing assignment explicitly means unassigned there.
+These helpers store class names alongside IDs and leave the live class pointer
+and transaction commit to callers; class edits synchronize those stored names.
+Other legacy historical lookup helpers still exist outside this module.
 """
 
 from uuid import UUID
@@ -17,6 +18,7 @@ from models import Class, Student, StudentClassAssignment
 def assignment_for_student_year(
     db: Session, student_id: UUID, school_year: str
 ) -> StudentClassAssignment | None:
+    """Return the student's assignment for one school year, with its class loaded, or None."""
     return db.scalar(
         select(StudentClassAssignment)
         .options(joinedload(StudentClassAssignment.school_class))
@@ -30,6 +32,10 @@ def assignment_for_student_year(
 def assignments_for_students(
     db: Session, student_ids: list[UUID], school_year: str
 ) -> dict[UUID, StudentClassAssignment]:
+    """Return a student-ID-to-assignment map for the supplied students and school year.
+
+    Missing entries mean unassigned in that year; an empty input returns an empty map.
+    """
     if not student_ids:
         return {}
     rows = db.scalars(
@@ -46,6 +52,11 @@ def assignments_for_students(
 def set_student_assignment(
     db: Session, student: Student, school_class: Class
 ) -> StudentClassAssignment:
+    """Create or update the student's assignment for the class's school year and return it.
+
+    Store the class ID and French name together. This does not update the live
+    Student.class_id pointer or commit; the calling workflow coordinates both.
+    """
     assignment = db.scalar(
         select(StudentClassAssignment).where(
             StudentClassAssignment.student_id == student.id,
@@ -67,6 +78,7 @@ def set_student_assignment(
 
 
 def clear_student_assignment(db: Session, student_id: UUID, school_year: str) -> None:
+    """Delete only this student's assignment for the supplied year, without committing."""
     db.execute(
         delete(StudentClassAssignment).where(
             StudentClassAssignment.student_id == student_id,
@@ -78,6 +90,12 @@ def clear_student_assignment(db: Session, student_id: UUID, school_year: str) ->
 def sync_class_assignment_snapshots(
     db: Session, school_class: Class
 ) -> None:
+    """Update assignment years and name snapshots after a class changes.
+
+    Reject a year move that would give a student two assignments in the target
+    year. Changes remain in the caller's transaction; these name snapshots are
+    updated here rather than treated as immutable bulletin text.
+    """
     rows = db.scalars(
         select(StudentClassAssignment).where(StudentClassAssignment.class_id == school_class.id)
     ).all()

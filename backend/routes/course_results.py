@@ -1,13 +1,10 @@
-"""Calculate and persist complete per-course trimester results.
+"""Calculate and store a course's results for one requested trimester.
 
-The route selects one grading engine per course: notation béninoise for
-French-track Collège courses, weighted items otherwise. Beninese calculation
-requires Interro(s), exactly one Devoir, and exactly one Composition for the
-requested canonical trimester. Omitted ``term`` remains backward-compatible
-and uses ``course.term``; an explicit historical term never mutates the current
-trimester's result. Missing student scores mean "not computable",
-never zero: recalculation skips that student and invalidates any stale result so
-bulletins cannot silently reuse an average built from old grades.
+The explicit course grading_system selects the engine, with French-college
+inference only for legacy courses that lack it. Beninese items follow the
+Interro -> Moy_Int -> MCC -> Moy chain, while weighted courses use item weights.
+An omitted term uses course.term; missing scores skip that student and invalidate
+the old result for that term rather than silently count missing work as zero.
 """
 
 from datetime import datetime, timezone
@@ -42,6 +39,7 @@ router = APIRouter(tags=["course results"])
 
 
 def to_course_result_response(course_result: CourseResult) -> CourseResultResponse:
+    """Return stored result values with student identity and course-based historical class labels."""
     student = course_result.student
     course = course_result.course
     return CourseResultResponse(
@@ -65,6 +63,7 @@ def to_course_result_response(course_result: CourseResult) -> CourseResultRespon
 
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
+    """Return a non-deleted course by ID or raise 404; ownership is checked separately."""
     course = db.get(Course, course_id)
     if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -72,6 +71,7 @@ def get_course_or_404(db: Session, course_id: UUID) -> Course:
 
 
 def get_student_or_404(db: Session, student_id: UUID) -> Student:
+    """Return a non-deleted student by ID or raise 404, including graduated students."""
     student = db.get(Student, student_id)
     if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
@@ -79,6 +79,7 @@ def get_student_or_404(db: Session, student_id: UUID) -> Student:
 
 
 def can_access_course_results(db: Session, current_user: User, course: Course) -> bool:
+    """Return True for an admin or the course's assigned active teacher, otherwise False."""
     if current_user.role == "admin":
         return True
     if current_user.role != "teacher":
@@ -89,6 +90,7 @@ def can_access_course_results(db: Session, current_user: User, course: Course) -
 
 
 def get_teacher_course_ids(db: Session, current_user: User) -> list[UUID]:
+    """Return IDs of non-deleted courses assigned to this user's teacher profile."""
     teacher = get_current_teacher(db, current_user)
     if teacher is None:
         return []
@@ -97,6 +99,11 @@ def get_teacher_course_ids(db: Session, current_user: User) -> list[UUID]:
 
 
 def validate_course_grade_items(grade_items: list[GradeItem], beninese: bool, term: str) -> None:
+    """Validate the selected term's item set or raise a clear 400.
+
+    Beninese mode requires Interros and exactly one Devoir/Composition. Weighted
+    mode delegates range and total-weight checks to the calculator using full scores.
+    """
     if not grade_items:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -142,6 +149,7 @@ def validate_course_grade_items(grade_items: list[GradeItem], beninese: bool, te
 
 
 def terms_match(term: str | None, expected_term: str | None) -> bool:
+    """Return whether two term values match directly or normalize to the same trimester."""
     return term == expected_term or (
         normalize_term(term) is not None
         and normalize_term(expected_term) is not None
@@ -157,6 +165,11 @@ def get_term_equivalent_course_results(
     term: str,
     active_only: bool = False,
 ) -> list[CourseResult]:
+    """Return this student's course results whose terms match the requested trimester.
+
+    Include soft-deleted rows unless active_only is requested, allowing recalculation
+    to reuse a historical row instead of creating duplicates.
+    """
     query = select(CourseResult).where(
         CourseResult.student_id == student_id,
         CourseResult.course_id == course_id,
@@ -178,6 +191,11 @@ def get_course_result_for_recalculation(
     course: Course,
     term: str,
 ) -> CourseResult | None:
+    """Return the best existing result for this student/course/term, or None.
+
+    Prefer the exact term spelling, then an active row, so recalculation can reuse
+    legacy or soft-deleted results.
+    """
     candidates = get_term_equivalent_course_results(
         db,
         student_id=student_id,
@@ -197,9 +215,13 @@ def get_course_result_for_recalculation(
 
 
 def get_course_grade_items(db: Session, course: Course, term: str) -> list[GradeItem]:
-    # Term-scoped: only the requested trimester's grade items may feed its
-    # grade items may feed the average. Items tagged for another trimester
+    # Only the requested trimester's grade items may feed its average.
+    # Items tagged for another trimester
     # (prepared in advance, or left over after the term advanced) are excluded.
+    """Return and validate active items for exactly the requested course and term.
+
+    Never substitute course.term for an explicitly requested historical trimester.
+    """
     grade_items = db.scalars(
         select(GradeItem)
         .where(
@@ -214,6 +236,7 @@ def get_course_grade_items(db: Session, course: Course, term: str) -> list[Grade
 
 
 def get_enrolled_students_for_course(db: Session, course: Course) -> list[Student]:
+    """Return non-deleted students with active enrollments in the course, including graduates."""
     return list(
         db.scalars(
             select(Student)
@@ -229,6 +252,11 @@ def get_enrolled_students_for_course(db: Session, course: Course) -> list[Studen
 
 
 def get_selected_enrolled_students(db: Session, course: Course, student_ids: list[UUID]) -> list[Student]:
+    """Return the selected enrolled students once each, or raise 400 for missing enrollment.
+
+    An empty selection is rejected; this prevents partial recalculation from quietly
+    accepting an unrelated student ID.
+    """
     unique_student_ids = list(dict.fromkeys(student_ids))
     if not unique_student_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one student_id is required")
@@ -265,6 +293,13 @@ def calculate_results_for_students(
     term: str,
     beninese: bool = False,
 ) -> tuple[list[CourseResult], list[SkippedCourseResultStudent], list[CourseResult]]:
+    """Stage one term's results for the supplied course, items, and students.
+
+    Delegate all averages to the selected calculator. Missing grades skip a student
+    and soft-delete their prior active result for that term rather than treat missing
+    as zero. Reuse existing result rows and retire duplicates. Return calculated
+    results, skipped-student details, and invalidated rows without committing.
+    """
     results: list[CourseResult] = []
     skipped_students: list[SkippedCourseResultStudent] = []
     invalidated_results: list[CourseResult] = []
@@ -404,6 +439,11 @@ def calculate_course_results(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CourseResultCalculationResponse:
+    """Authorize an admin/assigned teacher, calculate all enrolled students, audit, and commit.
+
+    Use the explicit term when provided or course.term otherwise. Return results
+    and skip/invalidation counts; parents cannot invoke this calculation.
+    """
     course = get_course_or_404(db, course_id)
     if not can_access_course_results(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
@@ -457,6 +497,11 @@ def calculate_selected_course_results(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CourseResultCalculationResponse:
+    """Calculate and commit results only for the requested enrolled students and term.
+
+    Require admin or course ownership, audit counts, and return calculated/skipped
+    results. Restricting the selection avoids touching unrelated students' reports.
+    """
     course = get_course_or_404(db, course_id)
     if not can_access_course_results(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
@@ -509,6 +554,11 @@ def list_student_course_results(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CourseResultResponse]:
+    """Return active results for a student after checking the caller's scope.
+
+    Admins see all; teachers need an active enrollment in their courses and receive
+    only their own course results. Parents are denied.
+    """
     get_student_or_404(db, student_id)
 
     if current_user.role == "admin":
@@ -554,6 +604,10 @@ def list_course_results(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CourseResultResponse]:
+    """Return stored course results to an admin or its assigned teacher.
+
+    Exclude deleted results/students, retain graduated history, and reject parents.
+    """
     course = get_course_or_404(db, course_id)
     if not can_access_course_results(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")

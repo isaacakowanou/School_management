@@ -1,20 +1,11 @@
-"""Official bulletin lifecycle, class-level processing, and publication routes.
+"""Manage bulletin snapshots, council processing, publication, and notification.
 
-Bulletins are immutable academic snapshots with a controlled state machine:
-``draft -> approved -> sent`` plus ``needs_review``. Editing conduct, work
-habits, or comments after approval persists ``needs_review`` because the stored
-document must never silently diverge from what staff approved or parents
-received. Newer course results derive the same review state for list views.
-Recovery is regeneration back to a draft, followed by approval and sending;
-human-entered details survive regeneration while computed course rows do not.
-
-Parents can read only approved/sent snapshots, so moving a sent bulletin to
-``needs_review`` intentionally withdraws it. Staleness guards block approving
-or sending obsolete snapshots unless an admin explicitly acknowledges the
-override. Class batch actions and asynchronous merged PDFs support the Conseil
-de classe workflow, where the school processes a whole class each trimester.
-APPROVE publishes the reviewed snapshot to the parent portal; ENVOYER only
-delivers a notification that the already-published snapshot is available.
+Stored course marks are snapshots, while display builders still read some live
+identity, class, and annual/statistical context. APPROVE publishes a draft to
+linked parents without messaging; ENVOYER notifies about an approved/sent report.
+Official-detail edits persist needs_review and require regeneration back to draft,
+while newer results also produce a derived review flag and freshness guards;
+screen-only summary edits do not change status.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -123,7 +114,7 @@ def _build_report_items(stored_items, item_definitions) -> list[ReportItemRespon
 
 
 def _report_details_snapshot(report_card: ReportCard) -> dict:
-    """Audit-log snapshot of the A1.7a fields (comments + assessed items)."""
+    """Return comments and assessed items as an audit-ready before/after dictionary."""
     snapshot = {field: getattr(report_card, field) for field in _REPORT_COMMENT_FIELDS}
     snapshot["conduct_items"] = {item.item_key: item.letter_grade for item in report_card.conduct_items}
     snapshot["work_habit_items"] = {item.item_key: item.letter_grade for item in report_card.work_habit_items}
@@ -159,6 +150,11 @@ def _validated_report_item_rows(items, allowed_keys, model_cls):
 
 
 def _historical_class_for_report_card(db: Session | None, report_card: ReportCard) -> tuple[UUID | None, str | None]:
+    """Return a class ID/name using report-course relations, then passage/enrollment evidence.
+
+    Do not use the student's current class pointer. Related class names may still be
+    live values; report-course membership alone does not freeze the class label.
+    """
     for snapshot_course in report_card.courses:
         if snapshot_course.course is not None and snapshot_course.course.school_class is not None:
             return snapshot_course.course.school_class.id, snapshot_course.course.school_class.name_fr
@@ -197,10 +193,16 @@ def _historical_class_for_report_card(db: Session | None, report_card: ReportCar
 
 
 def _historical_class_name_for_report_card(db: Session | None, report_card: ReportCard) -> str | None:
+    """Return only the historical-context label from the report class lookup."""
     return _historical_class_for_report_card(db, report_card)[1]
 
 
 def to_report_card_response(report_card: ReportCard, db: Session | None = None) -> ReportCardResponse:
+    """Return stored bulletin fields plus current student identity and historical-context labels.
+
+    Course marks come from snapshot rows. This serializer does not authorize the
+    caller and does not make relationship-derived identity fields immutable.
+    """
     student = report_card.student
     return ReportCardResponse(
         id=report_card.id,
@@ -246,6 +248,7 @@ def to_report_card_response(report_card: ReportCard, db: Session | None = None) 
 
 
 def to_admin_report_card_response(report_card: ReportCard, db: Session | None = None) -> AdminReportCardResponse:
+    """Return the admin response with student name/number and the shared report fields."""
     student = report_card.student
     base = to_report_card_response(report_card, db).model_dump()
     base.pop("student_name", None)
@@ -258,11 +261,13 @@ def to_admin_report_card_response(report_card: ReportCard, db: Session | None = 
 
 
 def _bulletin_display_response(db: Session, report_card: ReportCard) -> BulletinDisplayResponse:
+    """Return validated web/PDF display data assembled from the report and read-time metadata."""
     report_data = build_report_card_data_from_report_card(db, report_card)
     return BulletinDisplayResponse.model_validate(report_data)
 
 
 def to_report_card_detail_response(db: Session, report_card: ReportCard) -> ReportCardDetailResponse:
+    """Return the standard report response with the complete bulletin display block."""
     return ReportCardDetailResponse(
         **to_report_card_response(report_card, db).model_dump(),
         bulletin=_bulletin_display_response(db, report_card),
@@ -270,6 +275,7 @@ def to_report_card_detail_response(db: Session, report_card: ReportCard) -> Repo
 
 
 def to_admin_report_card_detail_response(db: Session, report_card: ReportCard) -> AdminReportCardDetailResponse:
+    """Return the admin report response with the same complete bulletin display block."""
     return AdminReportCardDetailResponse(
         **to_admin_report_card_response(report_card, db).model_dump(),
         bulletin=_bulletin_display_response(db, report_card),
@@ -331,6 +337,7 @@ def to_admin_report_list_item(
     needs_review: bool,
     db: Session | None = None,
 ) -> AdminReportListItem:
+    """Return an admin list row with supplied needs-review state and historical class context."""
     student = report_card.student
     class_id, class_name = _historical_class_for_report_card(db, report_card)
     return AdminReportListItem(
@@ -353,6 +360,7 @@ def to_admin_report_list_item(
 
 
 def parent_can_access_student(db: Session, current_user: User, student_id: UUID) -> bool:
+    """Return whether this parent has a non-deleted profile and active link to the student."""
     parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id))
     if parent is None or parent.deleted_at is not None:
         return False
@@ -371,6 +379,11 @@ def parent_can_access_student(db: Session, current_user: User, student_id: UUID)
 
 
 def parent_can_access_report(db: Session, current_user: User, report_card: ReportCard) -> bool:
+    """Return whether this linked parent may read the non-deleted published report.
+
+    Only stored approved/sent states are visible; draft/needs_review rows are hidden.
+    Graduation alone does not remove a family's access.
+    """
     return (
         report_card.status in PARENT_VISIBLE_STATUSES
         and report_card.deleted_at is None
@@ -380,6 +393,10 @@ def parent_can_access_report(db: Session, current_user: User, report_card: Repor
 
 
 def ensure_can_view_report(db: Session, current_user: User, report_card: ReportCard) -> None:
+    """Authorize a report read for an admin or its linked parent, otherwise raise 403/404.
+
+    Apply parent visibility checks on every detail/download request, not just lists.
+    """
     if current_user.role == "admin":
         if report_card.deleted_at is not None or report_card.student.deleted_at is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
@@ -391,6 +408,10 @@ def ensure_can_view_report(db: Session, current_user: User, report_card: ReportC
 
 
 def ensure_report_student_active(report_card: ReportCard) -> None:
+    """Raise 404 when the report or its student is soft-deleted.
+
+    Graduated students are allowed; this check is not an active-roster filter.
+    """
     if report_card.deleted_at is not None or report_card.student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report card not found")
 
@@ -398,11 +419,13 @@ def ensure_report_student_active(report_card: ReportCard) -> None:
 def ensure_report_is_draft(report_card: ReportCard) -> None:
     # needs_review cannot be re-approved in place. Regeneration must first
     # create a fresh computed snapshot and deliberately return it to draft.
+    """Require draft status before approval, raising 400 for all other states."""
     if report_card.status != "draft":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft reports can be reviewed")
 
 
 def ensure_report_can_be_sent(report_card: ReportCard) -> None:
+    """Require approved or sent status so notification retries cannot publish drafts."""
     if report_card.status not in {"approved", "sent"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved or sent reports can be sent")
 
@@ -410,6 +433,10 @@ def ensure_report_can_be_sent(report_card: ReportCard) -> None:
 def update_report_summary(report_card: ReportCard, payload: ReportReviewUpdate) -> tuple[str | None, str | None]:
     # ai_summary is screen-only assistance and is not rendered on the official
     # PDF. Its edits intentionally do not invalidate approval or sending.
+    """Apply an explicitly supplied screen-only summary and return the old/new text.
+
+    Do not change approval/status or PDF content, and leave omitted fields alone.
+    """
     old_summary = report_card.ai_summary
     if "ai_summary" in payload.model_fields_set:
         report_card.ai_summary = payload.ai_summary
@@ -424,6 +451,11 @@ def log_summary_edit_if_needed(
     old_summary: str | None,
     new_summary: str | None,
 ) -> None:
+    """Stage a summary_edited audit row only when the request includes ai_summary.
+
+    Record old/new text even if equal; an empty review request produces no entry.
+    The route owns the commit.
+    """
     if "ai_summary" not in payload.model_fields_set:
         return
 
@@ -465,14 +497,14 @@ def _email_error_summary(send_results: list[dict]) -> list[str]:
 
 
 def _create_report_card(db: Session, student_id: UUID, term: str, school_year: str) -> ReportCard:
-    """Build and stage a draft report card + course snapshot rows.
+    """Build and stage a draft report and its computed course snapshot rows.
 
-    Shared by the single and batch generate routes. Raises ValueError (from
-    build_report_card_data) for missing students or missing course results;
-    flushes but does NOT commit — the caller owns the transaction.
+    Read existing results through the builder, flush to obtain the report ID, and
+    store a PDF endpoint URL rather than a local file. Missing inputs raise
+    ValueError; single/batch callers own the commit.
     """
-    # Snapshot now rather than recomputing on read: an approved official
-    # document must retain exactly the figures that were reviewed.
+    # Store course figures now so later grade edits do not silently replace
+    # reviewed marks. The display builder still reads other context live.
     report_data = build_report_card_data(db, student_id, term, school_year)
 
     report_card = ReportCard(
@@ -490,7 +522,7 @@ def _create_report_card(db: Session, student_id: UUID, term: str, school_year: s
     )
     db.add(report_card)
     db.flush()
-    # No file storage (A1.7b): the PDF is rendered on demand, so pdf_url simply
+    # No local file is required: the PDF is rendered on demand, so pdf_url simply
     # points at the download endpoint.
     report_card.pdf_url = f"/api/v1/reports/{report_card.id}/pdf"
 
@@ -635,6 +667,11 @@ def generate_report_card(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> ReportCardResponse:
+    """Create a draft for one student/period as an admin and return the saved response.
+
+    Check incomplete-result policy, then build snapshot rows without approving or
+    notifying parents.
+    """
     student = db.get(Student, student_id)
     if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
@@ -722,6 +759,11 @@ def class_report_status(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> ClassReportStatusResponse:
+    """Return admin processing status for students in the selected class/year/term.
+
+    Use historical assignment/report context so a graduate's final bulletin remains
+    available to the council workflow.
+    """
     school_class = get_class_or_404(db, class_id)
     students = _class_students(db, class_id, school_year)
     student_ids = [student.id for student in students]
@@ -916,10 +958,11 @@ def batch_generate_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ClassReportBatchGenerateResponse:
-    """Generate draft report cards for every student of the class who has
-    course results for the term and no report card yet. One transaction —
-    a class generates atomically or not at all because Conseil de classe should
-    not leave an ambiguous half-generated class after a database failure."""
+    """Generate missing drafts for the admin's selected class/year/term and return counts.
+
+    Skip existing reports and apply the partial-result policy. Commit one class as
+    a unit so a database failure does not leave a half-generated class.
+    """
     school_class = get_class_or_404(db, payload.class_id)
     term = payload.term.value
     result = _generate_reports_for_class(
@@ -957,7 +1000,12 @@ def _to_report_generation_job_response(job: ReportGenerationJob) -> ReportGenera
 
 
 def _run_report_generation_job(job_id: UUID, db: Session) -> None:
-    """Background task for all-class bulletin generation."""
+    """Process each class in a saved job and persist per-class results plus final status.
+
+    Commit successful classes independently and roll back failures so one class
+    cannot abort all others. This is an in-process background task, not a durable
+    queue that automatically resumes after server termination.
+    """
     job = db.get(ReportGenerationJob, job_id)
     if job is None:
         return
@@ -1031,6 +1079,11 @@ def create_report_generation_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ReportGenerationJobResponse:
+    """Create or return a pending all-class generation job for the admin's year/term.
+
+    Reuse an existing pending job, commit a new one before scheduling its in-process
+    background task, and return polling data. This does not approve or send reports.
+    """
     term = payload.term.value
     existing_job = db.scalar(
         select(ReportGenerationJob)
@@ -1064,6 +1117,7 @@ def get_report_generation_job(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> ReportGenerationJobResponse:
+    """Return a generation job's saved status/results to an admin, or raise 404."""
     job = db.get(ReportGenerationJob, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report generation job not found")
@@ -1076,11 +1130,11 @@ def batch_approve_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ClassReportBatchApproveResponse:
-    """Approve every DRAFT report card of the class for the term.
+    """Publish eligible drafts for the admin's class/year/term and return batch outcomes.
 
-    Deliberately drafts-only: an approved/sent report flagged needs-review is
-    stale and must be regenerated (which resets it to draft) — batch approval
-    never silently re-blesses stale numbers."""
+    Apply freshness guards and skip non-drafts rather than reapprove stale published
+    reports. Approval grants parent visibility but sends no notifications.
+    """
     get_class_or_404(db, payload.class_id)
     term = payload.term.value
     students = _class_students(db, payload.class_id, payload.school_year)
@@ -1135,11 +1189,11 @@ def batch_send_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ClassReportBatchSendResponse:
-    """Send every approved/sent report of the class for the term.
+    """Notify parents for approved/sent reports in the admin's selected class/period.
 
-    Same policy as the single send: a report is only marked sent when at
-    least one notification actually went out. Per-report failures never
-    abort the batch — they are counted and reported."""
+    Return per-report outcomes and keep other reports running when one fails. Mark
+    a report sent only when at least one notification succeeds; this never approves drafts.
+    """
     get_class_or_404(db, payload.class_id)
     term = payload.term.value
     students = _class_students(db, payload.class_id, payload.school_year)
@@ -1234,12 +1288,11 @@ def _class_pdf_reports(db: Session, class_id: UUID, term: str, school_year: str)
 
 
 def _run_class_pdf_job(job_id: UUID) -> None:
-    """Background task: render + merge every bulletin of the class.
+    """Render and merge published class bulletins in an in-process background task.
 
-    Runs after the response is sent because WeasyPrint time scales with class
-    size and can outlive an HTTP request. It opens its own session because the
-    request-scoped one is already closed. Each page is rebuilt from the stored
-    approved/sent snapshot, never from current live grades.
+    Open a separate database session and use stored course values plus the builder's
+    read-time context. Persist job success/failure for polling; server termination
+    is not handled by a durable retry queue here.
     """
     db = SessionLocal()
     try:
@@ -1270,9 +1323,11 @@ def create_class_pdf_job(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> ClassPdfJobResponse:
-    """Enqueue a merged-PDF render of every approved/sent bulletin in the
-    class. Returns a job id to poll — rendering 40 bulletins outlives the
-    request timeout on the free tier, so it runs as a background task."""
+    """Create an admin's background print job for approved/sent reports in a class/period.
+
+    Return the job ID/status for polling rather than rendering the entire class
+    inside the request. The task is in-process, not a persistent external worker.
+    """
     get_class_or_404(db, payload.class_id)
     term = payload.term.value
     if not _class_pdf_reports(db, payload.class_id, term, payload.school_year):
@@ -1301,7 +1356,10 @@ def get_class_pdf_job(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> Response:
-    """Poll a class-PDF job. JSON while pending/failed; the PDF once done."""
+    """Return an admin's print-job status, or its merged PDF when complete.
+
+    Missing jobs return 404; pending/failed jobs return JSON rather than PDF bytes.
+    """
     job = db.get(PdfJob, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF job not found")
@@ -1332,6 +1390,11 @@ def list_reports(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[AdminReportListItem]:
+    """Return admin list rows filtered by historical class and optional year/term.
+
+    Needs-review rows bypass year/term filters, but not the class filter, and sort
+    first. This ensures unresolved reports remain visible after an academic rollover.
+    """
     report_cards = db.scalars(
         select(ReportCard)
         .join(ReportCard.student)
@@ -1393,6 +1456,7 @@ def get_admin_report(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> AdminReportCardDetailResponse:
+    """Return an authorized admin's report detail including the full bulletin display data."""
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
     return to_admin_report_card_detail_response(db, report_card)
@@ -1406,6 +1470,11 @@ def list_student_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[ReportCardResponse]:
+    """Return a student's report list with optional year/term restrictions.
+
+    Admins may see all non-deleted reports; linked parents see approved/sent only.
+    Graduated history remains readable, and teachers/unrelated parents are denied.
+    """
     if current_user.role == "admin":
         query = (
             select(ReportCard)
@@ -1455,6 +1524,10 @@ def review_report_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
+    """Apply an admin's optional summary edit, audit when supplied, and return the report.
+
+    The screen-only summary does not alter official snapshot values or status.
+    """
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
     ensure_report_is_draft(report_card)
@@ -1473,6 +1546,10 @@ def update_report_summary_route(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
+    """Save and audit an admin's summary edit through the dedicated summary endpoint.
+
+    Reuse the review helper without changing report status, grades, or PDF content.
+    """
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
     old_summary, new_summary = update_report_summary(report_card, payload)
@@ -1490,6 +1567,11 @@ def approve_report_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
+    """Publish an admin-reviewed draft, record approval identity/time, and return it.
+
+    Check snapshot freshness unless explicitly overridden, then audit and commit.
+    APPROVE makes it parent-visible; it sends no email or SMS.
+    """
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
     ensure_report_is_draft(report_card)
@@ -1525,6 +1607,12 @@ def send_report_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ReportSendResponse:
+    """Send or resend an approved/sent report notice as an admin and return channel results.
+
+    Check freshness unless explicitly overridden. Audit delivery failure without
+    changing status when no attempt succeeds; otherwise record sent status/time.
+    ENVOYER notifies about an already-published report, never approves a draft.
+    """
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
     ensure_report_can_be_sent(report_card)
@@ -1601,6 +1689,7 @@ def get_report_staleness(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> ReportCardStalenessResponse:
+    """Return the admin's comparison of the stored report against current result data."""
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
     staleness = get_report_card_staleness(db, report_card)
@@ -1620,6 +1709,11 @@ def regenerate_report_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
+    """Replace computed snapshot rows from current results and return the report as draft.
+
+    Admin-only: clear approval/sending metadata, preserve human-entered details and
+    summary, audit the change, and commit. Parents cannot read it again until approval.
+    """
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
     try:
@@ -1739,10 +1833,11 @@ def update_report_details(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ReportCardResponse:
-    """Admin-only edit of A1.7a conduct / work-habit items and comments.
+    """Edit an admin's conduct/work-habit assessments and bilingual comments.
 
-    Does not touch grades, averages, or the course snapshot. Editable on any
-    status; approved/sent reports move to needs_review when content changes.
+    Return the saved report without changing course marks. Changed official content
+    on an approved/sent report persists needs_review and withdraws it from parents
+    until regeneration and approval; omitted request fields remain unchanged.
     """
     report_card = get_report_card_or_404(db, report_id)
     ensure_report_student_active(report_card)
@@ -1750,7 +1845,7 @@ def update_report_details(
     old_value = _report_details_snapshot(report_card)
 
     # Comments: nullable Text. An explicit value (including null) sets or clears;
-    # an omitted key leaves the field unchanged (A1.5 model_fields_set pattern).
+    # an omitted key leaves the field unchanged through model_fields_set.
     for field in _REPORT_COMMENT_FIELDS:
         if field in payload.model_fields_set:
             setattr(report_card, field, getattr(payload, field))
@@ -1800,12 +1895,17 @@ def download_report_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Response:
+    """Authorize the report, render its bulletin data on demand, and return PDF bytes.
+
+    Use stored course values plus the builder's read-time context, not live result
+    recalculation. No stored PDF file is required and pdf_url is not changed.
+    """
     report_card = get_report_card_or_404(db, report_id)
     ensure_can_view_report(db, current_user, report_card)
 
-    # Regenerate bytes from the stored snapshot, never live CourseResults: an
-    # official PDF must remain reproducible after later grade changes. This also
-    # avoids deployment-local file state; pdf_url is left untouched.
+    # Preserve stored course marks rather than recalculating live results.
+    # Other display context is read by the builder at request time, so the
+    # entire PDF is not byte-for-byte frozen; no deployment-local file is needed.
     report_data = build_report_card_data_from_report_card(db, report_card)
     pdf_bytes = render_report_card_pdf_bytes(report_data)
     filename = _build_pdf_filename(report_data)
@@ -1823,6 +1923,7 @@ def get_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ReportCardDetailResponse:
+    """Return report detail after admin or linked-parent publication checks."""
     report_card = get_report_card_or_404(db, report_id)
     ensure_can_view_report(db, current_user, report_card)
     return to_report_card_detail_response(db, report_card)

@@ -1,9 +1,9 @@
-"""Enforce school-wide trimester write locks at the backend boundary.
+"""Provide school-wide write-lock checks for a school year and trimester.
 
-Locks are keyed by school year and canonical trimester. Missing state means
-unlocked. Teachers are rejected before a grade or grade-item mutation; admins
-may override, but every actual override receives a separate conspicuous audit
-row in the caller's transaction in addition to the ordinary mutation audit.
+A missing lock row means unlocked; a locked period rejects non-admin writes
+and reports whether an admin is overriding. Routes enforce ownership separately
+and call the override-audit helper for actual writes in the same transaction.
+These helpers do not normalize term text or commit changes.
 """
 
 from uuid import UUID
@@ -23,6 +23,10 @@ LOCKED_ERROR_DETAIL = {
 
 
 def get_lock(db: Session, school_year: str, term: str) -> TrimesterLock | None:
+    """Return the lock row for the exact school year and term, or None.
+
+    Callers supply the canonical term; this lookup does not normalize it.
+    """
     return db.scalar(
         select(TrimesterLock).where(
             TrimesterLock.school_year == school_year,
@@ -32,6 +36,7 @@ def get_lock(db: Session, school_year: str, term: str) -> TrimesterLock | None:
 
 
 def is_trimester_locked(db: Session, school_year: str, term: str) -> bool:
+    """Return whether the exact year/term pair has a locked row; missing means unlocked."""
     lock = get_lock(db, school_year, term)
     return bool(lock and lock.is_locked)
 
@@ -43,7 +48,11 @@ def ensure_trimester_write_allowed(
     school_year: str,
     term: str,
 ) -> bool:
-    """Reject a locked teacher write and return whether an admin is overriding."""
+    """Reject a non-admin write to the supplied locked year/term with 403.
+
+    Return True for an admin override and False when unlocked. The caller must
+    first check role/course ownership and then audit any actual override.
+    """
     locked = is_trimester_locked(db, school_year, term)
     if locked and current_user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=LOCKED_ERROR_DETAIL)
@@ -60,6 +69,11 @@ def audit_locked_trimester_override(
     school_year: str,
     term: str,
 ) -> None:
+    """Stage an override audit row for the supplied actor, target, operation, and period.
+
+    The caller decides whether this was a locked admin write before calling and
+    commits the entry with the mutation; this helper does not repeat that check.
+    """
     create_audit_log(
         db=db,
         actor_user_id=current_user.id,

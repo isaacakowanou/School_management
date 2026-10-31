@@ -1,10 +1,9 @@
-"""Issue and validate recoverable email password-reset credentials.
+"""Issue and check single-use email password-reset links.
 
-Only SHA-256 digests are stored, so a database leak does not expose usable reset
-links. Tokens are single-use, expire after 45 minutes, and are bound to the
-user's ``token_version`` so any intervening password event invalidates them.
-Issuance replaces the user's prior unused token, and endpoint-driven lazy
-cleanup prevents expired or consumed rows from growing without bound.
+Store only SHA-256 token digests, with a 45-minute expiry and the user's token
+version so another password event invalidates old links. Issuance replaces
+unused tokens and helpers stage lazy cleanup in the caller's transaction.
+Routes check account eligibility, consume valid tokens, and commit the changes.
 """
 
 import hashlib
@@ -26,10 +25,15 @@ def _now() -> datetime:
 
 def token_digest(raw_token: str) -> str:
     # The raw bearer secret exists only in the email URL; compare its digest.
+    """Return the SHA-256 digest used to look up a raw email reset token."""
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
 def cleanup_reset_tokens(db: Session) -> None:
+    """Delete expired or consumed reset-token rows in the caller's transaction.
+
+    No commit is performed; callers decide whether to persist this lazy cleanup.
+    """
     now = _now()
     db.execute(
         delete(PasswordResetToken).where(
@@ -39,6 +43,11 @@ def cleanup_reset_tokens(db: Session) -> None:
 
 
 def issue_reset_token(db: Session, user: User) -> str:
+    """Stage one new 45-minute reset token for the user and return its raw secret.
+
+    Remove prior unused tokens and store only the new digest and current token
+    version. The caller must commit before relying on the emailed link.
+    """
     cleanup_reset_tokens(db)
     # One unused token per user limits inbox flooding and makes the newest
     # recovery attempt the only credential worth retaining.
@@ -61,6 +70,10 @@ def issue_reset_token(db: Session, user: User) -> str:
 
 
 def has_active_reset_token(db: Session, user: User) -> bool:
+    """Return whether the user has an unused, unexpired token for their current version.
+
+    Expired/used rows are cleaned up in the session, without committing.
+    """
     cleanup_reset_tokens(db)
     return db.scalar(
         select(PasswordResetToken.id).where(
@@ -73,6 +86,12 @@ def has_active_reset_token(db: Session, user: User) -> bool:
 
 
 def get_valid_reset_token(db: Session, raw_token: str) -> PasswordResetToken | None:
+    """Return the matching unused, unexpired reset-token row, or None.
+
+    Check the saved token version against the user's current version. This may
+    stage cleanup deletions but neither consumes the valid token nor commits it;
+    the route must also enforce the account's active status.
+    """
     cleanup_reset_tokens(db)
     token = db.scalar(
         select(PasswordResetToken).where(PasswordResetToken.token_hash == token_digest(raw_token))

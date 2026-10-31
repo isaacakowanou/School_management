@@ -1,14 +1,12 @@
-"""Manage permanent parent profiles, family links, and historical score access.
+"""Manage permanent parent accounts, family links, and their children's score history.
 
-Parent and linked-student identity belongs to the school and is never filtered
-by school year. Grade/report children remain explicitly period-scoped.
-
-Every parent-facing student lookup requires an active profile, active link, and
-active student. Mid-trimester grades expose individual scored items for any
-canonical term in the latest school year, never CourseResult averages. Profile
-deletion is blocked by active links, soft-deletes the linked login account, and
-invalidates sessions. Unlinking alone never releases the account email;
-restoring the profile restores the account but does not revive old JWTs.
+Parent/child identity is not school-year-scoped, and family reads require a
+non-deleted profile, link, and student while still allowing graduated children.
+Individual-score reads use the selected year, otherwise the child's newest active
+enrollment/course year then global fallback, with a term from that year's context;
+they do not expose course-result averages. Deleting a parent also deletes its
+login account softly and invalidates sessions, whereas unlinking alone never
+releases the email.
 """
 
 import logging
@@ -51,6 +49,7 @@ router = APIRouter(tags=["parents"])
 
 
 def to_parent_response(parent: Parent) -> ParentResponse:
+    """Return a parent profile and safe user identity fields without password data."""
     return ParentResponse(
         id=parent.id,
         user_id=parent.user_id,
@@ -61,6 +60,7 @@ def to_parent_response(parent: Parent) -> ParentResponse:
 
 
 def get_parent_or_404(db: Session, parent_id: UUID) -> Parent:
+    """Return a non-deleted parent profile or raise 404."""
     parent = db.get(Parent, parent_id)
     if parent is None or parent.deleted_at is not None or parent.user.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
@@ -68,12 +68,14 @@ def get_parent_or_404(db: Session, parent_id: UUID) -> Parent:
 
 
 def can_read_parent(current_user: User, parent: Parent) -> bool:
+    """Return whether the user is an admin or owns the supplied parent profile."""
     return current_user.role == "admin" or (
         current_user.role == "parent" and parent.user_id == current_user.id
     )
 
 
 def clean_required_text(value: str, field_name: str) -> str:
+    """Trim a required string and return it, raising 400 when it becomes empty."""
     cleaned = value.strip()
     if not cleaned:
         raise HTTPException(
@@ -84,6 +86,7 @@ def clean_required_text(value: str, field_name: str) -> str:
 
 
 def get_current_parent_or_404(db: Session, current_user: User) -> Parent:
+    """Return the signed-in user's non-deleted parent profile or raise 404."""
     parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id, Parent.deleted_at.is_(None)))
     if parent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
@@ -91,6 +94,11 @@ def get_current_parent_or_404(db: Session, current_user: User) -> Parent:
 
 
 def ensure_parent_linked_to_active_student(db: Session, parent: Parent, student_id: UUID) -> Student:
+    """Require an active family link and a non-deleted student, then return the student.
+
+    Graduation does not block historical family access; 'active' here excludes
+    soft-deletion rather than requiring academic_status to be active.
+    """
     link = db.scalar(
         select(StudentParent)
         .join(StudentParent.student)
@@ -108,6 +116,7 @@ def ensure_parent_linked_to_active_student(db: Session, parent: Parent, student_
 
 
 def latest_enrollment_school_year_for_student(db: Session, student_id: UUID) -> str | None:
+    """Return the newest year from this student's active enrollment/course evidence, or None."""
     return db.scalar(
         select(func.max(Course.school_year))
         .join(Enrollment, Enrollment.course_id == Course.id)
@@ -124,6 +133,7 @@ def list_parents(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[ParentResponse]:
+    """Return all non-deleted parent profiles for an admin, independent of school year."""
     parents = db.scalars(
         select(Parent)
         .join(Parent.user)
@@ -140,6 +150,11 @@ def create_parent(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ParentCreateResponse:
+    """Create an admin-requested parent account/profile, audit, and return onboarding details.
+
+    Enforce active email uniqueness and force a password change. Commit before
+    attempting the welcome notification; delivery failure does not undo creation.
+    """
     name = clean_required_text(payload.name, "name")
     email = (payload.email or "").strip() or None
     phone = payload.phone.strip() if payload.phone is not None else None
@@ -215,6 +230,7 @@ def get_current_parent_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_parent),
 ) -> ParentResponse:
+    """Return the current parent's profile after the parent role guard has passed."""
     parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id, Parent.deleted_at.is_(None)))
     if parent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
@@ -227,6 +243,7 @@ def update_current_parent_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_parent),
 ) -> ParentResponse:
+    """Update the current parent's permitted name/phone fields and return the saved profile."""
     parent = db.scalar(select(Parent).where(Parent.user_id == current_user.id, Parent.deleted_at.is_(None)))
     if parent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
@@ -251,6 +268,12 @@ def list_current_parent_student_grades(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_parent),
 ) -> list[ParentGradeResponse]:
+    """Return a linked child's individual scores for the selected year and trimester.
+
+    Default the year to their latest active enrollment/course year, then the global
+    year if none exists; default the term using that year's academic context.
+    Graduates retain access. Do not expose course-result averages through this route.
+    """
     parent = get_current_parent_or_404(db, current_user)
     ensure_parent_linked_to_active_student(db, parent, student_id)
 
@@ -307,6 +330,7 @@ def get_parent(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ParentResponse:
+    """Return a parent profile only to its owner or an admin."""
     parent = get_parent_or_404(db, parent_id)
     if not can_read_parent(current_user, parent):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
@@ -320,6 +344,10 @@ def update_parent(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ParentResponse:
+    """Apply admin edits to a parent/profile account, audit changed fields, and return it.
+
+    Check identity uniqueness against active accounts without reviving trashed users.
+    """
     parent = get_parent_or_404(db, parent_id)
     updated_fields = getattr(payload, "model_fields_set", None)
     if updated_fields is None:
@@ -372,6 +400,7 @@ def reset_parent_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminPasswordResetResponse:
+    """Reset a parent's credentials as an admin and return the shared reset-service result."""
     parent = get_parent_or_404(db, parent_id)
     return AdminPasswordResetResponse(
         **reset_profile_password(
@@ -386,6 +415,11 @@ def delete_parent(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Soft-delete the parent and login account after checking active child links.
+
+    Reject linked active students, invalidate sessions, audit, and commit. Unlinking
+    alone does not release the email; deleting the account does.
+    """
     parent = get_parent_or_404(db, parent_id)
     active_student_count = db.scalar(
         select(func.count(StudentParent.id))
@@ -440,6 +474,10 @@ def list_parent_students(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[StudentResponse]:
+    """Return non-deleted linked children to the parent account owner or an admin.
+
+    Include graduated students; neither identity nor family history disappears at rollover.
+    """
     parent = get_parent_or_404(db, parent_id)
     if not can_read_parent(current_user, parent):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")

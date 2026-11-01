@@ -1,4 +1,4 @@
-"""Owner Nettoyage preview and recoverable cascade-to-trash operations.
+"""Admin Nettoyage preview and recoverable cascade-to-trash operations.
 
 Nettoyage is not a hard-delete API: it computes a dependency plan, requires
 typed confirmation, tags every selected row with one ``DeletionBatch``, and
@@ -77,6 +77,7 @@ ENTITY_TYPES = {"student", "parent", "teacher", "class", "course", "grade_item",
 
 
 def _danger_zone_enabled() -> bool:
+    """Return whether cleanup is enabled, requiring explicit opt-in in production."""
     env = (os.getenv("ENVIRONMENT") or os.getenv("APP_ENV") or os.getenv("ENV") or "development").lower()
     if env in {"production", "prod"}:
         return os.getenv("ENABLE_DANGER_ZONE", "").lower() == "true"
@@ -106,6 +107,7 @@ def _rows_by_ids(db: Session, model, ids: set[UUID]):
 
 
 def _target_or_404(db: Session, entity_type: str, entity_id: UUID):
+    """Return an active supported target; reject unknown types with 422 and missing/deleted rows with 404."""
     model_by_type = {
         "student": Student,
         "parent": Parent,
@@ -186,6 +188,7 @@ def _course_subtitle(course: Course) -> str:
 
 
 def _search_results(db: Session, entity_type: str, q: str) -> list[DangerZoneSearchResult]:
+    """Return at most 20 matching active targets of one type for the cleanup picker."""
     pattern = _search_pattern(q)
     if entity_type == "student":
         rows = db.scalars(
@@ -359,6 +362,7 @@ def _empty_plan() -> dict[str, set[UUID]]:
 
 
 def _add_report(plan: dict[str, set[UUID]], db: Session, report_ids: set[UUID]) -> None:
+    """Add report IDs and their active snapshot, conduct, work-habit, and warning children to the plan."""
     report_ids = set(report_ids)
     report_ids -= plan["report_cards"]
     if not report_ids:
@@ -399,6 +403,11 @@ def _add_report(plan: dict[str, set[UUID]], db: Session, report_ids: set[UUID]) 
 
 
 def _add_courses(plan: dict[str, set[UUID]], db: Session, course_ids: set[UUID]) -> None:
+    """Add courses, active academic dependents, and whole reports linked by active snapshots.
+
+    Cleanup hides the entire linked report, including its other course snapshots;
+    this differs from permanent course purge, which keeps the report root.
+    """
     course_ids = set(course_ids)
     course_ids -= plan["courses"]
     if not course_ids:
@@ -428,6 +437,7 @@ def _add_courses(plan: dict[str, set[UUID]], db: Session, course_ids: set[UUID])
 
 
 def _add_grade_items(plan: dict[str, set[UUID]], db: Session, grade_item_ids: set[UUID]) -> None:
+    """Add grade-item IDs and their active grades to the mutable deletion plan."""
     grade_item_ids = set(grade_item_ids)
     grade_item_ids -= plan["grade_items"]
     if not grade_item_ids:
@@ -439,6 +449,11 @@ def _add_grade_items(plan: dict[str, set[UUID]], db: Session, grade_item_ids: se
 
 
 def _build_plan(db: Session, entity_type: str, entity_id: UUID) -> tuple[object, str, dict[str, set[UUID]], list[str]]:
+    """Return the active target, label, dependent IDs, and boundary warnings without mutating rows.
+
+    Student cleanup keeps parent profiles; parent cleanup keeps students.
+    Class cleanup includes its active courses but keeps assigned students.
+    """
     target = _target_or_404(db, entity_type, entity_id)
     plan = _empty_plan()
     warnings: list[str] = []
@@ -504,6 +519,11 @@ def _counts(plan: dict[str, set[UUID]]) -> dict[str, int]:
 
 
 def _mark_plan(db: Session, plan: dict[str, set[UUID]], *, batch_id: UUID, deleted_at: datetime) -> dict[str, int]:
+    """Tag selected rows with a deletion batch and timestamp, returning per-table counts.
+
+    Profile deletion also trashes the linked account and invalidates sessions.
+    This helper does not commit; account/token changes share the batch transaction.
+    """
     counts = {}
     for table, ids in plan.items():
         if not ids:
@@ -544,6 +564,11 @@ def search_danger_zone_targets(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[DangerZoneSearchResult]:
+    """Return matching cleanup targets for an admin and supported entity_type.
+
+    Apply the production feature gate; q is a case-insensitive substring pattern
+    and an empty query returns the first 20 results for the selected type.
+    """
     _ensure_enabled()
     if entity_type not in ENTITY_TYPES:
         raise HTTPException(status_code=422, detail="Unsupported entity_type")
@@ -557,6 +582,11 @@ def preview_danger_zone_delete(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> DangerZonePreviewResponse:
+    """Return the target label, dependent-row counts, and warnings for an admin.
+
+    Apply the feature gate and reject unsupported or inactive targets. Preview
+    is read-only; deletion rebuilds the plan rather than persisting this result.
+    """
     _ensure_enabled()
     target, target_label, plan, warnings = _build_plan(db, entity_type, entity_id)
     return DangerZonePreviewResponse(
@@ -574,8 +604,15 @@ def move_danger_zone_batch_to_trash(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> DangerZoneDeleteResponse:
+    """Commit an admin-requested recoverable cleanup and return its batch id and counts.
+
+    Rebuild the dependency plan, enforce the feature gate and exact typed
+    confirmation, then tag selected rows and audit the actor in one transaction.
+    The reason is stored on the batch; no physical deletion is performed.
+    """
     _ensure_enabled()
     target, target_label, plan, warnings = _build_plan(db, payload.entity_type, payload.entity_id)
+    # Require an explicit phrase before applying the freshly computed cascade.
     accepted = {"MOVE TO TRASH", f"MOVE {target_label} TO TRASH"}
     if payload.confirmation.strip() not in accepted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Confirmation does not match")
@@ -612,6 +649,10 @@ def list_deletion_batches(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[DangerZoneBatchResponse]:
+    """Return all retained batch summaries newest first for a gated admin request.
+
+    Restored batches are included; this endpoint does not run retention cleanup.
+    """
     _ensure_enabled()
     batches = db.scalars(select(DeletionBatch).order_by(DeletionBatch.deleted_at.desc())).all()
     return [_batch_response(batch) for batch in batches]
@@ -623,6 +664,10 @@ def get_deletion_batch(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> DangerZoneBatchResponse:
+    """Return a batch summary by id for a gated admin request, or raise HTTP 404.
+
+    Restored batches remain readable while their batch record exists.
+    """
     _ensure_enabled()
     batch = db.get(DeletionBatch, batch_id)
     if batch is None:
@@ -636,6 +681,11 @@ def restore_deletion_batch(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Restore a retained batch for an admin and commit the shared restore service changes.
+
+    Apply the feature gate and return an OK status even if already restored.
+    Missing batches raise HTTP 404; service identity/setup conflicts propagate.
+    """
     _ensure_enabled()
     batch = db.get(DeletionBatch, batch_id)
     if batch is None:

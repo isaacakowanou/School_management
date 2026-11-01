@@ -24,6 +24,7 @@ router = APIRouter(tags=["enrollments"])
 
 
 def to_enrollment_response(enrollment: Enrollment) -> EnrollmentResponse:
+    """Return the enrollment id and its student/course ids without loading related details."""
     return EnrollmentResponse(
         id=enrollment.id,
         student_id=enrollment.student_id,
@@ -32,6 +33,7 @@ def to_enrollment_response(enrollment: Enrollment) -> EnrollmentResponse:
 
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
+    """Return the active course with course_id from db, or raise HTTP 404."""
     course = db.get(Course, course_id)
     if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -39,6 +41,7 @@ def get_course_or_404(db: Session, course_id: UUID) -> Course:
 
 
 def get_student_or_404(db: Session, student_id: UUID) -> Student:
+    """Return the active student with student_id from db, or raise HTTP 404."""
     student = db.get(Student, student_id)
     if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
@@ -46,6 +49,11 @@ def get_student_or_404(db: Session, student_id: UUID) -> Student:
 
 
 def can_read_course_students(db: Session, current_user: User, course: Course) -> bool:
+    """Return whether current_user is an admin or the teacher assigned to course.
+
+    Other roles cannot read this roster. The caller must first validate that
+    the course is active; teacher identity comes from the shared lookup.
+    """
     if current_user.role == "admin":
         return True
     if current_user.role != "teacher":
@@ -56,6 +64,10 @@ def can_read_course_students(db: Session, current_user: User, course: Course) ->
 
 
 def get_enrollment_or_404(db: Session, enrollment_id: UUID) -> Enrollment:
+    """Return an active enrollment by id, or raise HTTP 404.
+
+    This lookup does not independently check student or course deletion state.
+    """
     enrollment = db.get(Enrollment, enrollment_id)
     if enrollment is None or enrollment.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
@@ -63,6 +75,10 @@ def get_enrollment_or_404(db: Session, enrollment_id: UUID) -> Enrollment:
 
 
 def get_course_student_enrollment_or_404(db: Session, course_id: UUID, student_id: UUID) -> Enrollment | None:
+    """Return an active link for course_id and student_id, or None.
+
+    Despite its name, this helper leaves the HTTP 404 response to its caller.
+    """
     return db.scalar(
         select(Enrollment).where(
             Enrollment.course_id == course_id,
@@ -73,6 +89,11 @@ def get_course_student_enrollment_or_404(db: Session, course_id: UUID, student_i
 
 
 def delete_enrollment_with_audit(db: Session, current_user: User, enrollment: Enrollment) -> None:
+    """Audit current_user and timestamp the enrollment as deleted without committing.
+
+    Student/course rows and academic history remain intact; the caller enforces
+    permissions and the graduated-student guard before using this helper.
+    """
     old_value = {
         "student_id": enrollment.student_id,
         "course_id": enrollment.course_id,
@@ -90,6 +111,8 @@ def delete_enrollment_with_audit(db: Session, current_user: User, enrollment: En
 
 
 def ensure_student_can_be_unenrolled(student: Student) -> None:
+    # Historical membership stays fixed once the student has graduated.
+    """Raise HTTP 409 for a graduated student to preserve historical course membership."""
     if student.academic_status == "graduated":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -106,7 +129,13 @@ def list_course_students(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[StudentResponse]:
+    """Return alphabetically ordered active students enrolled in an active course.
+
+    Allow admins and the assigned teacher only; deny other users with HTTP 403.
+    Deleted enrollment and student rows are excluded from the roster.
+    """
     course = get_course_or_404(db, course_id)
+    # Roster access follows course ownership; parent access uses other routes.
     if not can_read_course_students(db, current_user, course):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
@@ -131,6 +160,11 @@ def unenroll_student_from_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Soft-delete a course/student link for an admin, commit, and return OK.
+
+    Require active course, student, and enrollment rows. Block graduated
+    students before writing the audit entry or deletion timestamp.
+    """
     get_course_or_404(db, course_id)
     student = get_student_or_404(db, student_id)
     ensure_student_can_be_unenrolled(student)
@@ -149,6 +183,11 @@ def create_enrollment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> EnrollmentResponse:
+    """Create and audit a new active student/course link for an admin, then commit.
+
+    Reject missing/deleted endpoints and an existing active link. Deleted links
+    are not reused by this path. Return the newly persisted enrollment ids.
+    """
     student = get_student_or_404(db, payload.student_id)
     course = get_course_or_404(db, payload.course_id)
 
@@ -188,6 +227,11 @@ def delete_enrollment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Soft-delete an enrollment by id for an admin, commit, and return OK.
+
+    Require an active enrollment and student, and block graduated students.
+    This route does not require the associated course to remain active.
+    """
     enrollment = get_enrollment_or_404(db, enrollment_id)
     student = get_student_or_404(db, enrollment.student_id)
     ensure_student_can_be_unenrolled(student)

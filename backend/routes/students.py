@@ -1,8 +1,8 @@
 """Manage permanent student identity and year-scoped academic context.
 
-Students belong to the school and list membership is never filtered by school
-year. Class assignments belong to one year and only decorate/filter the list
-when a year is selected. Grades and bulletin-related reads are historical and
+Students belong to the school: selecting a year alone does not restrict list
+membership. Year-scoped class and unassigned filters can restrict the list;
+selected-year assignments also decorate each returned student. Grades and bulletin-related reads are historical and
 must not fall back to the student's current live class pointer.
 
 Normal lookups reject trashed students, while the separate "any student" lookup
@@ -48,6 +48,7 @@ router = APIRouter(tags=["students"])
 
 
 def to_linked_parent_response(link: StudentParent) -> LinkedParentResponse:
+    """Serialize a loaded student-parent link using the parent profile id and account details."""
     return LinkedParentResponse(
         id=link.parent.id,
         user_id=link.parent.user_id,
@@ -59,6 +60,7 @@ def to_linked_parent_response(link: StudentParent) -> LinkedParentResponse:
 
 
 def get_student_or_404(db: Session, student_id: UUID) -> Student:
+    """Return the active student with student_id from db, or raise HTTP 404."""
     student = db.get(Student, student_id)
     if student is None or student.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
@@ -66,6 +68,7 @@ def get_student_or_404(db: Session, student_id: UUID) -> Student:
 
 
 def get_any_student_or_404(db: Session, student_id: UUID) -> Student:
+    """Return a student by id including deleted rows for restore, or raise HTTP 404."""
     student = db.get(Student, student_id)
     if student is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
@@ -73,6 +76,7 @@ def get_any_student_or_404(db: Session, student_id: UUID) -> Student:
 
 
 def get_parent_or_404(db: Session, parent_id: UUID) -> Parent:
+    """Return the active parent with parent_id from db, or raise HTTP 404."""
     parent = db.get(Parent, parent_id)
     if parent is None or parent.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent not found")
@@ -80,6 +84,11 @@ def get_parent_or_404(db: Session, parent_id: UUID) -> Parent:
 
 
 def teacher_can_read_student(db: Session, current_user: User, student_id: UUID) -> bool:
+    """Return whether current_user has an active teacher-course-enrollment path to the student.
+
+    Every row in that path must be active. Callers separately enforce the user
+    role; parent links do not grant access through this teacher check.
+    """
     enrollment = db.scalar(
         select(Enrollment)
         .join(Course, Enrollment.course_id == Course.id)
@@ -98,6 +107,7 @@ def teacher_can_read_student(db: Session, current_user: User, student_id: UUID) 
 
 
 def clean_required_text(value: str, field_name: str) -> str:
+    """Trim a required string and return it, or raise HTTP 422 naming an empty field."""
     cleaned = value.strip()
     if not cleaned:
         raise HTTPException(
@@ -108,6 +118,11 @@ def clean_required_text(value: str, field_name: str) -> str:
 
 
 def generate_student_number(db: Session, year: int) -> str:
+    """Return an unused STU-year sequence number, checking active and deleted students.
+
+    Start after the lexically greatest matching number, or at one if parsing
+    fails, and probe collisions. This lookup does not reserve the returned number.
+    """
     prefix = f"STU-{year}-"
     last = db.scalar(
         select(Student.student_number)
@@ -132,6 +147,11 @@ def latest_grade_period_for_student(
     school_year: str | None = None,
     term: str | None = None,
 ) -> tuple[str, str] | None:
+    """Return the latest year/term with active grade, item, and course rows, or None.
+
+    Apply optional year and term filters first. Rank years lexically and terms
+    by canonical trimester order; unknown terms rank below canonical terms.
+    """
     query = (
         select(Course.school_year, GradeItem.term)
         .join(GradeItem, GradeItem.course_id == Course.id)
@@ -173,6 +193,13 @@ def list_students(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[StudentResponse]:
+    """Return active-row student summaries for an admin, filtered by academic status.
+
+    A year alone decorates students with that year assignment without restricting
+    school membership. A class filters year assignments; unassigned selects
+    students with no assignment row for the required year. Reject conflicting
+    class/unassigned filters and class/year mismatches with HTTP 422.
+    """
     if class_id is not None and unassigned:
         raise HTTPException(status_code=422, detail="class_id and unassigned cannot be combined")
     if class_id is not None:
@@ -224,6 +251,11 @@ def list_deleted_students(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[DeletedStudentResponse]:
+    """Return all soft-deleted student summaries newest first for an admin.
+
+    Include batch-tagged students and current class display data. This
+    compatibility endpoint does not perform Trash retention cleanup.
+    """
     students = db.scalars(
         select(Student)
         .options(joinedload(Student.school_class))
@@ -246,6 +278,11 @@ def create_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StudentResponse:
+    """Create, audit, and commit an admin-supplied student and return its summary.
+
+    Require nonblank names and a globally unused student number, generating one
+    when omitted. An optional active class also creates its year assignment.
+    """
     first_name = clean_required_text(payload.first_name, "first_name")
     last_name = clean_required_text(payload.last_name, "last_name")
     school_level = payload.school_level.value if payload.school_level is not None else None
@@ -302,7 +339,14 @@ def get_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> StudentResponse:
+    """Return an active student summary to an admin or an assigned-course teacher.
+
+    The teacher path requires active enrollment and course/profile rows; other
+    users receive HTTP 403. Missing or deleted students receive HTTP 404.
+    """
     student = get_student_or_404(db, student_id)
+    # A teacher must reach this student through an active assigned course;
+    # being authenticated alone does not grant access to student identities.
     if current_user.role == "admin" or (
         current_user.role == "teacher" and teacher_can_read_student(db, current_user, student_id)
     ):
@@ -318,6 +362,13 @@ def update_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StudentResponse:
+    """Apply an admin partial update, audit changed summary fields, and commit.
+
+    Enforce nonblank required text and student-number uniqueness across deleted
+    rows too. Explicit null clears nullable fields; an omitted field stays as-is.
+    Class changes update year assignments and the current class pointer. Return
+    the refreshed student summary.
+    """
     student = get_student_or_404(db, student_id)
     old_value = {
         "first_name": student.first_name,
@@ -392,6 +443,11 @@ def delete_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Soft-delete and audit an active student for an admin, commit, and return OK.
+
+    Only the student timestamp changes; links and academic rows remain stored
+    and are not tagged with a deletion batch by this route.
+    """
     student = get_student_or_404(db, student_id)
     deleted_at = datetime.now(timezone.utc)
     old_value = {
@@ -423,6 +479,12 @@ def restore_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Clear a student deletion timestamp for an admin, audit, commit, and return OK.
+
+    An already-active student returns OK without changes. This compatibility
+    route leaves deleted_batch_id intact and does not call shared Trash parent
+    dependency checks or restore related rows.
+    """
     student = get_any_student_or_404(db, student_id)
     if student.deleted_at is None:
         return StatusResponse(status="ok", message="Student is already active")
@@ -450,6 +512,13 @@ def list_student_grades_admin(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[ParentGradeResponse]:
+    """Return active grade details for an admin-selected student and trimester.
+
+    Reject noncanonical explicit terms. Fill missing period values from the
+    latest matching grade period, then academic context when no grades match.
+    Require active grade/item/course rows; report publication is not required
+    for this admin-only view. Return an empty list if no period can be resolved.
+    """
     get_student_or_404(db, student_id)
 
     if term is not None and term not in TRIMESTER_TERMS:
@@ -508,6 +577,11 @@ def list_student_parents(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[LinkedParentResponse]:
+    """Return one linked-parent summary per active parent for an admin.
+
+    Require an active student and link, deduplicating historical duplicate links
+    by parent id. Account deletion state is not separately filtered here.
+    """
     get_student_or_404(db, student_id)
     links = db.scalars(
         select(StudentParent)
@@ -528,6 +602,12 @@ def link_student_parent(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> LinkedParentResponse:
+    """Link active student and parent profiles for an admin and return the saved link.
+
+    Reject an existing active link. Reuse the most recently deleted link when
+    available, clearing its batch marker; otherwise create one. Normalize the
+    relationship, audit, and commit; uniqueness failures become HTTP 409.
+    """
     student = get_student_or_404(db, student_id)
     parent = get_parent_or_404(db, payload.parent_id)
     relationship = payload.relationship.strip() if payload.relationship is not None else None
@@ -595,6 +675,11 @@ def unlink_student_parent(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Soft-delete all active links for a student/parent pair, audit, and commit.
+
+    Require an active student and at least one link, otherwise raise HTTP 404.
+    The parent profile remains intact; return an OK status after unlinking.
+    """
     get_student_or_404(db, student_id)
     links = db.scalars(
         select(StudentParent).where(

@@ -19,7 +19,8 @@ references nulled. Purged entries have no recovery path.
 Retention is 30 days from ``deleted_at``; restore clears that clock, and a later
 deletion starts a fresh window. Cleanup is lazy on Corbeille access because the
 app has no scheduler (FastAPI BackgroundTasks are request-bound); indexed
-``deleted_at`` columns keep the sweep bounded.
+``deleted_at`` columns support deletion-state queries, but the sweep currently
+loads the full Trash listing before filtering expired entries.
 
 Parent/teacher restore also restores the linked login account only after its
 email (and teacher employee number) passes active-identity conflict checks.
@@ -126,6 +127,11 @@ BATCH_ENTRY_PREFIX = "batch:"
 
 @dataclass
 class TrashEntry:
+    """Represent one recoverable batch or standalone row for Trash display.
+
+    The prefixed id selects the restore/purge path; counts describe the entry,
+    not necessarily the full dependency closure that permanent purge removes.
+    """
     id: str
     source: str
     entity_type: str
@@ -156,6 +162,11 @@ def _batch_entry_id(batch_id: UUID) -> str:
 
 
 def parse_entry_id(entry_id: str) -> tuple[str, str | None, UUID]:
+    """Decode a batch or recoverable-row id into source, table, and UUID.
+
+    Raise ValueError for malformed identifiers or unsupported row tables;
+    this parser does not check whether the referenced database entry exists.
+    """
     if entry_id.startswith(BATCH_ENTRY_PREFIX):
         return "batch", None, UUID(entry_id.removeprefix(BATCH_ENTRY_PREFIX))
     if entry_id.startswith(ROW_ENTRY_PREFIX):
@@ -174,6 +185,7 @@ def _user_label(user: User | None) -> str:
 
 
 def row_label(row) -> str:
+    """Return a display label for a recoverable ORM row, using related names when available."""
     if isinstance(row, Student):
         return f"{row.first_name} {row.last_name} #{row.student_number}"
     if isinstance(row, Parent):
@@ -208,6 +220,7 @@ def row_label(row) -> str:
 
 
 def row_metadata(row) -> dict[str, str | None]:
+    """Return student, course, or subject display context; other row types return an empty mapping."""
     if isinstance(row, Student):
         return {
             "student_number": row.student_number,
@@ -258,6 +271,11 @@ def list_trash_entries(db: Session, *, entity_type: str | None = None) -> list[T
     # Do not collapse this into one source unless historical soft-deletes are
     # migrated first: batch rows and standalone deleted rows have different,
     # already-proven restore semantics but intentionally share one UI/API.
+    """Return newest-first batch and unbatched-row entries from db.
+
+    An optional entity_type limits both sources. This read neither enforces
+    retention nor commits; batch counts come from the stored deletion summary.
+    """
     entries: list[TrashEntry] = []
     batches = db.scalars(
         select(DeletionBatch)
@@ -304,6 +322,7 @@ def list_trash_entries(db: Session, *, entity_type: str | None = None) -> list[T
 
 
 def trash_summary(entries: list[TrashEntry]) -> dict[str, int]:
+    """Count the supplied display entries by entity type, not their dependent rows."""
     summary: dict[str, int] = {}
     for entry in entries:
         summary[entry.entity_type] = summary.get(entry.entity_type, 0) + 1
@@ -353,6 +372,11 @@ def validate_restore_dependencies(db: Session, row) -> None:
     # A soft-deleted child may be individually visible in Corbeille even while
     # its parent remains deleted. Returning 409 preserves referential meaning
     # and tells the admin to restore the ownership chain first.
+    """Raise HTTP 409 when a supported row has a missing/deleted required parent or course conflict.
+
+    Optional class and subject relationships are checked when present. This
+    validation does not restore rows or check profile account identities.
+    """
     if isinstance(row, Student) and row.school_class is not None and row.school_class.deleted_at is not None:
         _restore_conflict("class")
     if isinstance(row, Course):
@@ -395,6 +419,12 @@ def validate_restore_dependencies(db: Session, row) -> None:
 
 
 def restore_row_entry(db: Session, *, table: str, entity_id: UUID, current_user: User) -> str:
+    """Restore the selected deleted row and audit current_user without committing.
+
+    Validate parent dependencies and, for profiles, account identity conflicts.
+    Clear both deletion fields and return the restored row display label;
+    missing or already-active rows raise HTTP 404.
+    """
     model = RECOVERABLE_MODELS[table]
     row = db.get(model, entity_id)
     if row is None or row.deleted_at is None:
@@ -418,6 +448,13 @@ def restore_row_entry(db: Session, *, table: str, entity_id: UUID, current_user:
 
 
 def restore_batch_entry(db: Session, *, batch_id: UUID, current_user: User) -> tuple[str, dict[str, int]]:
+    """Restore rows tagged with batch_id and return the label and per-table counts.
+
+    Check live course-setup and profile-account conflicts, then audit the actor.
+    Already-restored batches return an empty count mapping. Unlike individual
+    restore, this path does not validate every parent dependency. The caller
+    owns the transaction and commit.
+    """
     batch = db.get(DeletionBatch, batch_id)
     if batch is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
@@ -602,6 +639,11 @@ def _expand_purge_plan_dependencies(db: Session, plan: dict[str, set[UUID]]) -> 
 
 
 def purge_plan_for_row(db: Session, *, table: str, entity_id: UUID) -> dict[str, set[UUID]]:
+    """Return ownership-closure IDs for a deleted row, or raise HTTP 404.
+
+    Dependent rows are included regardless of deletion state or batch tag;
+    this builds a plan without physically deleting anything.
+    """
     plan = _empty_purge_plan()
     row = db.get(RECOVERABLE_MODELS[table], entity_id)
     if row is None or row.deleted_at is None:
@@ -612,6 +654,11 @@ def purge_plan_for_row(db: Session, *, table: str, entity_id: UUID) -> dict[str,
 
 
 def purge_plan_for_batch(db: Session, batch_id: UUID) -> dict[str, set[UUID]]:
+    """Return ownership-closure IDs for an unrestored batch, or raise HTTP 404.
+
+    Start with tagged rows and include their dependencies even when active
+    or untagged. This read does not delete rows or commit.
+    """
     batch = db.get(DeletionBatch, batch_id)
     if batch is None or batch.restored_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
@@ -630,6 +677,12 @@ def purge_user_accounts(
     *,
     protected_user_id: UUID | None = None,
 ) -> dict[str, int]:
+    """Delete selected accounts and reset tokens, returning counts without committing.
+
+    Reject the protected account and accounts that own deletion batches with
+    HTTP 409. Clear nullable historical actor references before flushing deletes.
+    The caller must provide transaction rollback if any step fails.
+    """
     if not user_ids:
         return {}
     if protected_user_id in user_ids:
@@ -691,7 +744,7 @@ def purge_user_accounts(
 
 
 def _null_external_references(db: Session, plan: dict[str, set[UUID]]) -> None:
-    """Detach nullable references from live rows outside the ownership closure."""
+    """Detach nullable class/subject references, including those on deleted rows."""
     class_ids = plan["classes"]
     if class_ids:
         student_update = update(Student).where(Student.class_id.in_(class_ids))
@@ -736,8 +789,14 @@ def purge_plan(
     protected_user_id: UUID | None = None,
 ) -> dict[str, int]:
     # PURGE_ORDER is child-first to satisfy foreign keys. Only precomputed IDs
-    # belonging to this deleted entry are touched; do not broaden these queries
-    # to relationship-wide deletes that could consume active school data.
+    # in the ownership closure are deleted, including active dependent rows.
+    # Shared references are detached above rather than expanding the closure.
+    """Execute a precomputed ownership plan and return physical deletion counts.
+
+    Detach nullable references, flush child-first deletes, and pass the optional
+    protected account to account purging. No savepoint or commit is created here;
+    call through purge_entry for per-entry rollback protection.
+    """
     _null_external_references(db, plan)
     counts: dict[str, int] = {}
     for table in PURGE_ORDER:
@@ -770,6 +829,12 @@ def purge_batch_entry(
     batch_id: UUID,
     protected_user_id: UUID | None = None,
 ) -> tuple[str, dict[str, int]]:
+    """Purge an unrestored batch and its closure, returning its label and counts.
+
+    Raise HTTP 404 for missing/restored batches. Verify no recoverable rows
+    still reference the batch before deleting its record. The caller supplies
+    the transaction; protected_user_id prevents deleting that account.
+    """
     batch = db.get(DeletionBatch, batch_id)
     if batch is None or batch.restored_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
@@ -792,6 +857,11 @@ def purge_row_entry(
     entity_id: UUID,
     protected_user_id: UUID | None = None,
 ) -> tuple[str, dict[str, int]]:
+    """Purge a deleted row and its closure, returning its label and counts.
+
+    Raise HTTP 404 for missing/active rows and protect the supplied user id
+    during account deletion. The caller supplies the transaction and commit.
+    """
     row = db.get(RECOVERABLE_MODELS[table], entity_id)
     if row is None or row.deleted_at is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trash entry not found")
@@ -802,6 +872,12 @@ def purge_row_entry(
 
 
 def purge_entry(db: Session, *, entry_id: str, current_user: User, audit_action: str = "trash_entry_purged") -> tuple[str, dict[str, int]]:
+    """Permanently purge a prefixed entry id in a savepoint and audit current_user.
+
+    Return its label and deletion counts; malformed or missing IDs raise
+    HTTP 404. Protect the actor account and roll back this entry on failure.
+    The caller still owns the outer transaction and commit.
+    """
     try:
         source, table, entity_id = parse_entry_id(entry_id)
     except ValueError as exc:
@@ -837,6 +913,12 @@ def purge_entry(db: Session, *, entry_id: str, current_user: User, audit_action:
 def purge_expired_entries(db: Session, *, current_user: User) -> dict[str, int]:
     # The retention clock is the entry's deleted_at, not batch creation or last
     # access. restore clears deleted_at, so re-deletion naturally gets 30 days.
+    """Purge entries older than RETENTION_DAYS and return aggregated deletion counts.
+
+    Use current_user for audit and account protection. Skip HTTP 404 entries
+    already consumed by another closure; other failures propagate. This
+    sweep does not commit and loads all Trash entries before filtering.
+    """
     cutoff = _now() - timedelta(days=RETENTION_DAYS)
     expired = [entry for entry in list_trash_entries(db) if entry.deleted_at < cutoff]
     aggregate: dict[str, int] = {}
@@ -853,6 +935,11 @@ def purge_expired_entries(db: Session, *, current_user: User) -> dict[str, int]:
 
 
 def purge_all_entries(db: Session, *, current_user: User) -> dict[str, int]:
+    """Purge the current Trash listing and return aggregated counts without committing.
+
+    Each entry uses current_user for audit and account protection. Ignore
+    HTTP 404 entries consumed by an earlier closure; propagate other failures.
+    """
     entries = list_trash_entries(db)
     aggregate: dict[str, int] = {}
     for entry in entries:

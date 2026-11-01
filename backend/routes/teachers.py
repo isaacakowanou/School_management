@@ -41,6 +41,7 @@ router = APIRouter(tags=["teachers"])
 
 
 def to_teacher_response(teacher: Teacher) -> TeacherResponse:
+    """Return profile and linked-account display fields for a loaded teacher."""
     return TeacherResponse(
         id=teacher.id,
         user_id=teacher.user_id,
@@ -52,6 +53,10 @@ def to_teacher_response(teacher: Teacher) -> TeacherResponse:
 
 
 def get_teacher_or_404(db: Session, teacher_id: UUID) -> Teacher:
+    """Return a teacher by id only when both profile and linked account are active.
+
+    Raise HTTP 404 for missing teachers or soft-deleted profiles/accounts.
+    """
     teacher = db.get(Teacher, teacher_id)
     if teacher is None or teacher.deleted_at is not None or teacher.user.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
@@ -59,12 +64,15 @@ def get_teacher_or_404(db: Session, teacher_id: UUID) -> Teacher:
 
 
 def can_read_teacher(current_user: User, teacher: Teacher) -> bool:
+    # Teacher self-service must not expose another teacher profile.
+    """Return whether current_user is an admin or the teacher owning this profile."""
     return current_user.role == "admin" or (
         current_user.role == "teacher" and teacher.user_id == current_user.id
     )
 
 
 def clean_required_text(value: str, field_name: str) -> str:
+    """Trim a required value and return it, or raise HTTP 422 naming the empty field."""
     cleaned = value.strip()
     if not cleaned:
         raise HTTPException(
@@ -75,6 +83,11 @@ def clean_required_text(value: str, field_name: str) -> str:
 
 
 def generate_employee_number(db: Session, year: int) -> str:
+    """Return an unused active-teacher TCH-year sequence number without reserving it.
+
+    Start after the lexically greatest active matching number, falling back to
+    one on a parse failure, then probe active-identity collisions.
+    """
     prefix = f"TCH-{year}-"
     last = db.scalar(
         select(Teacher.employee_number)
@@ -98,6 +111,11 @@ def list_teachers(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[TeacherResponse]:
+    """Return teacher summaries to an admin, ordered by linked-account name.
+
+    Require both profile and account to be active; school year does not restrict
+    the school-wide teacher directory.
+    """
     teachers = db.scalars(
         select(Teacher)
         .join(Teacher.user)
@@ -114,6 +132,13 @@ def create_teacher(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> TeacherCreateResponse:
+    """Create and audit a teacher/account for an admin, returning temporary credentials and delivery results.
+
+    Check active email and employee-number uniqueness and generate a number if
+    omitted. Commit the forced-change password before notification. Prefer
+    email when present; SMS is attempted only when email is absent. Delivery
+    failure is reported without undoing the committed account.
+    """
     name = clean_required_text(payload.name, "name")
     email = (payload.email or "").strip() or None
     phone = (payload.phone or "").strip() or None
@@ -199,6 +224,10 @@ def get_teacher(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> TeacherResponse:
+    """Return an active teacher summary to an admin or the matching teacher account.
+
+    Reject other authenticated users with HTTP 403 after the active-row lookup.
+    """
     teacher = get_teacher_or_404(db, teacher_id)
     if not can_read_teacher(current_user, teacher):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
@@ -212,6 +241,12 @@ def update_teacher(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> TeacherResponse:
+    """Update an active teacher for an admin, audit changed fields, commit, and return its summary.
+
+    Require nonblank names/numbers and active-identity uniqueness. Explicit null
+    or blank email/phone clears the field; omission leaves it unchanged. Account
+    name/email changes do not replace credentials or send notifications here.
+    """
     teacher = get_teacher_or_404(db, teacher_id)
     old_value = {
         "user_id": teacher.user_id,
@@ -272,6 +307,11 @@ def reset_teacher_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminPasswordResetResponse:
+    """Reset an active teacher account for an admin and return credentials and delivery results.
+
+    Delegate forced password change, session invalidation, auditing, commits,
+    and notification attempts to the shared account-security service.
+    """
     teacher = get_teacher_or_404(db, teacher_id)
     return AdminPasswordResetResponse(
         **reset_profile_password(
@@ -286,6 +326,12 @@ def delete_teacher(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Move a teacher and linked account to Trash for an admin, commit, and return OK.
+
+    Reject active assigned courses or active submitted grades with HTTP 409
+    and their counts. Otherwise audit the deletion and invalidate account
+    sessions; dependent academic rows are not cascaded by this route.
+    """
     teacher = get_teacher_or_404(db, teacher_id)
     course_count = db.scalar(
         select(func.count(Course.id)).where(Course.teacher_id == teacher_id, Course.deleted_at.is_(None))
@@ -293,6 +339,8 @@ def delete_teacher(
     submitted_grade_count = db.scalar(
         select(func.count(Grade.id)).where(Grade.submitted_by_teacher_id == teacher_id, Grade.deleted_at.is_(None))
     )
+    # Keep the teacher available while active teaching or grade records depend
+    # on the profile; broader cascade cleanup uses the separate danger-zone API.
     if course_count or submitted_grade_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -333,6 +381,11 @@ def list_teacher_courses(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CourseResponse]:
+    """Return active assigned courses to an admin or the matching teacher, ordered by name.
+
+    Require an active teacher/account and apply optional exact school_year and
+    term filters. This endpoint does not infer a default academic period.
+    """
     teacher = get_teacher_or_404(db, teacher_id)
     if not can_read_teacher(current_user, teacher):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")

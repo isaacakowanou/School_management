@@ -1,10 +1,11 @@
 """Admin API for the unified Corbeille and its irreversible purge actions.
 
-Every listing first performs the lazy 30-day retention sweep, then returns both
+Every endpoint first performs the lazy 30-day retention sweep; listing returns both
 batch and standalone entries from ``services.trash``. ``entity_type`` is a
 filtered view of that same source, which keeps per-entity deleted pages aligned
-with the main bin. Restore is recoverable; DELETE endpoints are explicit,
-audited hard deletes and therefore return 404 on any later restore attempt.
+with the main bin. Restore reactivates retained entries; DELETE endpoints
+perform audited hard deletes with no recovery path. Retention can commit
+expired-entry deletion before the requested operation succeeds or fails.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,6 +32,7 @@ router = APIRouter(prefix="/admin/trash", tags=["trash"])
 
 
 def _entry_response(entry) -> TrashEntryResponse:
+    """Serialize a Trash entry, replacing missing display metadata with an empty mapping."""
     return TrashEntryResponse(
         id=entry.id,
         source=entry.source,
@@ -47,6 +49,11 @@ def _entry_response(entry) -> TrashEntryResponse:
 def _auto_purge(db: Session, current_user: User) -> None:
     # BackgroundTasks cannot schedule daily work after a process sleeps or
     # restarts, so access-triggered cleanup is the reliable scheduler-free path.
+    """Sweep expired entries for the requesting admin and commit when deletion counts are nonempty.
+
+    Service failures propagate to the route. A successful nonempty sweep commits
+    before the requested list, restore, or purge action is attempted.
+    """
     counts = purge_expired_entries(db, current_user=current_user)
     if counts:
         db.commit()
@@ -58,6 +65,12 @@ def list_trash(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> TrashListResponse:
+    """Return admin-visible Trash entries, summary counts, and retention days.
+
+    Run retention cleanup across all entity types first, then apply the optional
+    entity_type filter to both entries and summary. This GET can permanently
+    delete expired data and commit those changes.
+    """
     _auto_purge(db, current_user)
     entries = list_trash_entries(db, entity_type=entity_type)
     return TrashListResponse(
@@ -73,6 +86,12 @@ def restore_trash_entry(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Restore a prefixed row or batch id for an admin, commit, and return its label.
+
+    Retention cleanup runs first, so an expired target may already be gone.
+    Malformed ids become HTTP 404; dependency and identity conflicts from the
+    shared restore service propagate. Successful restore is audited there.
+    """
     _auto_purge(db, current_user)
     try:
         source, table, entity_id = parse_entry_id(entry_id)
@@ -94,6 +113,12 @@ def purge_trash_entry(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> TrashActionResponse:
+    """Permanently purge an admin-selected entry, commit, and return its label and counts.
+
+    Run retention first, then delegate ownership closure, actor protection,
+    savepoint handling, and audit to the service. Missing targets raise HTTP 404,
+    including those removed by the preceding retention sweep.
+    """
     _auto_purge(db, current_user)
     label, counts = purge_entry(db, entry_id=entry_id, current_user=current_user)
     db.commit()
@@ -105,6 +130,12 @@ def empty_trash(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> TrashActionResponse:
+    """Purge all remaining entries for an admin, audit the overall action, and commit.
+
+    Return counts from the explicit empty operation; counts from the preceding
+    retention sweep are not included. Service errors propagate rather than
+    being reported as a successful empty operation.
+    """
     _auto_purge(db, current_user)
     counts = purge_all_entries(db, current_user=current_user)
     create_audit_log(

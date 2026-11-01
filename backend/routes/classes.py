@@ -47,6 +47,10 @@ _SCHOOL_LEVEL_RANK = {level.value: index for index, level in enumerate(SchoolLev
 
 
 def clean_required_text(value: str, field_name: str) -> str:
+    """Trim a required class field through the shared cleaner, raising HTTP 422 if empty.
+
+    Despite the delegated helper name, this does not validate a year format.
+    """
     return clean_school_year(value, field_name)
 
 
@@ -68,6 +72,12 @@ def _class_snapshot(school_class: Class) -> dict:
 
 
 def _counts_for_classes(db: Session, class_ids: list[UUID]) -> tuple[dict, dict]:
+    """Return student-count and course-count mappings for the supplied class ids.
+
+    Count nondeleted, academically active students through assignment rows and
+    nondeleted courses through their class ids. Missing groups are omitted;
+    callers supply zero defaults. No additional school-year predicate is used.
+    """
     if not class_ids:
         return {}, {}
     student_rows = db.execute(
@@ -92,6 +102,7 @@ def _counts_for_classes(db: Session, class_ids: list[UUID]) -> tuple[dict, dict]
 def to_class_response(
     school_class: Class, *, student_count: int = 0, course_count: int = 0
 ) -> ClassResponse:
+    """Serialize a class with supplied student/course counts, defaulting both counts to zero."""
     return ClassResponse(
         id=school_class.id,
         name_fr=school_class.name_fr,
@@ -106,6 +117,7 @@ def to_class_response(
 
 
 def _response_with_counts(db: Session, school_class: Class) -> ClassResponse:
+    """Return one class summary populated with current assignment and course counts."""
     student_counts, course_counts = _counts_for_classes(db, [school_class.id])
     return to_class_response(
         school_class,
@@ -124,6 +136,11 @@ def list_classes(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[ClassResponse]:
+    """Return active class summaries and counts for an admin.
+
+    Apply optional exact year and school-level filters, then order by school
+    level and sort_order. Student counts exclude graduated and deleted students.
+    """
     query = select(Class).where(Class.deleted_at.is_(None))
     if school_year is not None:
         query = query.where(Class.school_year == school_year)
@@ -151,6 +168,11 @@ def create_class(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ClassResponse:
+    """Create, audit, and commit an admin-supplied class, returning its summary.
+
+    Trim required fields and normalize blank optional text to null. Report
+    flush-time integrity failures as HTTP 409; a new class returns zero counts.
+    """
     school_class = Class(
         name_fr=clean_required_text(payload.name_fr, "name_fr"),
         name_en=_clean_optional_text(payload.name_en),
@@ -186,11 +208,11 @@ def bulk_create_classes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ClassBulkCreateResponse:
-    """Create all 18 GGFK taxonomy classes for a school year (A1.10).
+    """Create missing GGFK catalog classes for an admin-selected school year.
 
-    Idempotent: classes already present for the year (matched accent/case-
-    insensitively, so a hand-typed "6eme" counts as 6ème) are skipped, not
-    duplicated and not errored.
+    Skip active classes with matching normalized names, including accent and
+    case variants. Return created/skipped names; audit and commit only when
+    at least one class is created. Deleted classes are not considered matches.
     """
     school_year = clean_required_text(payload.school_year, "school_year")
 
@@ -271,7 +293,11 @@ def preview_class_enrollments(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> ClassEnrollmentPreviewResponse:
-    """Counts the bulk-enroll action would produce (no writes, no audit)."""
+    """Return enrollment counts for an active class to an admin without writes.
+
+    Use the shared year-scoped plan and return status="empty" when no eligible
+    students or courses exist. The write endpoint recomputes this plan.
+    """
     school_class = get_class_or_404(db, class_id)
     plan = _compute_class_enrollment_plan(db, school_class)
     students = len(plan["student_ids"])
@@ -296,13 +322,13 @@ def bulk_enroll_class_students(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ClassBulkEnrollResponse:
-    """Enroll every student in the class into every course in the class (A1.11).
+    """Create missing class enrollment pairs for an admin and return created/skipped counts.
 
-    Scope: students assigned to the class for its school year, courses with
-    course.class_id == class_id AND course.school_year == class.school_year.
-    Idempotent — existing (student_id, course_id) pairs are skipped, no
-    duplicate rows, no 409. Empty class (0 students or 0 courses) returns 200
-    with status="empty" and the two counts so callers can be specific.
+    Include nondeleted, academically active students assigned for the class
+    year and nondeleted courses matching both class and year. Skip existing
+    active pairs; deleted links do not count as existing. Recompute the plan
+    on each call, auditing and committing only when new rows are added.
+    Return status="empty" when no eligible students or courses exist.
     """
     school_class = get_class_or_404(db, class_id)
     plan = _compute_class_enrollment_plan(db, school_class)
@@ -367,6 +393,7 @@ def get_class(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> ClassResponse:
+    """Return an active class summary and counts to an admin, or raise HTTP 404."""
     school_class = get_class_or_404(db, class_id)
     return _response_with_counts(db, school_class)
 
@@ -378,6 +405,12 @@ def update_class(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ClassResponse:
+    """Apply an admin partial class update, synchronize assignments, and return counts.
+
+    Explicit null clears name_en/stream; omitted fields stay unchanged. Update
+    assignment years/name snapshots, converting assignment conflicts and flush
+    integrity errors to HTTP 409. Audit changed class fields and commit.
+    """
     school_class = get_class_or_404(db, class_id)
     old_value = _class_snapshot(school_class)
 
@@ -428,6 +461,12 @@ def delete_class(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Soft-delete and audit an active class for an admin, commit, and return OK.
+
+    Block deletion when nondeleted students have assignments to the class or
+    nondeleted courses reference it. Unlike displayed student counts, this
+    guard also includes graduated students with retained assignments.
+    """
     school_class = get_class_or_404(db, class_id)
     student_count = db.scalar(
         select(func.count(StudentClassAssignment.id))
@@ -437,6 +476,8 @@ def delete_class(
     course_count = db.scalar(
         select(func.count(Course.id)).where(Course.class_id == class_id, Course.deleted_at.is_(None))
     )
+    # Retained graduate assignments also protect the class from deletion,
+    # even though graduates are omitted from the displayed active-student count.
     if student_count or course_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

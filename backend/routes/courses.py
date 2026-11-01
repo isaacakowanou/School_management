@@ -59,6 +59,7 @@ router = APIRouter(tags=["courses"])
 
 
 def get_course_or_404(db: Session, course_id: UUID) -> Course:
+    """Return an active course by id, or raise HTTP 404 for missing/deleted rows."""
     course = db.get(Course, course_id)
     if course is None or course.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -66,6 +67,10 @@ def get_course_or_404(db: Session, course_id: UUID) -> Course:
 
 
 def get_teacher_or_404(db: Session, teacher_id: UUID) -> Teacher:
+    """Return an active teacher profile by id, or raise HTTP 404.
+
+    This lookup checks profile deletion state, not the linked account state.
+    """
     teacher = db.get(Teacher, teacher_id)
     if teacher is None or teacher.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
@@ -73,11 +78,19 @@ def get_teacher_or_404(db: Session, teacher_id: UUID) -> Teacher:
 
 
 def teacher_can_read_course(db: Session, current_user: User, course: Course) -> bool:
+    """Return whether current_user resolves to the teacher assigned to course.
+
+    Callers separately enforce the teacher role and active-course lookup.
+    """
     teacher = get_current_teacher(db, current_user)
     return teacher is not None and course.teacher_id == teacher.id
 
 
 def ensure_unique_course_code(db: Session, code: str, course_id: UUID | None = None) -> None:
+    """Raise HTTP 409 if code is used by any other course, including deleted rows.
+
+    Exclude course_id when validating an update; otherwise check all courses.
+    """
     query = select(Course).where(Course.code == code)
     if course_id is not None:
         query = query.where(Course.id != course_id)
@@ -88,6 +101,10 @@ def ensure_unique_course_code(db: Session, code: str, course_id: UUID | None = N
 
 
 def clean_required_text(value: str, field_name: str) -> str:
+    """Trim a required value and return it, raising HTTP 422 when empty.
+
+    The shared cleaner does not enforce a school-year format.
+    """
     return clean_school_year(value, field_name)
 
 
@@ -96,7 +113,8 @@ def derived_from_subject(subject: Subject) -> tuple[str, str]:
 
     The bulletin prints French-section courses under their French names and
     English-section courses under their English names; the section value
-    doubles as the course's language_group (feeds the A1.6 three averages).
+    doubles as the course's language_group for French, English, and overall
+    bulletin averages.
     """
     if subject.section == LanguageGroup.FRENCH.value:
         return subject.name_fr, subject.section
@@ -104,12 +122,17 @@ def derived_from_subject(subject: Subject) -> tuple[str, str]:
 
 
 def grading_system_for_setup(language_group: str | None, school_class: Class | None) -> str:
+    """Return BENINESE for a French-section college class, otherwise WEIGHTED.
+
+    This is the default for creation when the admin supplies no grading system.
+    """
     if language_group == "FRENCH" and school_class is not None and school_class.school_level == "college":
         return "BENINESE"
     return "WEIGHTED"
 
 
 def ensure_class_matches_school_year(school_class: Class | None, school_year: str) -> None:
+    """Raise HTTP 422 when a supplied class belongs to a different year; allow no class."""
     if school_class is not None and school_class.school_year != school_year:
         raise HTTPException(
             status_code=422,
@@ -121,6 +144,7 @@ def ensure_class_matches_school_year(school_class: Class | None, school_year: st
 
 
 def ensure_subject_applies(subject: Subject | None, school_class: Class | None) -> None:
+    """Raise HTTP 422 for an inapplicable subject/class pair; allow either to be absent."""
     if subject is not None and school_class is not None and not subject_applies_to_class(subject, school_class):
         raise HTTPException(
             status_code=422,
@@ -139,6 +163,11 @@ def ensure_unique_active_course_setup(
     subject_id: UUID | None,
     course_id: UUID | None = None,
 ) -> None:
+    """Reject a duplicate active year/class/subject combination with HTTP 409.
+
+    Skip the check when class or subject is absent, and exclude course_id for
+    updates. Term is not part of this setup identity.
+    """
     if class_id is None or subject_id is None:
         return
     query = select(Course.id).where(
@@ -164,6 +193,13 @@ _SUBJECT_NAME_CONFLICT = "name is derived from the subject; omit it or clear sub
 
 
 def course_list_stats(db: Session, courses: list[Course]) -> dict[UUID, dict[str, int]]:
+    """Return per-course roster and current-term score counts for the supplied courses.
+
+    Count distinct nondeleted students with active enrollments, active items in
+    the course current term, and active grades joined to active roster rows.
+    Possible scores equal student count times item count; graduated students
+    are not excluded by academic status.
+    """
     course_ids = [course.id for course in courses]
     if not course_ids:
         return {}
@@ -246,6 +282,11 @@ def list_courses(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CourseResponse]:
+    """Return active courses and current-term statistics for admins or assigned teachers.
+
+    Apply optional exact school-year and canonical-trimester filters. A teacher
+    without a resolved profile gets an empty list; other roles receive HTTP 403.
+    """
     query = (
         select(Course)
         .options(joinedload(Course.school_class))
@@ -281,6 +322,13 @@ def create_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> CourseResponse:
+    """Create, audit, and commit an admin course request, returning its summary.
+
+    Enforce globally unique code, class/year consistency, subject applicability,
+    and active setup uniqueness. Linked subjects determine name/language;
+    unlinked courses require a name. Teacher assignment is optional. Use the
+    explicit grading system or derive the default from language and class.
+    """
     code = clean_required_text(payload.code, "code")
     term = payload.term.value
     school_year = clean_required_text(payload.school_year, "school_year")
@@ -361,6 +409,13 @@ def preview_bulk_course_setup(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> CourseBulkPreviewResponse:
+    """Return existing and missing catalog course setups for an admin-selected year/classes.
+
+    Deduplicate class ids and require active classes in the requested year.
+    Include applicable active subjects, defaults, and code conflicts against all
+    course rows. This preview neither writes nor reserves suggested codes;
+    existing setup lookup is independent of the requested term.
+    """
     school_year = clean_required_text(payload.school_year, "school_year")
     classes = []
     for class_id in dict.fromkeys(payload.class_ids):
@@ -416,6 +471,14 @@ def create_bulk_course_setup(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> CourseBulkCreateResponse:
+    """Validate an admin batch, create missing courses, audit, commit, and return counts.
+
+    Skip existing active year/class/subject keys before validating item fields.
+    Collect duplicate selections, invalid references/applicability, and code
+    conflicts; any collected failure returns HTTP 422 before adding courses.
+    Use explicit item coefficient/grading values and the common requested term.
+    No enrollments or academic records are created.
+    """
     school_year = clean_required_text(payload.school_year, "school_year")
     class_ids = list(dict.fromkeys(item.class_id for item in payload.items))
     existing_by_key = active_course_by_setup_key(db, school_year, class_ids)
@@ -556,11 +619,12 @@ def clone_year(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> CourseCloneYearResponse:
-    """Duplicate all courses from one school year into another (A1.9).
+    """Clone active source-year course setup for an admin and return counts and unmatched classes.
 
-    Copies every reusable Course setup field. Class is remapped by name into
-    the target year, term is deliberately reset, and no grade items or
-    enrollments are copied.
+    Delegate code-conflict checks and exact class-name remapping to the
+    rollover service. Clones start in the first trimester and include no
+    grade items or enrollments. Existing active target codes are skipped.
+    Audit and commit even when nothing new is created.
     """
     source_year = clean_required_text(payload.source_year, "source_year")
     target_year = clean_required_text(payload.target_year, "target_year")
@@ -607,10 +671,12 @@ def preview_advance_term(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> TermAdvancePreviewResponse:
-    """Readiness report for a school-year-wide trimester change.
+    """Return an admin readiness report for a school year and target trimester.
 
     Warnings are informational only — the POST never blocks on them. The
-    counts show how complete each course's CLOSING term is before the switch.
+    Counts describe active enrollment/result rows for the current course term;
+    enrollment counts do not independently filter deleted students. Beninese
+    courses receive warnings for missing assessment types. No writes occur.
     This is a Conseil de classe operation rather than ordinary course editing:
     GGFK advances the school's courses together at each trimester boundary.
     """
@@ -695,7 +761,9 @@ def advance_term(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> TermAdvanceResponse:
-    """Set every course of a school year to the target trimester.
+    """Set active courses in the requested year to an admin-selected trimester.
+
+    Commit and return updated/skipped counts; audit only when courses change.
 
     Idempotent: courses already on the target term are skipped. Warnings from
     the preview never block — the school calendar wins. Backward moves are
@@ -747,6 +815,10 @@ def get_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CourseResponse:
+    """Return an active course summary to an admin or its assigned teacher.
+
+    Missing/deleted courses raise HTTP 404; other readers receive HTTP 403.
+    """
     course = db.scalar(
         select(Course)
         .where(Course.id == course_id, Course.deleted_at.is_(None))
@@ -754,6 +826,8 @@ def get_course(
     )
     if course is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+    # Course detail is restricted to admins and the assigned teacher, even
+    # when another authenticated user already knows the course id.
     if current_user.role == "admin" or (
         current_user.role == "teacher" and teacher_can_read_course(db, current_user, course)
     ):
@@ -769,6 +843,13 @@ def update_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> CourseResponse:
+    """Apply an admin partial update, audit changed setup fields, commit, and return its summary.
+
+    Explicit null clears supported optional links; an effective subject controls
+    name/language. Validate class/year, applicability, and uniqueness using the
+    resulting setup. Changing grading system with active items requires explicit
+    confirmation and never converts the existing items.
+    """
     course = get_course_or_404(db, course_id)
     old_value = {
         "name": course.name,
@@ -862,6 +943,8 @@ def update_course(
                 GradeItem.deleted_at.is_(None),
             )
         ) or 0
+        # Confirmation acknowledges incompatible existing assessment types;
+        # it does not convert their stored scores, scales, or categories.
         if active_item_count and not payload.confirm_grading_system_change:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -908,6 +991,12 @@ def delete_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> StatusResponse:
+    """Soft-delete an active course for an admin, audit, commit, and return OK.
+
+    Reject any enrollment, grade item, grade, result, or report snapshot with
+    HTTP 409 and counts. These guards include soft-deleted dependent rows;
+    this endpoint does not cascade academic data into Trash.
+    """
     course = get_course_or_404(db, course_id)
     enrollment_count = db.scalar(select(func.count(Enrollment.id)).where(Enrollment.course_id == course_id))
     grade_item_count = db.scalar(select(func.count(GradeItem.id)).where(GradeItem.course_id == course_id))
@@ -920,6 +1009,7 @@ def delete_course(
         .join(GradeItem, Grade.grade_item_id == GradeItem.id)
         .where(GradeItem.course_id == course_id)
     )
+    # Retained academic rows still protect this course even when in Trash.
     if enrollment_count or grade_item_count or course_result_count or report_snapshot_count or grade_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
